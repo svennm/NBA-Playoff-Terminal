@@ -853,7 +853,7 @@ app.get('/api/soccer/odds/:sport', async (req, res) => {
   }
 });
 
-// Soccer props for a game — generates lines from player stats
+// Soccer props — real book lines from Odds API + model fallback
 app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
   const ck = `soccer-props-${req.params.league}-${req.params.gameIndex}`;
   const cached = cache.get(ck);
@@ -868,22 +868,127 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
     const homeTeam = teams.find(t => t.abbr === game.home.abbr);
     const awayTeam = teams.find(t => t.abbr === game.away.abbr);
 
-    const [homeProps, awayProps] = await Promise.all([
-      homeTeam ? soccer.getTeamProps(req.params.league, homeTeam.id) : [],
-      awayTeam ? soccer.getTeamProps(req.params.league, awayTeam.id) : []
-    ]);
+    let realGameOdds = null;
+    let realPlayerProps = null;
+    let source = 'model';
+
+    // Try Odds API for real lines
+    const key = process.env.ODDS_API_KEY;
+    if (key) {
+      try {
+        const sportKey = req.params.league === 'uefa.champions' ? 'soccer_uefa_champs_league' : 'soccer_uefa_europa_league';
+
+        // Game odds (h2h, spreads, totals)
+        const gameOddsUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${key}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+        const goRes = await fetch(gameOddsUrl, { signal: AbortSignal.timeout(8000) });
+        if (goRes.ok) {
+          const goData = await goRes.json();
+          // Match game
+          const matched = goData.find(g => {
+            const h = g.home_team?.toLowerCase();
+            const a = g.away_team?.toLowerCase();
+            return h?.includes(game.home.name.toLowerCase().split(' ').pop()) ||
+                   game.home.name.toLowerCase().includes(h?.split(' ').pop());
+          });
+          if (matched?.bookmakers?.length) {
+            realGameOdds = matched;
+            source = 'odds-api';
+          }
+
+          // Player props
+          if (matched) {
+            const propMarkets = 'player_goal_scorer_anytime,player_shots,player_assists';
+            const ppUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${matched.id}/odds?apiKey=${key}&regions=us&markets=${propMarkets}&oddsFormat=american`;
+            const ppRes = await fetch(ppUrl, { signal: AbortSignal.timeout(8000) });
+            if (ppRes.ok) {
+              const ppData = await ppRes.json();
+              const playerMap = {};
+              for (const bk of ppData.bookmakers || []) {
+                for (const mkt of bk.markets || []) {
+                  const statMap = { player_goal_scorer_anytime: 'Goals', player_shots: 'Shots', player_assists: 'Assists' };
+                  const stat = statMap[mkt.key] || mkt.key;
+                  for (const o of mkt.outcomes || []) {
+                    const name = o.description || o.name;
+                    if (!playerMap[name]) playerMap[name] = [];
+                    playerMap[name].push({
+                      stat, line: o.point || 0.5, overOdds: o.price, underOdds: null,
+                      book: bk.title, side: o.name
+                    });
+                  }
+                }
+              }
+              if (Object.keys(playerMap).length) {
+                realPlayerProps = Object.entries(playerMap).map(([name, lines]) => {
+                  // Deduplicate by stat — keep best odds
+                  const byKey = {};
+                  for (const l of lines) {
+                    const k = `${l.stat}-${l.line}`;
+                    if (!byKey[k] || l.overOdds > byKey[k].overOdds) byKey[k] = l;
+                  }
+                  return { name, source: 'odds-api', lines: Object.values(byKey) };
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[SOCCER-ODDS]', e.message);
+      }
+    }
+
+    // Build game lines
+    let gameLines = null;
+    if (realGameOdds) {
+      gameLines = {
+        source: 'odds-api',
+        books: realGameOdds.bookmakers.map(bk => {
+          const markets = {};
+          bk.markets.forEach(m => { markets[m.key] = m.outcomes; });
+          return { name: bk.title, markets };
+        })
+      };
+    } else if (game.odds) {
+      gameLines = { source: 'espn', ...game.odds };
+    }
+
+    // Build player props — merge real + model
+    let playerProps;
+    if (realPlayerProps?.length) {
+      // Start with real props, add model data for players not covered
+      const [homeModelProps, awayModelProps] = await Promise.all([
+        homeTeam ? soccer.getTeamProps(req.params.league, homeTeam.id) : [],
+        awayTeam ? soccer.getTeamProps(req.params.league, awayTeam.id) : []
+      ]);
+      const modelProps = [
+        ...awayModelProps.map(p => ({ ...p, team: game.away.abbr })),
+        ...homeModelProps.map(p => ({ ...p, team: game.home.abbr }))
+      ];
+
+      // Merge: for each real prop player, add model stats they don't have
+      const realNames = new Set(realPlayerProps.map(p => p.name.toLowerCase()));
+      playerProps = [
+        ...realPlayerProps,
+        ...modelProps.filter(p => !realNames.has(p.name.toLowerCase()))
+      ];
+    } else {
+      const [homeProps, awayProps] = await Promise.all([
+        homeTeam ? soccer.getTeamProps(req.params.league, homeTeam.id) : [],
+        awayTeam ? soccer.getTeamProps(req.params.league, awayTeam.id) : []
+      ]);
+      playerProps = [
+        ...awayProps.map(p => ({ ...p, team: game.away.abbr })),
+        ...homeProps.map(p => ({ ...p, team: game.home.abbr }))
+      ];
+    }
 
     const result = {
       game: { home: game.home, away: game.away, date: game.date },
-      source: 'model',
-      gameLines: game.odds ? { source: 'espn', ...game.odds } : null,
-      playerProps: [
-        ...awayProps.map(p => ({ ...p, team: game.away.abbr })),
-        ...homeProps.map(p => ({ ...p, team: game.home.abbr }))
-      ]
+      source: realPlayerProps?.length ? 'odds-api' : 'model',
+      gameLines,
+      playerProps
     };
 
-    cache.set(ck, result, 5 * 60_000);
+    cache.set(ck, result, TTL.PROPS_MERGED);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
