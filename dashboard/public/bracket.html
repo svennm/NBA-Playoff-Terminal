@@ -162,6 +162,22 @@
 
 </div>
 
+<!-- Polymarket Championship Odds -->
+<div class="games-panel">
+  <div class="panel" style="margin-bottom:12px;">
+    <div class="panel-header">
+      <span style="display:flex;align-items:center;gap:8px;">
+        Championship Futures
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:2px;background:rgba(155,89,182,0.15);color:var(--purple);">POLYMARKET</span>
+      </span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);" id="poly-volume"></span>
+    </div>
+    <div class="panel-body" id="poly-body">
+      <div style="color:var(--dim);font-size:10px;">Loading Polymarket data...</div>
+    </div>
+  </div>
+</div>
+
 <!-- Upcoming Playoff Games -->
 <div class="games-panel">
   <div class="panel" style="margin-bottom:12px;">
@@ -190,6 +206,7 @@ const $ = id => document.getElementById(id);
 let standings = { east: [], west: [] };
 let games = [];
 let oddsData = [];
+let polyData = [];
 
 async function init() {
   const [sweepRes, standingsRes] = await Promise.all([
@@ -205,6 +222,13 @@ async function init() {
     const oddsRes = await fetch('/api/real-odds');
     const od = await oddsRes.json();
     oddsData = od.data || [];
+  } catch {}
+
+  // Get Polymarket championship odds
+  try {
+    const polyRes = await fetch('/api/polymarket/champion');
+    polyData = await polyRes.json();
+    renderPolymarket();
   } catch {}
 
   renderPlayIn();
@@ -270,26 +294,47 @@ function matchupHtml(topTeam, topSeed, botTeam, botSeed, label = '', odds = null
 }
 
 function findOdds(teamA, teamB) {
-  if (!oddsData.length) return null;
-  const match = oddsData.find(g => {
-    const h = g.homeTeam?.toLowerCase() || '';
-    const a = g.awayTeam?.toLowerCase() || '';
-    const ta = (teamA?.abbr || teamA?.team || '').toLowerCase();
-    const tb = (teamB?.abbr || teamB?.team || '').toLowerCase();
-    return (h.includes(ta.split(' ').pop()) || h.includes(tb.split(' ').pop())) &&
-           (a.includes(ta.split(' ').pop()) || a.includes(tb.split(' ').pop()));
+  if (!teamA || !teamB) return null;
+  const ta = (teamA.abbr || teamA.team || '').toLowerCase();
+  const tb = (teamB.abbr || teamB.team || '').toLowerCase();
+
+  // Try Odds API data first
+  if (oddsData.length) {
+    const match = oddsData.find(g => {
+      const h = (g.homeTeam || '').toLowerCase();
+      const a = (g.awayTeam || '').toLowerCase();
+      return (h.includes(ta.split(' ').pop()) || h.includes(tb.split(' ').pop())) &&
+             (a.includes(ta.split(' ').pop()) || a.includes(tb.split(' ').pop()));
+    });
+    if (match?.bookmakers?.[0]) {
+      const bk = match.bookmakers[0];
+      const markets = {};
+      bk.markets.forEach(m => { markets[m.key] = m.outcomes; });
+      const spread = markets.spreads?.[0];
+      const total = markets.totals?.[0];
+      return {
+        spread: spread ? `${spread.name.split(' ').pop()} ${spread.point > 0 ? '+' : ''}${spread.point}` : '',
+        ou: total ? `O/U ${total.point}` : '',
+        book: bk.name
+      };
+    }
+  }
+
+  // Fallback to ESPN embedded odds from sweep games
+  const espnMatch = games.find(g => {
+    const h = g.home.abbr.toLowerCase();
+    const a = g.away.abbr.toLowerCase();
+    return (h === ta || h === tb) && (a === ta || a === tb);
   });
-  if (!match?.bookmakers?.[0]) return null;
-  const bk = match.bookmakers[0];
-  const markets = {};
-  bk.markets.forEach(m => { markets[m.key] = m.outcomes; });
-  const spread = markets.spreads?.[0];
-  const total = markets.totals?.[0];
-  return {
-    spread: spread ? `${spread.name.split(' ').pop()} ${spread.point > 0 ? '+' : ''}${spread.point}` : '',
-    ou: total ? `O/U ${total.point}` : '',
-    book: bk.name
-  };
+  if (espnMatch?.odds) {
+    return {
+      spread: espnMatch.odds.spread || '',
+      ou: espnMatch.odds.overUnder ? `O/U ${espnMatch.odds.overUnder}` : '',
+      book: espnMatch.odds.provider || 'ESPN'
+    };
+  }
+
+  return null;
 }
 
 function renderPlayIn() {
@@ -432,6 +477,62 @@ function renderGames() {
         <span class="game-note">${g.broadcast || ''} ${odds ? `O/U ${odds.overUnder}` : ''}</span>
       </div>`;
   }).join('');
+}
+
+function renderPolymarket() {
+  const el = $('poly-body');
+  if (!polyData.length) {
+    el.innerHTML = '<div style="color:var(--dim);font-size:10px;">No Polymarket data</div>';
+    return;
+  }
+
+  const totalVol = polyData.reduce((a, t) => a + (t.volume || 0), 0);
+  $('poly-volume').textContent = `$${(totalVol / 1e6).toFixed(1)}M volume`;
+
+  // Odds format toggle state
+  const fmt = localStorage.getItem('oddsFormat') || 'american';
+
+  const fmtOdds = (americanStr, prob) => {
+    if (fmt === 'decimal') {
+      const dec = prob > 0 ? (100 / prob).toFixed(2) : '∞';
+      return dec;
+    }
+    return americanStr;
+  };
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+      <div style="display:flex;gap:0;">
+        <button onclick="setOddsFormat('american')" style="padding:3px 8px;font-size:9px;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);background:${fmt==='american'?'rgba(0,229,255,0.12)':'var(--panel)'};color:${fmt==='american'?'var(--cyan)':'var(--dim)'};border-radius:3px 0 0 3px;cursor:pointer;">American</button>
+        <button onclick="setOddsFormat('decimal')" style="padding:3px 8px;font-size:9px;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);background:${fmt==='decimal'?'rgba(0,229,255,0.12)':'var(--panel)'};color:${fmt==='decimal'?'var(--cyan)':'var(--dim)'};border-radius:0 3px 3px 0;cursor:pointer;">Decimal</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;">
+      ${polyData.map((t, i) => {
+        const barW = Math.max(t.prob * 2, 4);
+        const color = i === 0 ? 'var(--green)' : i < 3 ? 'var(--cyan)' : i < 6 ? 'var(--amber)' : 'var(--dim)';
+        return `
+          <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:8px;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:10px;color:var(--dim);min-width:16px;">${i+1}.</span>
+            <div style="flex:1;">
+              <div style="font-weight:600;font-size:11px;">${t.team}</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
+                <div style="height:4px;width:${barW}px;background:${color};border-radius:2px;"></div>
+                <span style="font-size:12px;font-weight:700;color:${color};">${t.prob}%</span>
+              </div>
+            </div>
+            <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:var(--amber);min-width:50px;text-align:right;">${fmtOdds(t.odds, t.prob)}</span>
+          </div>`;
+      }).join('')}
+    </div>
+    <div style="margin-top:8px;font-size:9px;color:var(--dim);text-align:center;">
+      Data from Polymarket prediction market — prices reflect real money bets
+    </div>`;
+}
+
+function setOddsFormat(fmt) {
+  localStorage.setItem('oddsFormat', fmt);
+  renderPolymarket();
 }
 
 function renderSeeds(conf) {

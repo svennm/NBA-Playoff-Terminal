@@ -6,6 +6,7 @@ import { runSweep, getCache } from './lib/sweep.mjs';
 import espn from './sources/espn.mjs';
 import odds from './sources/odds.mjs';
 import store from './lib/store.mjs';
+import polymarket from './sources/polymarket.mjs';
 import cache, { TTL } from './lib/cache.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -504,6 +505,24 @@ app.get('/api/players/:id/gamelog', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// API: Polymarket championship odds (cached 10min)
+app.get('/api/polymarket/champion', async (req, res) => {
+  const cached = cache.get('poly-champion');
+  if (cached) return res.json(cached);
+  const data = await polymarket.getChampionshipOdds();
+  cache.set('poly-champion', data, 10 * 60_000);
+  res.json(data);
+});
+
+// API: All Polymarket NBA events (cached 10min)
+app.get('/api/polymarket/events', async (req, res) => {
+  const cached = cache.get('poly-events');
+  if (cached) return res.json(cached);
+  const data = await polymarket.getNBAEvents();
+  cache.set('poly-events', data, 10 * 60_000);
+  res.json(data);
 });
 
 // API: Cache stats
