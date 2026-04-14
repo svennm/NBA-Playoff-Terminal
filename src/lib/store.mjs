@@ -181,9 +181,11 @@ export async function loginUser(username, password) {
   if (!password || !verifyPassword(password, existing.passwordHash)) {
     return { error: 'Wrong password' };
   }
-  // Rotate token on login
-  existing.token = generateToken();
-  await backend.hset('users', name, existing);
+  // Keep existing token — don't rotate, so multiple devices stay logged in
+  if (!existing.token) {
+    existing.token = generateToken();
+    await backend.hset('users', name, existing);
+  }
   return { user: sanitizeUser(existing), token: existing.token };
 }
 

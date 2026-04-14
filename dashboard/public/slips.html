@@ -319,17 +319,31 @@ function authHeaders() {
 // === Auth ===
 async function checkLogin() {
   const saved = localStorage.getItem('nba_token');
+  const savedUser = localStorage.getItem('nba_user_cache');
   if (!saved) return false;
   authToken = saved;
+
   try {
     const res = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${authToken}` } });
     if (!res.ok) throw new Error('Invalid token');
     const data = await res.json();
     currentUser = data.user;
+    // Cache user data locally so session survives server restarts
+    localStorage.setItem('nba_user_cache', JSON.stringify(currentUser));
     showLoggedIn();
     return true;
   } catch {
+    // Server unreachable or token invalid — try cached user data
+    if (savedUser) {
+      try {
+        currentUser = JSON.parse(savedUser);
+        showLoggedIn();
+        return true;
+      } catch {}
+    }
+    // Only clear if we have no cached data at all
     localStorage.removeItem('nba_token');
+    localStorage.removeItem('nba_user_cache');
     authToken = null;
     return false;
   }
@@ -359,6 +373,7 @@ async function doAuth(mode) {
   currentUser = data.user;
   authToken = data.token;
   localStorage.setItem('nba_token', authToken);
+  localStorage.setItem('nba_user_cache', JSON.stringify(currentUser));
   showLoggedIn();
 }
 
@@ -366,6 +381,7 @@ function logout() {
   currentUser = null;
   authToken = null;
   localStorage.removeItem('nba_token');
+  localStorage.removeItem('nba_user_cache');
   $('login-overlay').style.display = 'flex';
   $('user-badge').style.display = 'none';
   $('username-input').value = '';
