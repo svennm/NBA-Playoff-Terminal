@@ -1,2 +1,49 @@
 <!DOCTYPE html>
-<html><head><meta http-equiv="refresh" content="0;url=/terminal.html"></head></html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DISTRIBUTED BETTING PLATFORM</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root{--bg:#030508;--panel:#0a0e14;--border:#1a2a3a;--border-glow:#0f4f6f;--cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--text:#c8d6e5;--dim:#4a5568;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;}
+  body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.015) 2px,rgba(0,229,255,0.015) 4px);pointer-events:none;z-index:9999;}
+  .title{font-family:'Orbitron',sans-serif;font-size:28px;font-weight:900;letter-spacing:6px;text-align:center;background:linear-gradient(135deg,var(--cyan),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;}
+  .sub{font-size:10px;color:var(--dim);letter-spacing:4px;text-transform:uppercase;text-align:center;margin-bottom:40px;}
+  .sports{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:600px;width:100%;}
+  .sport-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:30px 20px;text-align:center;cursor:pointer;transition:all .2s;text-decoration:none;color:var(--text);}
+  .sport-card:hover{border-color:var(--border-glow);transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,229,255,0.1);}
+  .sport-card .icon{font-size:36px;margin-bottom:12px;}
+  .sport-card .name{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;margin-bottom:4px;}
+  .sport-card .desc{font-size:9px;color:var(--dim);letter-spacing:1px;}
+  .sport-card.nba{border-top:3px solid var(--amber);}
+  .sport-card.ucl{border-top:3px solid #1a73e8;}
+  .tools{display:flex;gap:12px;margin-top:30px;}
+  .tools a{color:var(--dim);text-decoration:none;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:6px 14px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
+  .tools a:hover{color:var(--cyan);border-color:var(--border-glow);background:rgba(0,229,255,0.05);}
+</style>
+</head>
+<body>
+<div class="title">DISTRIBUTED BETTING</div>
+<div class="sub">Multi-Sport Intelligence Terminal</div>
+<div class="sports">
+  <a href="/terminal.html" class="sport-card nba">
+    <div class="icon">&#127936;</div>
+    <div class="name">NBA</div>
+    <div class="desc">Playoff Terminal // Scores // Matchups</div>
+  </a>
+  <a href="/soccer.html" class="sport-card ucl">
+    <div class="icon">&#9917;</div>
+    <div class="name">UCL</div>
+    <div class="desc">Champions League // Standings // Teams</div>
+  </a>
+</div>
+<div class="tools">
+  <a href="/slips.html">Betting Slips</a>
+  <a href="/analysis.html">Line Analysis</a>
+  <a href="/bracket.html">NBA Bracket</a>
+</div>
+</body>
+</html>

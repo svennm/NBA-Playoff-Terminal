@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CHAMPIONS LEAGUE TERMINAL</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root{--bg:#030508;--panel:#0a0e14;--border:#1a2a3a;--border-glow:#0f4f6f;--cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--red:#ff3d3d;--magenta:#ff00ff;--text:#c8d6e5;--dim:#4a5568;--blue:#3498db;--purple:#9b59b6;--ucl:#0a1e5c;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;min-height:100vh;}
+  body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.015) 2px,rgba(0,229,255,0.015) 4px);pointer-events:none;z-index:9999;}
+  .header{background:linear-gradient(180deg,#0a1520,var(--bg));border-bottom:1px solid var(--border-glow);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px;}
+  .logo{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:3px;background:linear-gradient(135deg,#1a73e8,var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .logo-sub{font-size:9px;color:var(--dim);letter-spacing:4px;text-transform:uppercase;}
+  .nav-links{display:flex;gap:8px;flex-wrap:wrap;}
+  .nav-links a{color:var(--dim);text-decoration:none;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;text-transform:uppercase;padding:4px 8px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
+  .nav-links a:hover,.nav-links a.active{color:var(--cyan);border-color:var(--border-glow);background:rgba(0,229,255,0.05);}
+  .nav-links .sport-divider{color:var(--dim);font-size:9px;display:flex;align-items:center;}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:2px;max-width:1800px;margin:0 auto;}
+  .grid .full-width{grid-column:1/-1;}
+  .grid .two-col{grid-column:span 2;}
+
+  .panel{background:var(--panel);border:1px solid var(--border);overflow:hidden;}
+  .panel:hover{border-color:var(--border-glow);}
+  .panel-header{background:linear-gradient(90deg,rgba(0,229,255,0.08),transparent);border-bottom:1px solid var(--border);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);}
+  .panel-header .count{background:rgba(0,229,255,0.15);padding:2px 8px;border-radius:2px;font-family:'JetBrains Mono',monospace;font-size:10px;}
+  .panel-body{padding:10px 12px;max-height:500px;overflow-y:auto;}
+  .panel-body::-webkit-scrollbar{width:4px;}
+  .panel-body::-webkit-scrollbar-thumb{background:var(--border-glow);border-radius:2px;}
+
+  .match-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px;transition:border-color .2s;cursor:pointer;}
+  .match-card:hover{border-color:var(--cyan);}
+  .match-card.live{border-left:3px solid var(--green);}
+  .match-card.final{border-left:3px solid var(--dim);}
+  .match-card.upcoming{border-left:3px solid var(--amber);}
+  .match-teams{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .match-team{display:flex;align-items:center;gap:6px;flex:1;}
+  .match-team.away{justify-content:flex-end;text-align:right;}
+  .match-team img{width:28px;height:28px;object-fit:contain;}
+  .match-team .name{font-weight:600;font-size:12px;}
+  .match-score{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;min-width:60px;text-align:center;}
+  .match-score .vs{font-size:10px;color:var(--dim);font-weight:400;}
+  .match-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:9px;color:var(--dim);}
+  .match-agg{color:var(--amber);font-size:9px;text-align:center;margin-top:2px;}
+  .match-odds{display:flex;gap:4px;margin-top:6px;}
+  .match-odds span{background:rgba(0,229,255,0.06);padding:2px 6px;border-radius:2px;font-size:9px;color:var(--cyan);}
+
+  .standings-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .standings-table th{text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);}
+  .standings-table td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .standings-table tr:hover td{background:rgba(0,229,255,0.03);}
+  .rank-qual{color:var(--green);font-weight:700;}
+  .rank-playoff{color:var(--cyan);}
+  .rank-elim{color:var(--red);}
+
+  .team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;}
+  .team-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center;cursor:pointer;transition:all .15s;}
+  .team-card:hover{border-color:var(--cyan);background:rgba(0,229,255,0.03);}
+  .team-card img{width:36px;height:36px;object-fit:contain;margin-bottom:4px;}
+  .team-card .name{font-weight:600;font-size:10px;}
+
+  .news-item{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .news-item:last-child{border-bottom:none;}
+  .news-headline{font-weight:500;font-size:11px;cursor:pointer;}
+  .news-headline:hover{color:var(--cyan);}
+  .news-meta{font-size:9px;color:var(--dim);margin-top:2px;}
+
+  .roster-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .roster-table th{text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;text-transform:uppercase;border-bottom:1px solid var(--border);}
+  .roster-table td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);}
+
+  .loading{text-align:center;padding:30px;color:var(--dim);}
+  .spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+  @media(max-width:1200px){.grid{grid-template-columns:1fr 1fr;}}
+  @media(max-width:768px){.grid{grid-template-columns:1fr;}.grid .two-col,.grid .full-width{grid-column:1;}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <div class="logo">CHAMPIONS LEAGUE</div>
+    <div class="logo-sub">Distributed Betting Platform // UCL 2025-26</div>
+  </div>
+  <div class="nav-links">
+    <span class="sport-divider">NBA</span>
+    <a href="/terminal.html">Scores</a>
+    <a href="/matchup.html">Matchup</a>
+    <a href="/bracket.html">Bracket</a>
+    <span class="sport-divider">|</span>
+    <span class="sport-divider">UCL</span>
+    <a href="/soccer.html" class="active">Scores</a>
+    <span class="sport-divider">|</span>
+    <a href="/slips.html">Slips</a>
+    <a href="/analysis.html">Analysis</a>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- Matches -->
+  <div class="panel two-col">
+    <div class="panel-header">
+      Matches
+      <span class="count" id="match-count">0</span>
+    </div>
+    <div class="panel-body" id="matches" style="max-height:600px;">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- League Table -->
+  <div class="panel">
+    <div class="panel-header">League Phase</div>
+    <div class="panel-body" id="standings" style="max-height:600px;">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- Team Detail -->
+  <div class="panel two-col" id="team-panel" style="display:none;">
+    <div class="panel-header">
+      <span id="team-title">Team</span>
+    </div>
+    <div class="panel-body" id="team-body"></div>
+  </div>
+
+  <!-- Teams -->
+  <div class="panel">
+    <div class="panel-header">
+      Teams
+      <span class="count" id="team-count">0</span>
+    </div>
+    <div class="panel-body" id="teams-grid" style="max-height:500px;">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- News -->
+  <div class="panel two-col">
+    <div class="panel-header">
+      UCL News
+      <span class="count" id="news-count">0</span>
+    </div>
+    <div class="panel-body" id="news">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- Polymarket -->
+  <div class="panel" id="poly-panel" style="display:none;">
+    <div class="panel-header" style="color:var(--purple);">Polymarket Futures</div>
+    <div class="panel-body" id="poly-body"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const LEAGUE = 'uefa.champions';
+
+async function init() {
+  await Promise.all([loadMatches(), loadStandings(), loadTeams(), loadNews(), loadPolymarket()]);
+  setInterval(() => { loadMatches(); loadStandings(); }, 60000);
+}
+
+async function loadMatches() {
+  try {
+    const res = await fetch(`/api/soccer/${LEAGUE}/scoreboard`);
+    const games = await res.json();
+    $('match-count').textContent = games.length;
+    if (!games.length) {
+      $('matches').innerHTML = '<div style="color:var(--dim);text-align:center;padding:20px;">No matches scheduled. Check back on match days.</div>';
+      return;
+    }
+    $('matches').innerHTML = games.map(g => {
+      const isLive = g.status === 'In Progress';
+      const isFinal = g.status === 'Final';
+      const cls = isLive ? 'live' : isFinal ? 'final' : 'upcoming';
+      let scoreHtml;
+      if (isLive || isFinal) {
+        scoreHtml = `${g.away.score} <span style="font-size:10px;color:var(--dim);">-</span> ${g.home.score}`;
+      } else {
+        const t = new Date(g.date).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+        scoreHtml = `<span class="vs">${t}</span>`;
+      }
+      const oddsHtml = g.odds ? `<div class="match-odds"><span>${g.odds.spread}</span><span>O/U ${g.odds.overUnder}</span><span>${g.odds.provider}</span></div>` : '';
+      return `
+        <div class="match-card ${cls}" onclick="window.location.href='/matchup.html?a=${g.away.abbr}&b=${g.home.abbr}&sport=soccer'">
+          <div class="match-teams">
+            <div class="match-team">
+              <img src="${g.away.logo}" alt="" onerror="this.style.display='none'">
+              <span class="name">${g.away.name}</span>
+            </div>
+            <div class="match-score">${scoreHtml}</div>
+            <div class="match-team away">
+              <span class="name">${g.home.name}</span>
+              <img src="${g.home.logo}" alt="" onerror="this.style.display='none'">
+            </div>
+          </div>
+          ${g.aggregate ? `<div class="match-agg">${g.aggregate}</div>` : ''}
+          <div class="match-meta">
+            <span>${g.venue}</span>
+            <span>${g.broadcast}</span>
+            <span style="color:${isLive?'var(--green)':isFinal?'var(--dim)':'var(--amber)'};">${isLive?'LIVE '+g.clock:g.status}</span>
+          </div>
+          ${oddsHtml}
+        </div>`;
+    }).join('');
+  } catch { $('matches').innerHTML = '<div style="color:var(--red);">Failed to load</div>'; }
+}
+
+async function loadStandings() {
+  try {
+    const res = await fetch(`/api/soccer/${LEAGUE}/standings`);
+    const groups = await res.json();
+    if (!groups.length) { $('standings').innerHTML = '<div style="color:var(--dim);">No standings data</div>'; return; }
+    $('standings').innerHTML = groups.map(g => `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:9px;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${g.name}</div>
+        <table class="standings-table">
+          <thead><tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>PTS</th></tr></thead>
+          <tbody>
+            ${g.entries.map((t, i) => {
+              const r = parseInt(t.rank) || i + 1;
+              const cls = r <= 8 ? 'rank-qual' : r <= 24 ? 'rank-playoff' : 'rank-elim';
+              return `
+                <tr onclick="loadTeam('${t.abbr}')" style="cursor:pointer;">
+                  <td class="${cls}">${r}</td>
+                  <td style="font-weight:500"><img src="${t.logo}" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">${t.abbr}</td>
+                  <td>${t.gp}</td><td>${t.wins}</td><td>${t.draws}</td><td>${t.losses}</td>
+                  <td style="color:${parseInt(t.gd)>0?'var(--green)':parseInt(t.gd)<0?'var(--red)':'var(--dim)'}">${parseInt(t.gd)>0?'+':''}${t.gd}</td>
+                  <td style="font-weight:700;color:var(--cyan);">${t.points}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`).join('');
+  } catch { $('standings').innerHTML = '<div style="color:var(--red);">Failed</div>'; }
+}
+
+async function loadTeams() {
+  try {
+    const res = await fetch(`/api/soccer/${LEAGUE}/teams`);
+    const teams = await res.json();
+    $('team-count').textContent = teams.length;
+    $('teams-grid').innerHTML = `<div class="team-grid">${teams.map(t => `
+      <div class="team-card" onclick="loadTeam('${t.abbr}')">
+        <img src="${t.logo}" alt="" onerror="this.style.display='none'">
+        <div class="name">${t.name}</div>
+      </div>`).join('')}</div>`;
+  } catch {}
+}
+
+async function loadTeam(abbr) {
+  const panel = $('team-panel');
+  panel.style.display = '';
+  $('team-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  try {
+    const teamsRes = await fetch(`/api/soccer/${LEAGUE}/teams`);
+    const teams = await teamsRes.json();
+    const team = teams.find(t => t.abbr === abbr);
+    if (!team) { $('team-body').innerHTML = 'Team not found'; return; }
+
+    const res = await fetch(`/api/soccer/${LEAGUE}/teams/${team.id}`);
+    const data = await res.json();
+    $('team-title').textContent = data.detail?.name || abbr;
+
+    const roster = data.roster || [];
+    $('team-body').innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <img src="${data.detail?.logo}" style="width:48px;height:48px;object-fit:contain;">
+        <div>
+          <div style="font-size:16px;font-weight:700;">${data.detail?.name}</div>
+          <div style="color:var(--dim);font-size:10px;">${data.detail?.record || ''} | ${data.detail?.standingSummary || ''}</div>
+          ${data.detail?.nextEvent ? `<div style="color:var(--amber);font-size:10px;">Next: ${data.detail.nextEvent.name}</div>` : ''}
+        </div>
+      </div>
+      <table class="roster-table">
+        <thead><tr><th>Player</th><th>Pos</th><th>#</th><th>Age</th><th>Nationality</th></tr></thead>
+        <tbody>
+          ${roster.map(p => `
+            <tr>
+              <td style="font-weight:500">${p.name}</td>
+              <td>${p.position}</td>
+              <td>${p.jersey}</td>
+              <td>${p.age || '-'}</td>
+              <td style="color:var(--dim)">${p.nationality || '-'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+
+    panel.scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { $('team-body').innerHTML = `Error: ${e.message}`; }
+}
+
+async function loadNews() {
+  try {
+    const res = await fetch(`/api/soccer/${LEAGUE}/news`);
+    const news = await res.json();
+    $('news-count').textContent = news.length;
+    if (!news.length) { $('news').innerHTML = '<div style="color:var(--dim);">No news</div>'; return; }
+    $('news').innerHTML = news.map(n => `
+      <div class="news-item">
+        <div class="news-headline" onclick="window.open('${n.link}','_blank')">${n.headline}</div>
+        ${n.description ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">${n.description}</div>` : ''}
+        <div class="news-meta">${n.published ? new Date(n.published).toLocaleString() : ''}</div>
+      </div>`).join('');
+  } catch {}
+}
+
+async function loadPolymarket() {
+  try {
+    const res = await fetch('/api/polymarket/ucl');
+    const events = await res.json();
+    if (!events.length) return;
+    $('poly-panel').style.display = '';
+    $('poly-body').innerHTML = events.map(e => `
+      <div style="margin-bottom:8px;font-weight:600;font-size:11px;">${e.title}</div>
+      ${e.markets.map(m => {
+        const color = m.prob > 15 ? 'var(--green)' : m.prob > 5 ? 'var(--cyan)' : 'var(--dim)';
+        return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px;">
+          <span style="color:${color};font-weight:700;min-width:40px;">${m.prob}%</span>
+          <div style="height:4px;width:${Math.max(m.prob*2,3)}px;background:${color};border-radius:2px;"></div>
+          <span>${m.question.replace(/Will |win the.*\?/g,'').trim()}</span>
+          <span style="margin-left:auto;color:var(--amber);font-size:9px;">${m.odds > 0 ? '+' : ''}${m.odds}</span>
+        </div>`;
+      }).join('')}`).join('');
+  } catch {}
+}
+
+init();
+</script>
+</body>
+</html>

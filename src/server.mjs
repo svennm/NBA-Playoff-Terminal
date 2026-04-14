@@ -7,6 +7,7 @@ import espn from './sources/espn.mjs';
 import odds from './sources/odds.mjs';
 import store from './lib/store.mjs';
 import polymarket from './sources/polymarket.mjs';
+import soccer from './sources/soccer.mjs';
 import cache, { TTL } from './lib/cache.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -760,6 +761,111 @@ async function save_book(all) {
     writeFileSync(f, JSON.stringify(all, null, 2));
   } catch {}
 }
+
+// === Soccer / Champions League API ===
+
+app.get('/api/soccer/:league/scoreboard', async (req, res) => {
+  const ck = `soccer-scores-${req.params.league}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+  const data = await soccer.getScoreboard(req.params.league);
+  cache.set(ck, data, 60_000);
+  res.json(data);
+});
+
+app.get('/api/soccer/:league/standings', async (req, res) => {
+  const ck = `soccer-standings-${req.params.league}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+  const data = await soccer.getStandings(req.params.league);
+  cache.set(ck, data, TTL.TEAM_DETAIL);
+  res.json(data);
+});
+
+app.get('/api/soccer/:league/teams', async (req, res) => {
+  const ck = `soccer-teams-${req.params.league}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+  const data = await soccer.getTeams(req.params.league);
+  cache.set(ck, data, TTL.TEAMS_LIST);
+  res.json(data);
+});
+
+app.get('/api/soccer/:league/news', async (req, res) => {
+  const ck = `soccer-news-${req.params.league}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+  const data = await soccer.getNews(req.params.league);
+  cache.set(ck, data, 5 * 60_000);
+  res.json(data);
+});
+
+app.get('/api/soccer/:league/teams/:id', async (req, res) => {
+  const ck = `soccer-team-${req.params.league}-${req.params.id}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+  try {
+    const [detail, roster] = await Promise.all([
+      soccer.getTeamDetail(req.params.league, req.params.id),
+      soccer.getTeamRoster(req.params.league, req.params.id)
+    ]);
+    const result = { detail, roster };
+    cache.set(ck, result, TTL.TEAM_DETAIL);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Soccer odds via The Odds API
+app.get('/api/soccer/odds/:sport', async (req, res) => {
+  const ck = `soccer-odds-${req.params.sport}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+  if (!odds.isConfigured()) return res.json({ source: 'none', data: [] });
+  try {
+    const key = process.env.ODDS_API_KEY;
+    const url = `https://api.the-odds-api.com/v4/sports/${req.params.sport}/odds/?apiKey=${key}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 8000);
+    const r = await fetch(url, { signal: controller.signal });
+    if (!r.ok) return res.json({ source: 'none', data: [] });
+    const data = await r.json();
+    const result = { source: 'odds-api', data };
+    cache.set(ck, result, TTL.GAME_ODDS);
+    res.json(result);
+  } catch {
+    res.json({ source: 'none', data: [] });
+  }
+});
+
+// Polymarket CL
+app.get('/api/polymarket/ucl', async (req, res) => {
+  const ck = 'poly-ucl';
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+  try {
+    const { default: poly } = await import('./sources/polymarket.mjs');
+    // Search for UCL event
+    const r = await fetch('https://gamma-api.polymarket.com/events?slug_contains=champions-league&closed=false&limit=3', {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    const events = await r.json();
+    const result = [];
+    for (const e of events) {
+      if (!e.title?.includes('Champion')) continue;
+      const mkts = (e.markets || []).map(m => {
+        const prices = JSON.parse(m.outcomePrices || '["0"]');
+        const yes = parseFloat(prices[0]);
+        if (yes < 0.005) return null;
+        return { question: m.question, prob: +(yes * 100).toFixed(1), odds: yes > 0.5 ? Math.round(-100 * yes / (1 - yes)) : Math.round(100 * (1 - yes) / yes) };
+      }).filter(Boolean).sort((a, b) => b.prob - a.prob);
+      if (mkts.length) result.push({ title: e.title, volume: e.volume, markets: mkts.slice(0, 15) });
+    }
+    cache.set(ck, result, 10 * 60_000);
+    res.json(result);
+  } catch { res.json([]); }
+});
 
 // API: Cache stats
 app.get('/api/cache', (req, res) => {
