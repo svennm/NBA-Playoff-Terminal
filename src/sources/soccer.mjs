@@ -212,13 +212,14 @@ export async function getTeamProps(league, teamId) {
   const roster = await getTeamRoster(league, teamId);
   if (!roster.length) return [];
 
-  // Get stats for top players
-  // Sort: Forwards first, then Midfielders, then Defenders — so we get star players
-  const posOrder = { F: 0, M: 1, D: 2 };
-  const top = roster
+  // Get stats for all outfield players + starting goalkeeper
+  const posOrder = { F: 0, M: 1, D: 2, G: 3 };
+  const goalkeepers = roster.filter(p => p.position === 'G').slice(0, 1);
+  const outfield = roster
     .filter(p => p.position !== 'G')
     .sort((a, b) => (posOrder[a.position] ?? 3) - (posOrder[b.position] ?? 3))
     .slice(0, 18);
+  const top = [...outfield, ...goalkeepers];
   const overviews = await Promise.allSettled(
     top.map(p => getPlayerOverview(league, p.id))
   );
@@ -276,6 +277,31 @@ export async function getTeamProps(league, teamId) {
     if (shots >= 3) lines.push(makeLine('Shots', shpg, shots, gp));
     if (sot >= 2) lines.push(makeLine('SOT', sotpg, sot, gp));
     if (goals + assists >= 1) lines.push(makeLine('G+A', gpg + apg, goals + assists, gp));
+    // Fouls and cards — popular soccer markets
+    if (fouls >= 3) lines.push(makeLine('Fouls', fouls / gp, fouls, gp));
+    const yc = parseFloat(s.yellowCards || s._YC || '0');
+    if (yc >= 1) lines.push(makeLine('Cards', yc / gp, yc, gp));
+
+    // Goalkeeper props — saves, fouls suffered (proxy for activity)
+    if (player.position === 'G' && gp >= 1) {
+      const saves = parseFloat(s.saves || s._SV || '0');
+      const ga = parseFloat(s.goalsConceded || s._GA || '0');
+      if (saves >= 1) lines.push(makeLine('Saves', saves / gp, saves, gp));
+      // Clean sheet implied: games with 0 goals conceded
+      if (gp >= 3) {
+        const csRate = ga > 0 ? Math.max(0, 1 - (ga / gp)) : 1;
+        lines.push({
+          stat: 'Clean Sheet', line: 0.5, avg: +csRate.toFixed(2), total: Math.round(csRate * gp), gp,
+          overOdds: csRate >= 0.5 ? Math.round(-100 * csRate / (1 - csRate)) : Math.round(100 * (1 - csRate) / csRate),
+          underOdds: csRate >= 0.5 ? Math.round(100 * (1 - csRate) / csRate) : Math.round(-100 * csRate / (1 - csRate)),
+          overProb: +(csRate * 100).toFixed(1),
+          underProb: +((1 - csRate) * 100).toFixed(1),
+          book: 'Model'
+        });
+      }
+      // Yellow card prop for GK
+      if (fouls >= 1) lines.push(makeLine('Fouls', fouls / gp, fouls, gp));
+    }
 
     if (lines.length) {
       props.push({

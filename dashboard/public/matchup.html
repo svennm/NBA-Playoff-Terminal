@@ -1423,8 +1423,82 @@ function getWindowStats(side) {
   return gd.windows?.[currentTeamWindow] || gd.full;
 }
 
+function renderSoccerComparison() {
+  const pa = state.a.players;
+  const pb = state.b.players;
+  const ra = state.a.roster;
+  const rb = state.b.roster;
+
+  // Aggregate team stats from all players
+  const aggregate = (players, roster) => {
+    let goals=0, assists=0, shots=0, sot=0, fouls=0, yc=0, rc=0, starters=0;
+    for (const p of roster) {
+      const s = players[p.id]?.stats;
+      if (!s) continue;
+      goals += parseInt(s.G) || 0;
+      assists += parseInt(s.A) || 0;
+      shots += parseInt(s.SH) || 0;
+      sot += parseInt(s.ST) || 0;
+      fouls += parseInt(s.FC) || 0;
+      yc += parseInt(s.YC) || 0;
+      rc += parseInt(s.RC) || 0;
+      starters += parseInt(s.STRT) || 0;
+    }
+    return { goals, assists, shots, sot, fouls, yc, rc, starters, playersWithStats: Object.keys(players).length };
+  };
+
+  const a = aggregate(pa, ra);
+  const b = aggregate(pb, rb);
+
+  const detA = state.a.detail || {};
+  const detB = state.b.detail || {};
+
+  let html = '';
+  html += makeCompRow('Standing', detA.standingSummary || '-', detB.standingSummary || '-', 1, 1, 1);
+  html += makeCompRow('Goals', a.goals, b.goals, a.goals, b.goals, Math.max(a.goals, b.goals, 1));
+  html += makeCompRow('Assists', a.assists, b.assists, a.assists, b.assists, Math.max(a.assists, b.assists, 1));
+  html += makeCompRow('Shots', a.shots, b.shots, a.shots, b.shots, Math.max(a.shots, b.shots, 1));
+  html += makeCompRow('Shots on Target', a.sot, b.sot, a.sot, b.sot, Math.max(a.sot, b.sot, 1));
+  html += makeCompRow('Fouls', a.fouls, b.fouls, b.fouls, a.fouls, Math.max(a.fouls, b.fouls, 1));
+  html += makeCompRow('Yellow Cards', a.yc, b.yc, b.yc, a.yc, Math.max(a.yc, b.yc, 1));
+  html += makeCompRow('Red Cards', a.rc, b.rc, b.rc, a.rc, Math.max(a.rc, b.rc, 1));
+
+  // Top scorers comparison
+  const topScorers = (players, roster, side) => {
+    return roster
+      .filter(p => players[p.id]?.stats && parseInt(players[p.id].stats.G) > 0)
+      .sort((a, b) => parseInt(players[b.id].stats.G) - parseInt(players[a.id].stats.G))
+      .slice(0, 5)
+      .map(p => `<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:10px;">
+        <span>${p.name}</span>
+        <span style="color:var(--green);font-weight:600;">${players[p.id].stats.G}G ${players[p.id].stats.A}A</span>
+      </div>`)
+      .join('');
+  };
+
+  html += `<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div>
+      <div style="font-size:9px;color:var(--team-a);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Top Scorers — ${detA.abbr || 'Team A'}</div>
+      ${topScorers(pa, ra) || '<div style="color:var(--dim);font-size:10px;">No data</div>'}
+    </div>
+    <div>
+      <div style="font-size:9px;color:var(--team-b);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Top Scorers — ${detB.abbr || 'Team B'}</div>
+      ${topScorers(pb, rb) || '<div style="color:var(--dim);font-size:10px;">No data</div>'}
+    </div>
+  </div>`;
+
+  $('comp-body').innerHTML = html || '<div style="color:var(--dim);text-align:center;padding:16px;">Loading player stats... this may take a moment for the first load.</div>';
+  $('comp-window-label').textContent = 'UCL Stats';
+}
+
 function renderTeamComparison() {
   $('comp-panel').style.display = '';
+
+  // Soccer comparison — use roster aggregate stats
+  if (currentSport === 'soccer') {
+    renderSoccerComparison();
+    return;
+  }
 
   // Check if we have windowed game data
   const wa = getWindowStats('a');
@@ -1577,19 +1651,22 @@ function showPlayerPanel() {
   const selA = $('player-a-select');
   const selB = $('player-b-select');
 
-  selA.innerHTML = '<option value="">-- select --</option>' +
-    state.a.roster.map(p => {
-      const s = state.a.players[p.id]?.season;
-      const pts = s?.avgPoints ? ` (${s.avgPoints} ppg)` : '';
-      return `<option value="${p.id}">${p.name}${pts}</option>`;
+  const makeOpts = (roster, players) => {
+    return roster.map(p => {
+      if (currentSport === 'soccer') {
+        const s = players[p.id]?.stats;
+        const info = s ? ` (${s.G}G ${s.A}A)` : '';
+        return `<option value="${p.id}">${p.name}${info}</option>`;
+      } else {
+        const s = players[p.id]?.season;
+        const pts = s?.avgPoints ? ` (${s.avgPoints} ppg)` : '';
+        return `<option value="${p.id}">${p.name}${pts}</option>`;
+      }
     }).join('');
+  };
 
-  selB.innerHTML = '<option value="">-- select --</option>' +
-    state.b.roster.map(p => {
-      const s = state.b.players[p.id]?.season;
-      const pts = s?.avgPoints ? ` (${s.avgPoints} ppg)` : '';
-      return `<option value="${p.id}">${p.name}${pts}</option>`;
-    }).join('');
+  selA.innerHTML = '<option value="">-- select --</option>' + makeOpts(state.a.roster, state.a.players);
+  selB.innerHTML = '<option value="">-- select --</option>' + makeOpts(state.b.roster, state.b.players);
 }
 
 function selectPlayer(side, playerId) {
