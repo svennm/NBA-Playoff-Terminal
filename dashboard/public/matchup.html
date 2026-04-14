@@ -1937,8 +1937,31 @@ selectPlayer = function(side, playerId) {
   openDeepDive(side, playerId);
 };
 
-// Boot
-Promise.all([init(), loadSweepData()]);
+// Boot — check URL params for pre-selected teams (from bracket page)
+async function boot() {
+  await Promise.all([init(), loadSweepData()]);
+
+  const params = new URLSearchParams(window.location.search);
+  const teamA = params.get('a');
+  const teamB = params.get('b');
+
+  if (teamA && state.teams.length) {
+    const match = state.teams.find(t => t.abbr === teamA || t.name.toLowerCase().includes(teamA.toLowerCase()));
+    if (match) {
+      $('team-a-select').value = match.id;
+      loadTeam('a');
+    }
+  }
+  if (teamB && state.teams.length) {
+    const match = state.teams.find(t => t.abbr === teamB || t.name.toLowerCase().includes(teamB.toLowerCase()));
+    if (match) {
+      $('team-b-select').value = match.id;
+      loadTeam('b');
+    }
+  }
+}
+
+boot();
 </script>
 </body>
 </html>

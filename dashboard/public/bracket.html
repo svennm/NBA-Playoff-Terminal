@@ -252,11 +252,15 @@ function matchupHtml(topTeam, topSeed, botTeam, botSeed, label = '', odds = null
       <span>${odds.book || ''}</span>
     </div>` : '';
 
+  const clickable = topTeam && botTeam;
+  const href = clickable ? `/matchup.html?a=${topTeam.abbr || topTeam.team}&b=${botTeam.abbr || botTeam.team}` : '#';
+  const cursor = clickable ? 'cursor:pointer;' : '';
+
   return `
-    <div class="matchup">
+    <div class="matchup" style="${cursor}" onclick="${clickable ? `window.location.href='${href}'` : ''}" title="${clickable ? 'Click for full matchup breakdown' : ''}">
       <div class="matchup-header">
         <span>${label}</span>
-        <span class="matchup-series"></span>
+        <span class="matchup-series">${clickable ? 'CLICK FOR BREAKDOWN ▸' : ''}</span>
       </div>
       ${teamRowHtml(topTeam, topSeed)}
       ${teamRowHtml(botTeam, botSeed)}
