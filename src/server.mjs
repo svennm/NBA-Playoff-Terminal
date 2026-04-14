@@ -1196,10 +1196,27 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
         ...homeModelProps.map(p => ({ ...p, team: game.home.abbr }))
       ];
 
-      // Merge: for each real prop player, add model stats they don't have
-      const realNames = new Set(realPlayerProps.map(p => p.name.toLowerCase()));
+      // Merge: for each player, combine real book lines + model lines for missing stats
+      const realByName = {};
+      for (const p of realPlayerProps) realByName[p.name.toLowerCase()] = p;
+
+      // Add model lines to real players for stats the books don't cover
+      for (const mp of modelProps) {
+        const key = mp.name.toLowerCase();
+        if (realByName[key]) {
+          const existingStats = new Set(realByName[key].lines.map(l => l.stat));
+          for (const line of mp.lines || []) {
+            if (!existingStats.has(line.stat)) {
+              realByName[key].lines.push({ ...line, book: line.book || 'Model' });
+            }
+          }
+        }
+      }
+
+      // Players only in model (no book lines at all)
+      const realNames = new Set(Object.keys(realByName));
       playerProps = [
-        ...realPlayerProps,
+        ...Object.values(realByName),
         ...modelProps.filter(p => !realNames.has(p.name.toLowerCase()))
       ];
     } else {
@@ -1513,7 +1530,7 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
 
     // Player props
     if (realProps?.length) {
-      response.playerProps = realProps.map(p => ({
+      const realPlayerProps = realProps.map(p => ({
         name: p.name,
         source: 'odds-api',
         lines: p.lines.map(l => ({
@@ -1525,6 +1542,54 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
           allBooks: l.allBooks || []
         }))
       }));
+
+      // Also generate model props and merge in missing stats (TO, DD, TD, etc.)
+      const fetchModelProps = async (teamId, teamAbbr) => {
+        if (!teamId) return [];
+        const roster = await espn.getPlayerStats(teamId);
+        const overviews = await Promise.allSettled(roster.slice(0, 10).map(p => espn.getPlayerOverview(p.id)));
+        const result = [];
+        roster.slice(0, 10).forEach((player, i) => {
+          const ov = overviews[i]?.status === 'fulfilled' ? overviews[i].value : null;
+          const s = ov?.season;
+          if (!s?.avgPoints || parseFloat(s.avgPoints) < 2) return;
+          const pts = parseFloat(s.avgPoints), reb = parseFloat(s.avgRebounds), ast = parseFloat(s.avgAssists);
+          const to = parseFloat(s.avgTurnovers || '0');
+          const lines = [];
+          if (to >= 1) lines.push({ stat: 'TO', line: Math.round(to * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: to });
+          const ddCats = [pts, reb, ast].filter(v => v >= 8).length;
+          if (ddCats >= 2) {
+            const ddProb = ddCats >= 3 ? 0.6 : (Math.min(pts,10)/10 * Math.min(reb,10)/10 * 0.8);
+            const ddOdds = ddProb >= 0.5 ? Math.round(-100 * ddProb / (1-ddProb)) : Math.round(100 * (1-ddProb) / ddProb);
+            lines.push({ stat: 'Double-Double', line: 0.5, overOdds: ddOdds, underOdds: -ddOdds, book: 'Model', avg: +(ddProb*100).toFixed(0)+'%' });
+          }
+          if (pts >= 15 && reb >= 7 && ast >= 7) {
+            const tdProb = Math.min(pts,10)/10 * Math.min(reb,10)/10 * Math.min(ast,10)/10 * 0.3;
+            lines.push({ stat: 'Triple-Double', line: 0.5, overOdds: Math.round(100*(1-tdProb)/tdProb), underOdds: -Math.round(100*(1-tdProb)/tdProb), book: 'Model', avg: +(tdProb*100).toFixed(1)+'%' });
+          }
+          if (lines.length) result.push({ name: player.name, lines });
+        });
+        return result;
+      };
+      const [hModel, aModel] = await Promise.all([
+        fetchModelProps(homeTeam?.id, game.home.abbr),
+        fetchModelProps(awayTeam?.id, game.away.abbr)
+      ]);
+      const allModel = [...aModel, ...hModel];
+
+      // Merge model lines into real props for stats books don't cover
+      const realByName = {};
+      for (const p of realPlayerProps) realByName[p.name.toLowerCase()] = p;
+      for (const mp of allModel) {
+        const key = mp.name.toLowerCase();
+        if (realByName[key]) {
+          const existingStats = new Set(realByName[key].lines.map(l => l.stat));
+          for (const line of mp.lines) {
+            if (!existingStats.has(line.stat)) realByName[key].lines.push(line);
+          }
+        }
+      }
+      response.playerProps = Object.values(realByName);
     } else {
       // Fallback to ESPN model
       const fetchProps = async (teamId, teamAbbr) => {
