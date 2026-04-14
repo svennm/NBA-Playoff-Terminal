@@ -245,11 +245,37 @@ export async function getTeamProps(league, teamId) {
     const shpg = shots / gp;
     const sotpg = sot / gp;
 
-    if (goals >= 1) lines.push({ stat: 'Goals', line: Math.round(gpg * 2) / 2 || 0.5, avg: +gpg.toFixed(2), total: goals, gp });
-    if (assists >= 1) lines.push({ stat: 'Assists', line: Math.round(apg * 2) / 2 || 0.5, avg: +apg.toFixed(2), total: assists, gp });
-    if (shots >= 3) lines.push({ stat: 'Shots', line: Math.round(shpg * 2) / 2 || 0.5, avg: +shpg.toFixed(1), total: shots, gp });
-    if (sot >= 2) lines.push({ stat: 'SOT', line: Math.round(sotpg * 2) / 2 || 0.5, avg: +sotpg.toFixed(1), total: sot, gp });
-    if (goals + assists >= 1) lines.push({ stat: 'G+A', line: Math.round((gpg + apg) * 2) / 2 || 0.5, avg: +(gpg + apg).toFixed(2), total: goals + assists, gp });
+    // Poisson CDF: P(X <= k) for lambda
+    const poissonCdf = (k, lam) => {
+      let sum = 0;
+      for (let i = 0; i <= Math.floor(k); i++) {
+        let term = Math.exp(-lam);
+        for (let j = 1; j <= i; j++) term *= lam / j;
+        sum += term;
+      }
+      return Math.min(sum, 1);
+    };
+
+    const makeLine = (stat, avg, total, gp) => {
+      const line = Math.round(avg * 2) / 2 || 0.5;
+      const overProb = 1 - poissonCdf(line, avg);
+      const underProb = poissonCdf(line, avg);
+      const toAmerican = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
+      return {
+        stat, line, avg: +avg.toFixed(2), total, gp,
+        overOdds: toAmerican(overProb),
+        underOdds: toAmerican(underProb),
+        overProb: +(overProb * 100).toFixed(1),
+        underProb: +(underProb * 100).toFixed(1),
+        book: 'Poisson'
+      };
+    };
+
+    if (goals >= 1) lines.push(makeLine('Goals', gpg, goals, gp));
+    if (assists >= 1) lines.push(makeLine('Assists', apg, assists, gp));
+    if (shots >= 3) lines.push(makeLine('Shots', shpg, shots, gp));
+    if (sot >= 2) lines.push(makeLine('SOT', sotpg, sot, gp));
+    if (goals + assists >= 1) lines.push(makeLine('G+A', gpg + apg, goals + assists, gp));
 
     if (lines.length) {
       props.push({

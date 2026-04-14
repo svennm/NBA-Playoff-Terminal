@@ -817,6 +817,20 @@ app.get('/api/soccer/:league/teams/:id', async (req, res) => {
   }
 });
 
+// Soccer player overview (proxied to avoid CORS)
+app.get('/api/soccer/:league/players/:id', async (req, res) => {
+  const ck = `soccer-player-${req.params.league}-${req.params.id}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+  try {
+    const data = await soccer.getPlayerOverview(req.params.league, req.params.id);
+    if (data) cache.set(ck, data, TTL.PLAYER_STATS);
+    res.json(data || { error: 'Player not found' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Soccer odds via The Odds API
 app.get('/api/soccer/odds/:sport', async (req, res) => {
   const ck = `soccer-odds-${req.params.sport}`;

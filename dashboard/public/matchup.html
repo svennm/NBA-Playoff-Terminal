@@ -1177,31 +1177,42 @@ async function loadRosterStats(side) {
 
 async function loadSoccerRosterStats(side) {
   const roster = state[side].roster;
-  const top = roster.filter(p => p.position !== 'G').slice(0, 18);
+  const posOrder = { F: 0, M: 1, D: 2, G: 3 };
+  const top = roster
+    .filter(p => p.position !== 'G')
+    .sort((a, b) => (posOrder[a.position] ?? 4) - (posOrder[b.position] ?? 4))
+    .slice(0, 18);
+
+  // Fetch player overviews through our server (avoids CORS)
   const results = await Promise.allSettled(
-    top.map(p => fetch(`/api/soccer/${SOCCER_LEAGUE}/teams/${$(`team-${side}-select`).value}`).then(() =>
-      fetch(`https://site.api.espn.com/apis/common/v3/sports/soccer/${SOCCER_LEAGUE}/athletes/${p.id}/overview`).then(r => r.json())
-    ).catch(() => null))
+    top.map(p => fetch(`/api/soccer/${SOCCER_LEAGUE}/players/${p.id}`).then(r => r.json()))
   );
-  // Use the server endpoint instead
-  const teamId = $(`team-${side}-select`).value;
-  for (const p of top) {
-    try {
-      const res = await fetch(`https://site.api.espn.com/apis/common/v3/sports/soccer/${SOCCER_LEAGUE}/athletes/${p.id}/overview`);
-      const data = await res.json();
-      if (data?.statistics?.splits) {
-        const clSplit = data.statistics.splits.find(s => s.displayName?.includes('Champions'));
-        const leagueSplit = data.statistics.splits.find(s => !s.displayName?.includes('Champions') && !s.displayName?.includes('Friendly') && !s.displayName?.includes('Copa'));
-        const s = clSplit || leagueSplit;
-        if (s) {
-          const labels = data.statistics.labels || [];
-          const stats = {};
-          labels.forEach((l, i) => { stats[l] = s.stats?.[i] || '0'; });
-          state[side].players[p.id] = { stats, splitName: s.displayName };
-        }
-      }
-    } catch {}
-  }
+
+  results.forEach((r, i) => {
+    if (r.status !== 'fulfilled' || !r.value) return;
+    const data = r.value;
+    // Find CL split first, then league split
+    const allSplits = data.allSplits || [];
+    const clSplit = allSplits.find(s => s.name?.includes('Champions'));
+    const leagueSplit = allSplits.find(s => s.name && !s.name.includes('Champions') && !s.name.includes('Friendly') && !s.name.includes('Copa') && !s.name.includes('International'));
+    const s = clSplit?.stats || leagueSplit?.stats || data.clStats || data.leagueStats;
+    if (s) {
+      // Normalize stat keys — the stats object uses ESPN name keys
+      const stats = {};
+      // Map from long names to short labels
+      stats.G = s.totalGoals || s._G || '0';
+      stats.A = s.goalAssists || s._A || '0';
+      stats.SH = s.totalShots || s._SH || '0';
+      stats.ST = s.shotsOnTarget || s._ST || '0';
+      stats.FC = s.foulsCommitted || s._FC || '0';
+      stats.FA = s.foulsSuffered || s._FA || '0';
+      stats.YC = s.yellowCards || s._YC || '0';
+      stats.RC = s.redCards || s._RC || '0';
+      stats.STRT = s.starts || s._STRT || '0';
+      stats.OF = s.offsides || s._OF || '0';
+      state[side].players[top[i].id] = { stats, splitName: clSplit?.name || leagueSplit?.name || 'Season' };
+    }
+  });
 }
 
 function renderSoccerRoster(side) {
