@@ -1,13 +1,17 @@
 {
   "version": 2,
-  "buildCommand": "npm install",
-  "outputDirectory": "dashboard/public",
-  "functions": {
-    "api/index.mjs": {
-      "maxDuration": 30
+  "builds": [
+    {
+      "src": "api/index.mjs",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "dashboard/public/**",
+      "use": "@vercel/static"
     }
-  },
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index.mjs" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.mjs" },
+    { "src": "/(.*)", "dest": "/dashboard/public/$1" }
   ]
 }
