@@ -1417,6 +1417,11 @@ app.get('/api/props/:teamId', async (req, res) => {
       if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.round(stl * 2) / 2, avg: stl, source: 'model' });
       if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.round(blk * 2) / 2, avg: blk, source: 'model' });
       if (pts >= 10) lines.push({ stat: 'PRA', line: Math.round((pts + reb + ast) * 2) / 2, avg: +(pts + reb + ast).toFixed(1), source: 'model' });
+      const to = parseFloat(s.avgTurnovers || '0');
+      if (to >= 1) lines.push({ stat: 'TO', line: Math.round(to * 2) / 2, avg: to, source: 'model' });
+      const ddCats = [pts, reb, ast].filter(v => v >= 8).length;
+      if (ddCats >= 2) lines.push({ stat: 'Double-Double', line: 0.5, avg: 'Yes/No', source: 'model' });
+      if (pts >= 15 && reb >= 7 && ast >= 7) lines.push({ stat: 'Triple-Double', line: 0.5, avg: 'Yes/No', source: 'model' });
 
       if (lines.length) {
         props.push({
@@ -1545,6 +1550,23 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
           if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.round(stl * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: stl });
           if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.round(blk * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: blk });
           if (pts >= 10) lines.push({ stat: 'PRA', line: Math.round((pts + reb + ast) * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: +(pts+reb+ast).toFixed(1) });
+          // Turnovers
+          const to = parseFloat(s.avgTurnovers || '0');
+          if (to >= 1) lines.push({ stat: 'TO', line: Math.round(to * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: to });
+          // Double-Double: estimate from averages — if 2 stats near 10+
+          const dd_cats = [pts, reb, ast].filter(v => v >= 8).length;
+          if (dd_cats >= 2) {
+            // Rough DD probability: if avg is near 10 in 2 cats, estimate ~40-70%
+            const ddProb = dd_cats >= 3 ? 0.6 : (Math.min(pts,10)/10 * Math.min(reb,10)/10 * 0.8);
+            const ddOdds = ddProb >= 0.5 ? Math.round(-100 * ddProb / (1 - ddProb)) : Math.round(100 * (1 - ddProb) / ddProb);
+            lines.push({ stat: 'Double-Double', line: 0.5, overOdds: ddOdds, underOdds: -ddOdds, book: 'Model', avg: +(ddProb * 100).toFixed(0) + '%' });
+          }
+          // Triple-Double: only for elite playmakers
+          if (pts >= 15 && reb >= 7 && ast >= 7) {
+            const tdProb = Math.min(pts,10)/10 * Math.min(reb,10)/10 * Math.min(ast,10)/10 * 0.3;
+            const tdOdds = Math.round(100 * (1 - tdProb) / tdProb);
+            lines.push({ stat: 'Triple-Double', line: 0.5, overOdds: tdOdds, underOdds: Math.round(-100 * (1-tdProb) / tdProb), book: 'Model', avg: +(tdProb * 100).toFixed(1) + '%' });
+          }
           if (lines.length) result.push({ name: player.name, team: teamAbbr, source: 'model', headshot: player.headshot, position: player.position, lines });
         });
         return result;

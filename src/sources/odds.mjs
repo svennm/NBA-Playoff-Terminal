@@ -80,7 +80,10 @@ const PROP_MARKETS = [
   'player_threes',
   'player_blocks',
   'player_steals',
-  'player_points_rebounds_assists'
+  'player_points_rebounds_assists',
+  'player_double_double',
+  'player_triple_double',
+  'player_turnovers'
 ];
 
 export async function getPlayerProps(eventId = null) {
@@ -145,6 +148,9 @@ async function getEventProps(eventId) {
           'player_blocks': 'BLK',
           'player_steals': 'STL',
           'player_points_rebounds_assists': 'PRA',
+          'player_double_double': 'Double-Double',
+          'player_triple_double': 'Triple-Double',
+          'player_turnovers': 'TO',
           'player_points_rebounds': 'PR',
           'player_points_assists': 'PA',
           'player_rebounds_assists': 'RA'
@@ -155,11 +161,13 @@ async function getEventProps(eventId) {
           playerMap[playerName] = { name: playerName, lines: {} };
         }
 
-        const lineKey = `${stat}_${outcome.point}`;
+        const isBinary = mkt.key.includes('double_double') || mkt.key.includes('triple_double');
+        const lineVal = isBinary ? 0.5 : outcome.point;
+        const lineKey = `${stat}_${lineVal}`;
         if (!playerMap[playerName].lines[lineKey]) {
           playerMap[playerName].lines[lineKey] = {
             stat,
-            line: outcome.point,
+            line: lineVal,
             books: []
           };
         }
@@ -178,11 +186,12 @@ async function getEventProps(eventId) {
   const players = Object.values(playerMap).map(p => ({
     name: p.name,
     lines: Object.values(p.lines).map(l => {
-      const over = l.books.find(b => b.side === 'Over');
-      const under = l.books.find(b => b.side === 'Under');
+      // DD/TD use Yes/No instead of Over/Under
+      const over = l.books.find(b => b.side === 'Over' || b.side === 'Yes');
+      const under = l.books.find(b => b.side === 'Under' || b.side === 'No');
       // Get best odds across books
-      const overBooks = l.books.filter(b => b.side === 'Over');
-      const underBooks = l.books.filter(b => b.side === 'Under');
+      const overBooks = l.books.filter(b => b.side === 'Over' || b.side === 'Yes');
+      const underBooks = l.books.filter(b => b.side === 'Under' || b.side === 'No');
       const bestOver = overBooks.length ? overBooks.reduce((best, b) => b.odds > best.odds ? b : best) : null;
       const bestUnder = underBooks.length ? underBooks.reduce((best, b) => b.odds > best.odds ? b : best) : null;
 

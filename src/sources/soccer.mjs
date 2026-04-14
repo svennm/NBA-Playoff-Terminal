@@ -277,6 +277,18 @@ export async function getTeamProps(league, teamId) {
     if (shots >= 3) lines.push(makeLine('Shots Attempted', shpg, shots, gp));
     if (sot >= 2) lines.push(makeLine('Shots on Target', sotpg, sot, gp));
     if (goals + assists >= 1) lines.push(makeLine('Goals + Assists', gpg + apg, goals + assists, gp));
+    // Goal or Assist (binary: did they get at least 1 G or A?)
+    if (goals + assists >= 1) {
+      const gaRate = Math.min((goals + assists) / gp, 1);
+      const gaProb = 1 - Math.exp(-(gpg + apg)); // P(X>=1) from Poisson
+      const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
+      lines.push({
+        stat: 'Goal or Assist', line: 0.5, avg: +(gpg + apg).toFixed(2), total: goals + assists, gp,
+        overOdds: toAm(gaProb), underOdds: toAm(1 - gaProb),
+        overProb: +(gaProb * 100).toFixed(1), underProb: +((1 - gaProb) * 100).toFixed(1),
+        book: 'Poisson'
+      });
+    }
     // Fouls and cards — popular soccer markets
     if (fouls >= 3) lines.push(makeLine('Fouls Committed', fouls / gp, fouls, gp));
     const yc = parseFloat(s.yellowCards || s._YC || '0');
