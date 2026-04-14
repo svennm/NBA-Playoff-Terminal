@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBA LINE ANALYSIS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root {
+    --bg:#030508;--panel:#0a0e14;--panel2:#0d1219;--border:#1a2a3a;--border-glow:#0f4f6f;
+    --cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--red:#ff3d3d;--magenta:#ff00ff;
+    --text:#c8d6e5;--dim:#4a5568;--blue:#3498db;--purple:#9b59b6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;min-height:100vh;}
+  body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.015) 2px,rgba(0,229,255,0.015) 4px);pointer-events:none;z-index:9999;}
+
+  .header{background:linear-gradient(180deg,#0a1520,var(--bg));border-bottom:1px solid var(--border-glow);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+  .logo{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:3px;background:linear-gradient(135deg,var(--cyan),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .logo-sub{font-size:9px;color:var(--dim);letter-spacing:4px;text-transform:uppercase;}
+  .nav-links{display:flex;gap:12px;}
+  .nav-links a{color:var(--dim);text-decoration:none;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
+  .nav-links a:hover,.nav-links a.active{color:var(--cyan);border-color:var(--border-glow);background:rgba(0,229,255,0.05);}
+
+  .main{max-width:1400px;margin:0 auto;padding:12px;}
+
+  select{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:12px;border-radius:4px;cursor:pointer;width:100%;}
+  select:focus{border-color:var(--cyan);outline:none;}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px;}
+  .panel:hover{border-color:var(--border-glow);}
+  .panel-header{background:linear-gradient(90deg,rgba(0,229,255,0.08),transparent);border-bottom:1px solid var(--border);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);}
+  .panel-header .tag{font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 6px;border-radius:2px;}
+  .panel-body{padding:12px;overflow-x:auto;}
+
+  /* Edge table */
+  .edge-table{width:100%;border-collapse:collapse;font-size:11px;min-width:900px;}
+  .edge-table th{text-align:left;padding:6px 8px;color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel);cursor:pointer;user-select:none;}
+  .edge-table th:hover{color:var(--cyan);}
+  .edge-table td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .edge-table tr:hover td{background:rgba(0,229,255,0.03);}
+
+  .player-cell{display:flex;align-items:center;gap:6px;}
+  .player-cell img{width:24px;height:24px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,0.05);}
+
+  .edge-positive{color:var(--green);font-weight:700;}
+  .edge-negative{color:var(--red);}
+  .edge-neutral{color:var(--dim);}
+  .edge-huge{color:var(--green);font-weight:700;text-shadow:0 0 6px rgba(0,255,136,0.3);}
+
+  .odds-book{color:var(--amber);font-weight:600;}
+  .odds-model{color:var(--purple);font-weight:600;}
+  .odds-fair{color:var(--cyan);}
+
+  .edge-bar{display:inline-block;height:6px;border-radius:3px;vertical-align:middle;margin-left:4px;}
+  .edge-bar.pos{background:var(--green);}
+  .edge-bar.neg{background:var(--red);}
+
+  .stat-badge{display:inline-block;padding:1px 5px;border-radius:2px;font-size:9px;font-weight:600;}
+  .stat-PTS{background:rgba(0,229,255,0.15);color:var(--cyan);}
+  .stat-REB{background:rgba(0,255,136,0.12);color:var(--green);}
+  .stat-AST{background:rgba(155,89,182,0.15);color:var(--purple);}
+  .stat-3PM{background:rgba(255,179,0,0.15);color:var(--amber);}
+  .stat-BLK{background:rgba(255,61,61,0.12);color:var(--red);}
+  .stat-STL{background:rgba(52,152,219,0.15);color:var(--blue);}
+  .stat-PRA{background:rgba(255,0,255,0.12);color:var(--magenta);}
+
+  .fit-badge{font-size:8px;padding:1px 4px;border-radius:2px;}
+  .fit-Excellent{background:rgba(0,255,136,0.15);color:var(--green);}
+  .fit-Good{background:rgba(0,229,255,0.1);color:var(--cyan);}
+  .fit-Fair{background:rgba(255,179,0,0.1);color:var(--amber);}
+  .fit-Poor{background:rgba(255,61,61,0.1);color:var(--red);}
+
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:16px;}
+  .summary-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center;}
+  .summary-card .val{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:900;}
+  .summary-card .lbl{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-top:4px;}
+
+  .loading{text-align:center;padding:40px;color:var(--dim);}
+  .spinner{display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;}
+  .filter-row label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;}
+  .filter-btn{background:rgba(0,229,255,0.06);border:1px solid var(--border);color:var(--dim);padding:4px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;border-radius:3px;cursor:pointer;transition:all .15s;}
+  .filter-btn:hover,.filter-btn.active{color:var(--cyan);border-color:var(--cyan);background:rgba(0,229,255,0.12);}
+  .filter-btn.edge-only.active{color:var(--green);border-color:var(--green);background:rgba(0,255,136,0.12);}
+
+  @media(max-width:900px){.main{padding:6px;}.summary-grid{grid-template-columns:1fr 1fr;}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="logo">LINE ANALYSIS</div>
+    <div class="logo-sub">Poisson Model vs Book Lines // Edge Finder</div>
+  </div>
+  <div class="nav-links">
+    <a href="/terminal.html">Terminal</a>
+    <a href="/matchup.html">Matchup</a>
+    <a href="/slips.html">Slips</a>
+    <a href="/bracket.html">Bracket</a>
+    <a href="/analysis.html" class="active">Analysis</a>
+  </div>
+</div>
+
+<div class="main">
+  <div style="margin-bottom:12px;">
+    <label style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Select Game</label>
+    <select id="game-select" onchange="analyzeGame()">
+      <option value="">-- Pick a game --</option>
+    </select>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="summary-grid" id="summary" style="display:none;">
+    <div class="summary-card">
+      <div class="val" style="color:var(--cyan);" id="total-props">0</div>
+      <div class="lbl">Props Analyzed</div>
+    </div>
+    <div class="summary-card">
+      <div class="val edge-positive" id="edges-found">0</div>
+      <div class="lbl">Edges Found</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:var(--amber);" id="avg-edge">0%</div>
+      <div class="lbl">Avg Edge</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:var(--purple);" id="best-edge">--</div>
+      <div class="lbl">Best Edge</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filter-row" id="filters" style="display:none;">
+    <label>Stat:</label>
+    <button class="filter-btn active" onclick="setFilter('stat','all',this)">ALL</button>
+    <button class="filter-btn" onclick="setFilter('stat','PTS',this)">PTS</button>
+    <button class="filter-btn" onclick="setFilter('stat','REB',this)">REB</button>
+    <button class="filter-btn" onclick="setFilter('stat','AST',this)">AST</button>
+    <button class="filter-btn" onclick="setFilter('stat','3PM',this)">3PM</button>
+    <button class="filter-btn" onclick="setFilter('stat','STL',this)">STL</button>
+    <button class="filter-btn" onclick="setFilter('stat','BLK',this)">BLK</button>
+    <button class="filter-btn" onclick="setFilter('stat','PRA',this)">PRA</button>
+    <span style="width:16px;"></span>
+    <label>Show:</label>
+    <button class="filter-btn edge-only" id="edge-filter" onclick="toggleEdgeOnly(this)">EDGES ONLY</button>
+    <button class="filter-btn" id="sort-edge-btn" onclick="toggleSort(this)">SORT BY EDGE</button>
+  </div>
+
+  <!-- Results Table -->
+  <div class="panel" id="results-panel" style="display:none;">
+    <div class="panel-header">
+      <span>Poisson Model vs Book Lines</span>
+      <span class="tag" id="source-tag" style="background:rgba(0,229,255,0.1);color:var(--cyan);"></span>
+    </div>
+    <div class="panel-body" id="results-body">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div class="panel">
+    <div class="panel-header">How This Works</div>
+    <div class="panel-body" style="font-size:11px;line-height:1.6;color:var(--dim);">
+      <p>For each player prop, we compute a <span style="color:var(--purple);">Poisson probability</span> from their game-by-game data, then convert it to <span style="color:var(--cyan);">fair American odds</span>. We compare that against the <span style="color:var(--amber);">book line</span> to find the <span style="color:var(--green);">edge</span>.</p>
+      <p style="margin-top:6px;"><strong>Edge %</strong> = (Model Prob - Implied Book Prob). Positive edge means the model thinks the book is giving you a better price than the true probability.</p>
+      <p style="margin-top:6px;"><strong>Poisson Fit</strong> — how well the player's data fits a Poisson distribution. <span class="fit-badge fit-Excellent">Excellent</span> and <span class="fit-badge fit-Good">Good</span> fits produce more reliable edges.</p>
+      <p style="margin-top:6px;"><strong>Dispersion</strong> — Var/Mean ratio. Poisson assumes = 1. Overdispersed (>1.5) means more variance than Poisson predicts — be cautious. Underdispersed (<0.7) means the player is very consistent.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let allRows = [];
+let filters = { stat: 'all', edgeOnly: false, sortEdge: false };
+
+async function init() {
+  const res = await fetch('/api/sweep');
+  const data = await res.json();
+  const games = data.games || [];
+
+  const sel = $('game-select');
+  if (!games.length) {
+    sel.innerHTML = '<option value="">No games today</option>';
+    return;
+  }
+
+  sel.innerHTML = '<option value="">-- Pick a game --</option>' +
+    games.map((g, i) => {
+      const time = new Date(g.date).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+      return `<option value="${i}">${g.away.abbr} @ ${g.home.abbr} — ${time}</option>`;
+    }).join('');
+}
+
+async function analyzeGame() {
+  const idx = $('game-select').value;
+  if (idx === '') return;
+
+  $('results-panel').style.display = '';
+  $('summary').style.display = 'none';
+  $('filters').style.display = 'none';
+  $('results-body').innerHTML = '<div class="loading"><div class="spinner"></div><br>Running Poisson model on all player props...<br><span style="font-size:10px;color:var(--dim);">This fetches gamelog data for every player</span></div>';
+
+  // Fetch props for this game (real or model)
+  const propsRes = await fetch(`/api/props/game/${idx}`);
+  const propsData = await propsRes.json();
+  const source = propsData.source;
+  $('source-tag').textContent = source === 'odds-api' ? 'LIVE BOOK ODDS' : 'MODEL LINES';
+  $('source-tag').style.background = source === 'odds-api' ? 'rgba(0,255,136,0.1)' : 'rgba(255,179,0,0.1)';
+  $('source-tag').style.color = source === 'odds-api' ? 'var(--green)' : 'var(--amber)';
+
+  // For each player, fetch their gamelog to get Poisson data
+  const players = propsData.playerProps || [];
+  allRows = [];
+
+  // Fetch gamelogs in batches of 5
+  for (let i = 0; i < players.length; i += 5) {
+    const batch = players.slice(i, i + 5);
+    const results = await Promise.allSettled(
+      batch.map(async (p) => {
+        // Find player ID from team roster
+        const teams = await fetch('/api/teams').then(r => r.json());
+        const team = teams.find(t => t.abbr === p.team);
+        if (!team) return { player: p, gamelog: null };
+
+        const rosterRes = await fetch(`/api/teams/${team.id}`);
+        const rosterData = await rosterRes.json();
+        const rosterMatch = (rosterData.roster || []).find(r =>
+          r.name.toLowerCase().includes(p.name.toLowerCase().split(' ').pop()) ||
+          p.name.toLowerCase().includes(r.name.toLowerCase().split(' ').pop())
+        );
+        if (!rosterMatch) return { player: p, gamelog: null };
+
+        const glRes = await fetch(`/api/players/${rosterMatch.id}/gamelog`);
+        const glData = await glRes.json();
+        return { player: p, playerId: rosterMatch.id, gamelog: glData, headshot: rosterMatch.headshot };
+      })
+    );
+
+    for (const r of results) {
+      if (r.status !== 'fulfilled' || !r.value) continue;
+      const { player, gamelog, headshot } = r.value;
+      if (!gamelog?.distributions) continue;
+
+      for (const line of player.lines || []) {
+        const dist = gamelog.distributions[line.stat];
+        if (!dist?.poisson) continue;
+
+        const poisson = dist.poisson;
+        // Find the Poisson O/U that matches this line
+        const pOU = poisson.overUnder.find(ou => ou.line === line.line);
+
+        // Book implied probability
+        const bookOdds = line.overOdds || -115;
+        const bookImplied = bookOdds < 0
+          ? Math.abs(bookOdds) / (Math.abs(bookOdds) + 100) * 100
+          : 100 / (bookOdds + 100) * 100;
+
+        // Model probability
+        const modelProb = pOU ? pOU.overProb : null;
+        const modelOdds = pOU ? pOU.overOdds : null;
+
+        // Edge = model prob - book implied prob
+        const edge = modelProb !== null ? +(modelProb - bookImplied).toFixed(1) : null;
+
+        // Also do Under side
+        const bookUnderOdds = line.underOdds || -115;
+        const bookUnderImplied = bookUnderOdds < 0
+          ? Math.abs(bookUnderOdds) / (Math.abs(bookUnderOdds) + 100) * 100
+          : 100 / (bookUnderOdds + 100) * 100;
+        const modelUnderProb = pOU ? pOU.underProb : null;
+        const underEdge = modelUnderProb !== null ? +(modelUnderProb - bookUnderImplied).toFixed(1) : null;
+
+        // Actual hit rate from data
+        const actualOU = dist.overUnder.find(ou => ou.line === line.line);
+        const actualOverPct = actualOU ? actualOU.overPct : null;
+
+        allRows.push({
+          player: player.name,
+          team: player.team || '',
+          headshot: headshot || '',
+          stat: line.stat,
+          line: line.line,
+          book: line.book || 'Book',
+          // Over side
+          bookOverOdds: bookOdds,
+          bookOverImplied: +bookImplied.toFixed(1),
+          modelOverProb: modelProb,
+          modelOverOdds: modelOdds,
+          overEdge: edge,
+          // Under side
+          bookUnderOdds,
+          bookUnderImplied: +bookUnderImplied.toFixed(1),
+          modelUnderProb: modelUnderProb,
+          underEdge,
+          // Actual data
+          actualOverPct,
+          // Poisson quality
+          poissonFit: poisson.fit,
+          dispersion: poisson.dispersionIndex,
+          lambda: poisson.lambda,
+          // Stats
+          mean: dist.mean,
+          stdDev: dist.stdDev,
+          consistency: dist.consistency,
+          games: dist.n
+        });
+      }
+    }
+
+    // Show progress
+    $('results-body').innerHTML = `<div class="loading"><div class="spinner"></div><br>Analyzed ${Math.min(i + 5, players.length)} / ${players.length} players...</div>`;
+  }
+
+  renderResults();
+}
+
+function renderResults() {
+  $('summary').style.display = '';
+  $('filters').style.display = 'flex';
+
+  // Apply filters
+  let rows = [...allRows];
+  if (filters.stat !== 'all') rows = rows.filter(r => r.stat === filters.stat);
+  if (filters.edgeOnly) rows = rows.filter(r => (r.overEdge > 2) || (r.underEdge > 2));
+  if (filters.sortEdge) rows.sort((a, b) => Math.max(b.overEdge || 0, b.underEdge || 0) - Math.max(a.overEdge || 0, a.underEdge || 0));
+
+  // Summary
+  $('total-props').textContent = allRows.length;
+  const edgeRows = allRows.filter(r => (r.overEdge > 2) || (r.underEdge > 2));
+  $('edges-found').textContent = edgeRows.length;
+  const avgEdge = edgeRows.length ? (edgeRows.reduce((a, r) => a + Math.max(r.overEdge || 0, r.underEdge || 0), 0) / edgeRows.length).toFixed(1) : '0';
+  $('avg-edge').textContent = avgEdge + '%';
+  const bestRow = allRows.reduce((best, r) => {
+    const e = Math.max(r.overEdge || 0, r.underEdge || 0);
+    return e > (best.e || 0) ? { ...r, e } : best;
+  }, { e: 0 });
+  $('best-edge').textContent = bestRow.player ? `${bestRow.player} ${bestRow.stat} +${bestRow.e}%` : '--';
+
+  if (!rows.length) {
+    $('results-body').innerHTML = '<div style="text-align:center;padding:20px;color:var(--dim);">No props match current filters</div>';
+    return;
+  }
+
+  $('results-body').innerHTML = `
+    <table class="edge-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Stat</th>
+          <th>Line</th>
+          <th>Mean</th>
+          <th>Book Over</th>
+          <th>Model Over</th>
+          <th>Over Edge</th>
+          <th>Book Under</th>
+          <th>Model Under</th>
+          <th>Under Edge</th>
+          <th>Actual O%</th>
+          <th>Fit</th>
+          <th>Disp</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => {
+          const overEdgeCls = r.overEdge > 5 ? 'edge-huge' : r.overEdge > 2 ? 'edge-positive' : r.overEdge < -2 ? 'edge-negative' : 'edge-neutral';
+          const underEdgeCls = r.underEdge > 5 ? 'edge-huge' : r.underEdge > 2 ? 'edge-positive' : r.underEdge < -2 ? 'edge-negative' : 'edge-neutral';
+          const overBar = r.overEdge ? `<span class="edge-bar ${r.overEdge > 0 ? 'pos' : 'neg'}" style="width:${Math.min(Math.abs(r.overEdge) * 3, 60)}px;"></span>` : '';
+          const underBar = r.underEdge ? `<span class="edge-bar ${r.underEdge > 0 ? 'pos' : 'neg'}" style="width:${Math.min(Math.abs(r.underEdge) * 3, 60)}px;"></span>` : '';
+          const fmtOdds = (o) => o > 0 ? `+${o}` : `${o}`;
+
+          return `
+            <tr>
+              <td>
+                <div class="player-cell">
+                  ${r.headshot ? `<img src="${r.headshot}" alt="" onerror="this.style.display='none'">` : ''}
+                  <div>
+                    <div style="font-weight:500;">${r.player}</div>
+                    <div style="font-size:9px;color:var(--dim);">${r.team} | ${r.games}G</div>
+                  </div>
+                </div>
+              </td>
+              <td><span class="stat-badge stat-${r.stat}">${r.stat}</span></td>
+              <td style="font-weight:700;">${r.line}</td>
+              <td style="color:var(--dim);">${r.mean} <span style="font-size:9px;">±${r.stdDev}</span></td>
+              <td class="odds-book">${fmtOdds(r.bookOverOdds)} <span style="font-size:9px;color:var(--dim);">${r.bookOverImplied}%</span></td>
+              <td class="odds-model">${r.modelOverOdds || '—'} <span style="font-size:9px;color:var(--dim);">${r.modelOverProb || '—'}%</span></td>
+              <td class="${overEdgeCls}">${r.overEdge !== null ? (r.overEdge > 0 ? '+' : '') + r.overEdge + '%' : '—'}${overBar}</td>
+              <td class="odds-book">${fmtOdds(r.bookUnderOdds)} <span style="font-size:9px;color:var(--dim);">${r.bookUnderImplied}%</span></td>
+              <td class="odds-model">${r.modelUnderProb || '—'}%</td>
+              <td class="${underEdgeCls}">${r.underEdge !== null ? (r.underEdge > 0 ? '+' : '') + r.underEdge + '%' : '—'}${underBar}</td>
+              <td>${r.actualOverPct !== null ? r.actualOverPct + '%' : '—'}</td>
+              <td><span class="fit-badge fit-${r.poissonFit}">${r.poissonFit}</span></td>
+              <td style="color:${r.dispersion > 1.5 ? 'var(--amber)' : r.dispersion < 0.7 ? 'var(--cyan)' : 'var(--dim)'};">${r.dispersion}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function setFilter(type, val, btn) {
+  filters[type] = val;
+  btn.parentElement.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderResults();
+}
+
+function toggleEdgeOnly(btn) {
+  filters.edgeOnly = !filters.edgeOnly;
+  btn.classList.toggle('active');
+  renderResults();
+}
+
+function toggleSort(btn) {
+  filters.sortEdge = !filters.sortEdge;
+  btn.classList.toggle('active');
+  renderResults();
+}
+
+init();
+</script>
+</body>
+</html>
