@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBA PLAYOFF INTELLIGENCE TERMINAL</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+
+  :root {
+    --bg: #030508;
+    --panel: #0a0e14;
+    --border: #1a2a3a;
+    --border-glow: #0f4f6f;
+    --cyan: #00e5ff;
+    --green: #00ff88;
+    --amber: #ffb300;
+    --red: #ff3d3d;
+    --magenta: #ff00ff;
+    --text: #c8d6e5;
+    --dim: #4a5568;
+    --blue: #3498db;
+    --purple: #9b59b6;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 229, 255, 0.015) 2px,
+      rgba(0, 229, 255, 0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Header */
+  .header {
+    background: linear-gradient(180deg, #0a1520 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--border-glow);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    background: linear-gradient(135deg, var(--cyan), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 30px rgba(0, 229, 255, 0.3);
+  }
+
+  .logo-sub {
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  .status-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .clock {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    color: var(--cyan);
+    letter-spacing: 2px;
+  }
+
+  .sweep-info {
+    font-size: 10px;
+    color: var(--dim);
+  }
+
+  /* Grid Layout */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto;
+    gap: 2px;
+    padding: 2px;
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+
+  .grid .full-width { grid-column: 1 / -1; }
+  .grid .two-col { grid-column: span 2; }
+
+  /* Panel */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .panel:hover {
+    border-color: var(--border-glow);
+  }
+
+  .panel-header {
+    background: linear-gradient(90deg, rgba(0,229,255,0.08) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+
+  .panel-header .count {
+    background: rgba(0,229,255,0.15);
+    color: var(--cyan);
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+
+  .panel-body {
+    padding: 10px 12px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .panel-body::-webkit-scrollbar { width: 4px; }
+  .panel-body::-webkit-scrollbar-track { background: var(--bg); }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+  /* Game Cards */
+  .game-card {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 8px;
+    transition: border-color 0.2s;
+  }
+
+  .game-card:hover { border-color: var(--cyan); }
+  .game-card.live { border-left: 3px solid var(--green); }
+  .game-card.final { border-left: 3px solid var(--dim); }
+  .game-card.upcoming { border-left: 3px solid var(--amber); }
+
+  .game-teams {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .team-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+  }
+
+  .team-logo {
+    width: 24px; height: 24px;
+    border-radius: 2px;
+    object-fit: contain;
+    background: rgba(255,255,255,0.05);
+  }
+
+  .team-name {
+    font-weight: 600;
+    font-size: 12px;
+  }
+
+  .team-record {
+    font-size: 10px;
+    color: var(--dim);
+  }
+
+  .team-score {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    min-width: 40px;
+    text-align: right;
+  }
+
+  .game-score-divider {
+    text-align: center;
+    padding: 2px 0;
+  }
+
+  .game-status {
+    font-size: 10px;
+    text-align: center;
+    padding: 4px;
+    border-radius: 2px;
+  }
+
+  .game-status.live-status {
+    color: var(--green);
+    background: rgba(0,255,136,0.1);
+    animation: pulse 1.5s infinite;
+  }
+
+  .game-status.final-status { color: var(--dim); }
+  .game-status.upcoming-status { color: var(--amber); }
+
+  .game-odds {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    font-size: 10px;
+    color: var(--dim);
+  }
+
+  .odds-tag {
+    background: rgba(0,229,255,0.08);
+    padding: 2px 6px;
+    border-radius: 2px;
+    color: var(--cyan);
+  }
+
+  .game-leaders {
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--dim);
+  }
+
+  .game-broadcast {
+    font-size: 9px;
+    color: var(--purple);
+    margin-top: 4px;
+  }
+
+  /* Standings Table */
+  .standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .standings-table th {
+    text-align: left;
+    padding: 4px 6px;
+    color: var(--dim);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .standings-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .standings-table tr:hover td { background: rgba(0,229,255,0.03); }
+
+  .seed-num {
+    display: inline-block;
+    width: 18px; height: 18px;
+    line-height: 18px;
+    text-align: center;
+    border-radius: 2px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .seed-top4 { background: rgba(0,255,136,0.2); color: var(--green); }
+  .seed-mid { background: rgba(0,229,255,0.15); color: var(--cyan); }
+  .seed-playin { background: rgba(255,179,0,0.15); color: var(--amber); }
+
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+
+  /* Injuries */
+  .injury-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 11px;
+  }
+
+  .injury-status {
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    min-width: 50px;
+    text-align: center;
+  }
+
+  .injury-out { background: rgba(255,61,61,0.2); color: var(--red); }
+  .injury-doubtful { background: rgba(255,0,255,0.15); color: var(--magenta); }
+  .injury-questionable { background: rgba(255,179,0,0.15); color: var(--amber); }
+  .injury-probable { background: rgba(0,229,255,0.1); color: var(--cyan); }
+
+  .injury-player { font-weight: 600; }
+  .injury-team { color: var(--dim); font-size: 10px; }
+  .injury-detail { color: var(--dim); font-size: 10px; }
+
+  /* News Feed */
+  .news-item {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .news-item:last-child { border-bottom: none; }
+
+  .news-headline {
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.4;
+    cursor: pointer;
+  }
+
+  .news-headline:hover { color: var(--cyan); }
+
+  .news-meta {
+    font-size: 9px;
+    color: var(--dim);
+    margin-top: 2px;
+  }
+
+  .news-desc {
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  /* Top Scorers */
+  .scorer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 11px;
+  }
+
+  .scorer-rank {
+    width: 20px;
+    color: var(--dim);
+    font-size: 10px;
+  }
+
+  .scorer-name { flex: 1; font-weight: 500; }
+  .scorer-team { color: var(--dim); font-size: 10px; width: 40px; }
+
+  .scorer-stats {
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+  }
+
+  .stat-val { color: var(--cyan); font-weight: 600; }
+  .stat-label { color: var(--dim); font-size: 9px; }
+
+  /* Odds Panel */
+  .odds-card {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+
+  .odds-matchup {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .odds-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+  }
+
+  .odds-cell {
+    background: rgba(0,229,255,0.05);
+    padding: 4px 6px;
+    border-radius: 2px;
+    text-align: center;
+  }
+
+  .odds-cell-label {
+    font-size: 8px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .odds-cell-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cyan);
+    margin-top: 2px;
+  }
+
+  .book-name {
+    font-size: 9px;
+    color: var(--dim);
+    margin-top: 4px;
+  }
+
+  /* Source Status */
+  .sources-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .source-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 3px;
+    font-size: 10px;
+  }
+
+  .source-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+
+  .source-dot.active { background: var(--green); box-shadow: 0 0 4px var(--green); }
+  .source-dot.inactive { background: var(--red); box-shadow: 0 0 4px var(--red); }
+  .source-dot.optional { background: var(--amber); box-shadow: 0 0 4px var(--amber); }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--dim);
+  }
+
+  .loading-spinner {
+    display: inline-block;
+    width: 30px; height: 30px;
+    border: 2px solid var(--border);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 10px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Gauge */
+  .gauge-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 4px 0;
+  }
+
+  .gauge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .gauge-label {
+    font-size: 9px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    min-width: 70px;
+  }
+
+  .gauge-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .gauge-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  .gauge-value {
+    font-size: 10px;
+    font-weight: 600;
+    min-width: 35px;
+    text-align: right;
+  }
+
+  /* Team Stats Table */
+  .team-stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+  }
+
+  .team-stats-table th {
+    text-align: left;
+    padding: 3px 5px;
+    color: var(--dim);
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .team-stats-table th:hover { color: var(--cyan); }
+
+  .team-stats-table td {
+    padding: 3px 5px;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+  }
+
+  /* Alert banner */
+  .alert-banner {
+    background: linear-gradient(90deg, rgba(255,61,61,0.1) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(255,61,61,0.3);
+    padding: 6px 20px;
+    font-size: 10px;
+    color: var(--amber);
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .alert-banner.visible { display: flex; }
+
+  .alert-flash {
+    font-weight: 700;
+    color: var(--red);
+    animation: pulse 0.5s infinite;
+  }
+
+  /* Responsive */
+  @media (max-width: 1200px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+    .grid .two-col { grid-column: span 2; }
+  }
+
+  @media (max-width: 768px) {
+    .grid { grid-template-columns: 1fr; }
+    .grid .two-col, .grid .full-width { grid-column: 1; }
+    .header { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div>
+      <div class="logo">NBA PLAYOFF TERMINAL</div>
+      <div class="logo-sub">Intelligence Dashboard // 2026 Playoffs</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <a href="/matchup.html" style="color:var(--dim);text-decoration:none;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border:1px solid var(--border);border-radius:3px;">Matchup</a>
+    <a href="/slips.html" style="color:var(--dim);text-decoration:none;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border:1px solid var(--border);border-radius:3px;">Slips</a>
+    <a href="/bracket.html" style="color:var(--dim);text-decoration:none;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border:1px solid var(--border);border-radius:3px;">Bracket</a>
+    <div class="sweep-info">
+      <span id="sweep-time">--</span> | <span id="sweep-ms">--</span>ms
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text" style="font-size:10px;color:var(--green);">CONNECTING</span>
+    </div>
+    <div class="clock" id="clock">00:00:00</div>
+  </div>
+</div>
+
+<div class="alert-banner" id="alert-banner">
+  <span class="alert-flash">ALERT</span>
+  <span id="alert-text"></span>
+</div>
+
+<div class="grid">
+  <!-- Live Scores -->
+  <div class="panel two-col">
+    <div class="panel-header">
+      Live Scores & Schedule
+      <span class="count" id="game-count">0</span>
+    </div>
+    <div class="panel-body" id="games-panel" style="max-height:500px;">
+      <div class="loading"><div class="loading-spinner"></div><br>ACQUIRING SIGNAL...</div>
+    </div>
+  </div>
+
+  <!-- System Status -->
+  <div class="panel">
+    <div class="panel-header">System Status</div>
+    <div class="panel-body" id="status-panel">
+      <div class="sources-grid" id="sources-grid"></div>
+      <div class="gauge-container" id="gauges" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <!-- Betting Odds -->
+  <div class="panel">
+    <div class="panel-header">
+      Betting Lines
+      <span class="count" id="odds-count">0</span>
+    </div>
+    <div class="panel-body" id="odds-panel" style="max-height:500px;">
+      <div style="color:var(--dim);font-size:10px;">Waiting for data...</div>
+    </div>
+  </div>
+
+  <!-- Standings East -->
+  <div class="panel">
+    <div class="panel-header">
+      Eastern Conference
+      <span class="count">STANDINGS</span>
+    </div>
+    <div class="panel-body" id="east-standings" style="max-height:500px;">
+      <div class="loading"><div class="loading-spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- Standings West -->
+  <div class="panel">
+    <div class="panel-header">
+      Western Conference
+      <span class="count">STANDINGS</span>
+    </div>
+    <div class="panel-body" id="west-standings" style="max-height:500px;">
+      <div class="loading"><div class="loading-spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- Injuries -->
+  <div class="panel">
+    <div class="panel-header">
+      Injury Report
+      <span class="count" id="injury-count">0</span>
+    </div>
+    <div class="panel-body" id="injuries-panel" style="max-height:400px;">
+      <div style="color:var(--dim);font-size:10px;">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Top Scorers -->
+  <div class="panel">
+    <div class="panel-header">
+      League Leaders
+      <span class="count">PPG</span>
+    </div>
+    <div class="panel-body" id="scorers-panel" style="max-height:400px;">
+      <div style="color:var(--dim);font-size:10px;">Loading...</div>
+    </div>
+  </div>
+
+  <!-- News Feed -->
+  <div class="panel two-col">
+    <div class="panel-header">
+      Intel Feed
+      <span class="count" id="news-count">0</span>
+    </div>
+    <div class="panel-body" id="news-panel" style="max-height:400px;">
+      <div style="color:var(--dim);font-size:10px;">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  $('clock').textContent = now.toLocaleTimeString('en-US', { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// SSE Connection
+let sse = null;
+function connectSSE() {
+  sse = new EventSource('/api/stream');
+  sse.onopen = () => {
+    $('status-dot').className = 'status-dot';
+    $('status-text').textContent = 'LIVE';
+    $('status-text').style.color = 'var(--green)';
+  };
+  sse.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'sweep') {
+        renderGames(data.games || []);
+      }
+    } catch {}
+  };
+  sse.onerror = () => {
+    $('status-dot').className = 'status-dot offline';
+    $('status-text').textContent = 'OFFLINE';
+    $('status-text').style.color = 'var(--red)';
+    setTimeout(connectSSE, 5000);
+  };
+}
+
+// Fetch initial data
+async function fetchSweep() {
+  try {
+    const res = await fetch('/api/sweep');
+    const data = await res.json();
+    renderAll(data);
+  } catch (e) {
+    console.error('Sweep fetch failed:', e);
+  }
+}
+
+function renderAll(data) {
+  $('sweep-time').textContent = new Date(data.timestamp).toLocaleTimeString();
+  $('sweep-ms').textContent = data.sweepMs;
+
+  renderGames(data.games || []);
+  renderStandings(data.standings || {});
+  renderInjuries(data.injuries || []);
+  renderScorers(data.topScorers || []);
+  renderNews(data.news || []);
+  renderOdds(data.games || []);
+  renderSources(data.sources || {});
+  renderGauges(data);
+}
+
+function renderGames(games) {
+  const el = $('games-panel');
+  $('game-count').textContent = games.length;
+
+  if (!games.length) {
+    el.innerHTML = '<div style="color:var(--dim);text-align:center;padding:20px;">No games scheduled today.<br><span style="font-size:10px;">Check back on game days for live scores.</span></div>';
+    return;
+  }
+
+  el.innerHTML = games.map(g => {
+    const isLive = g.status === 'In Progress';
+    const isFinal = g.status === 'Final';
+    const cls = isLive ? 'live' : isFinal ? 'final' : 'upcoming';
+    const statusCls = isLive ? 'live-status' : isFinal ? 'final-status' : 'upcoming-status';
+
+    let statusText = g.status;
+    if (isLive) statusText = `Q${g.period} ${g.clock}`;
+    if (!isLive && !isFinal) {
+      const d = new Date(g.date);
+      statusText = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    const oddsHtml = g.odds ? `
+      <div class="game-odds">
+        <span class="odds-tag">SPREAD ${g.odds.spread}</span>
+        <span class="odds-tag">O/U ${g.odds.overUnder}</span>
+        <span style="color:var(--dim)">${g.odds.provider}</span>
+      </div>` : '';
+
+    const leadersHtml = g.leaders?.length ? `
+      <div class="game-leaders">
+        ${g.leaders.filter(l=>l.leader).map(l => `${l.leader.name}: ${l.leader.value}`).join(' | ')}
+      </div>` : '';
+
+    const broadcastHtml = g.broadcast ? `<div class="game-broadcast">${g.broadcast}</div>` : '';
+
+    return `
+      <div class="game-card ${cls}">
+        <div class="game-status ${statusCls}">${statusText}</div>
+        <div class="game-teams">
+          <div class="team-line">
+            <img class="team-logo" src="${g.away.logo}" alt="" onerror="this.style.display='none'">
+            <div>
+              <div class="team-name">${g.away.abbr}</div>
+              <div class="team-record">${g.away.record}</div>
+            </div>
+          </div>
+          <div class="team-score">${g.away.score}</div>
+        </div>
+        <div class="game-teams">
+          <div class="team-line">
+            <img class="team-logo" src="${g.home.logo}" alt="" onerror="this.style.display='none'">
+            <div>
+              <div class="team-name">${g.home.abbr}</div>
+              <div class="team-record">${g.home.record}</div>
+            </div>
+          </div>
+          <div class="team-score">${g.home.score}</div>
+        </div>
+        ${oddsHtml}
+        ${leadersHtml}
+        ${broadcastHtml}
+      </div>`;
+  }).join('');
+}
+
+function renderStandings(standings) {
+  renderConference('east-standings', standings.east || []);
+  renderConference('west-standings', standings.west || []);
+}
+
+function renderConference(elId, teams) {
+  const el = $(elId);
+  if (!teams.length) {
+    el.innerHTML = '<div style="color:var(--dim)">No data</div>';
+    return;
+  }
+
+  el.innerHTML = `
+    <table class="standings-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Team</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>DIFF</th><th>STK</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${teams.map((t, i) => {
+          const seed = i + 1;
+          const seedCls = seed <= 4 ? 'seed-top4' : seed <= 8 ? 'seed-mid' : 'seed-playin';
+          const diff = parseFloat(t.diff);
+          const diffCls = diff > 0 ? 'positive' : diff < 0 ? 'negative' : '';
+          const diffStr = diff > 0 ? `+${t.diff}` : t.diff;
+          return `
+            <tr>
+              <td><span class="seed-num ${seedCls}">${seed}</span></td>
+              <td style="font-weight:500">${t.abbr || t.team}</td>
+              <td>${t.wins}</td>
+              <td>${t.losses}</td>
+              <td>${t.pct}</td>
+              <td>${t.gb}</td>
+              <td class="${diffCls}">${diffStr}</td>
+              <td>${t.streak}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderInjuries(injuries) {
+  const el = $('injuries-panel');
+  $('injury-count').textContent = injuries.length;
+
+  if (!injuries.length) {
+    el.innerHTML = '<div style="color:var(--dim)">No key injuries reported</div>';
+    return;
+  }
+
+  el.innerHTML = injuries.map(inj => {
+    const statusCls = inj.status === 'Out' ? 'injury-out' :
+                      inj.status === 'Doubtful' ? 'injury-doubtful' :
+                      inj.status === 'Questionable' ? 'injury-questionable' : 'injury-probable';
+    return `
+      <div class="injury-item">
+        <span class="injury-status ${statusCls}">${inj.status}</span>
+        <span class="injury-player">${inj.player}</span>
+        <span class="injury-team">${inj.teamAbbr} ${inj.position}</span>
+        <span class="injury-detail">${inj.detail || inj.type || ''}</span>
+      </div>`;
+  }).join('');
+}
+
+function renderScorers(scorers) {
+  const el = $('scorers-panel');
+  if (!scorers.length) {
+    el.innerHTML = '<div style="color:var(--dim)">No data from NBA.com</div>';
+    return;
+  }
+
+  el.innerHTML = scorers.map((p, i) => `
+    <div class="scorer-row">
+      <span class="scorer-rank">${i + 1}.</span>
+      <span class="scorer-name">${p.name}</span>
+      <span class="scorer-team">${p.team}</span>
+      <div class="scorer-stats">
+        <span><span class="stat-val">${p.ppg}</span> <span class="stat-label">PTS</span></span>
+        <span><span class="stat-val">${p.rpg}</span> <span class="stat-label">REB</span></span>
+        <span><span class="stat-val">${p.apg}</span> <span class="stat-label">AST</span></span>
+      </div>
+    </div>`).join('');
+}
+
+function renderNews(news) {
+  const el = $('news-panel');
+  $('news-count').textContent = news.length;
+
+  if (!news.length) {
+    el.innerHTML = '<div style="color:var(--dim)">No news</div>';
+    return;
+  }
+
+  el.innerHTML = news.map(n => {
+    const time = n.published ? new Date(n.published).toLocaleString() : '';
+    return `
+      <div class="news-item">
+        <div class="news-headline" onclick="window.open('${n.link}','_blank')">${n.headline}</div>
+        ${n.description ? `<div class="news-desc">${n.description}</div>` : ''}
+        <div class="news-meta">${time}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderOdds(games) {
+  const el = $('odds-panel');
+  const withOdds = games.filter(g => g.odds || g.externalOdds);
+  $('odds-count').textContent = withOdds.length;
+
+  if (!withOdds.length) {
+    el.innerHTML = `
+      <div style="color:var(--dim);text-align:center;padding:16px;">
+        <div style="margin-bottom:8px;">No odds data available</div>
+        <div style="font-size:9px;">ESPN embeds odds on game days.</div>
+        <div style="font-size:9px;margin-top:4px;">For more odds sources, set <span style="color:var(--cyan)">ODDS_API_KEY</span></div>
+        <div style="font-size:9px;">Free key: the-odds-api.com</div>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = withOdds.map(g => {
+    const o = g.odds || {};
+    const ext = g.externalOdds;
+
+    let booksHtml = '';
+    if (ext?.bookmakers?.length) {
+      const bk = ext.bookmakers[0];
+      const markets = {};
+      bk.markets.forEach(m => { markets[m.key] = m.outcomes; });
+
+      const spread = markets.spreads;
+      const total = markets.totals;
+      const ml = markets.h2h;
+
+      booksHtml = `
+        <div class="odds-grid">
+          ${spread ? `
+          <div class="odds-cell">
+            <div class="odds-cell-label">Spread</div>
+            <div class="odds-cell-value">${spread[0]?.point > 0 ? '+' : ''}${spread[0]?.point}</div>
+          </div>` : ''}
+          ${total ? `
+          <div class="odds-cell">
+            <div class="odds-cell-label">Total</div>
+            <div class="odds-cell-value">O/U ${total[0]?.point}</div>
+          </div>` : ''}
+          ${ml ? `
+          <div class="odds-cell">
+            <div class="odds-cell-label">Moneyline</div>
+            <div class="odds-cell-value">${ml[0]?.price > 0 ? '+' : ''}${ml[0]?.price}</div>
+          </div>` : ''}
+        </div>
+        <div class="book-name">${bk.name}</div>`;
+    } else if (o.spread) {
+      booksHtml = `
+        <div class="odds-grid">
+          <div class="odds-cell">
+            <div class="odds-cell-label">Spread</div>
+            <div class="odds-cell-value">${o.spread}</div>
+          </div>
+          <div class="odds-cell">
+            <div class="odds-cell-label">O/U</div>
+            <div class="odds-cell-value">${o.overUnder}</div>
+          </div>
+          <div class="odds-cell">
+            <div class="odds-cell-label">Source</div>
+            <div class="odds-cell-value" style="font-size:9px">${o.provider}</div>
+          </div>
+        </div>`;
+    }
+
+    return `
+      <div class="odds-card">
+        <div class="odds-matchup">
+          <span>${g.away.abbr}</span>
+          <span style="color:var(--dim);font-size:9px;">vs</span>
+          <span>${g.home.abbr}</span>
+        </div>
+        ${booksHtml}
+      </div>`;
+  }).join('');
+}
+
+function renderSources(sources) {
+  const el = $('sources-grid');
+  const items = [
+    { name: 'ESPN Scores', active: sources.espn?.scoreboard },
+    { name: 'ESPN Standings', active: sources.espn?.standings },
+    { name: 'ESPN News', active: sources.espn?.news },
+    { name: 'ESPN Injuries', active: sources.espn?.injuries },
+    { name: 'NBA.com Stats', active: sources.nbastats?.leaders },
+    { name: 'NBA.com Live', active: sources.nbastats?.scoreboard },
+    { name: 'Odds API', active: sources.odds?.active, optional: !sources.odds?.active },
+    { name: 'BallDontLie', active: sources.balldontlie?.active, optional: !sources.balldontlie?.active },
+  ];
+
+  el.innerHTML = items.map(s => {
+    const dotCls = s.active ? 'active' : s.optional ? 'optional' : 'inactive';
+    return `
+      <div class="source-item">
+        <div class="source-dot ${dotCls}"></div>
+        <span>${s.name}</span>
+      </div>`;
+  }).join('');
+}
+
+function renderGauges(data) {
+  const el = $('gauges');
+  const games = data.games || [];
+  const live = games.filter(g => g.status === 'In Progress').length;
+  const total = games.length;
+  const injCount = (data.injuries || []).length;
+  const newsCount = (data.news || []).length;
+
+  const activeSourceCount = Object.values(data.sources || {})
+    .filter(s => typeof s === 'object' ? Object.values(s).some(v => v === true) : s).length;
+
+  const gauges = [
+    { label: 'Live Games', value: live, max: Math.max(total, 1), color: 'var(--green)' },
+    { label: 'Data Sources', value: activeSourceCount, max: 4, color: 'var(--cyan)' },
+    { label: 'Injuries', value: Math.min(injCount, 20), max: 20, color: 'var(--amber)' },
+    { label: 'Intel Items', value: Math.min(newsCount, 15), max: 15, color: 'var(--blue)' },
+  ];
+
+  el.innerHTML = gauges.map(g => {
+    const pct = Math.round((g.value / g.max) * 100);
+    return `
+      <div class="gauge">
+        <span class="gauge-label">${g.label}</span>
+        <div class="gauge-bar">
+          <div class="gauge-fill" style="width:${pct}%;background:${g.color}"></div>
+        </div>
+        <span class="gauge-value" style="color:${g.color}">${g.value}</span>
+      </div>`;
+  }).join('');
+}
+
+// Init
+connectSSE();
+fetchSweep();
+
+// Auto-refresh every 60s
+setInterval(fetchSweep, 60000);
+</script>
+</body>
+</html>

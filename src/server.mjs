@@ -1,0 +1,765 @@
+import 'dotenv/config';
+import express from 'express';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { runSweep, getCache } from './lib/sweep.mjs';
+import espn from './sources/espn.mjs';
+import odds from './sources/odds.mjs';
+import store from './lib/store.mjs';
+import cache, { TTL } from './lib/cache.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const app = express();
+app.use(express.json());
+const PORT = process.env.PORT || 3000;
+
+// SSE clients
+const clients = new Set();
+
+// Serve dashboard
+app.use(express.static(join(__dirname, '..', 'dashboard', 'public')));
+
+// API: Full sweep data
+app.get('/api/sweep', async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    const data = await runSweep(force);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Live scores only
+app.get('/api/scores', async (req, res) => {
+  const data = getCache();
+  res.json(data?.games || []);
+});
+
+// API: Standings
+app.get('/api/standings', async (req, res) => {
+  const data = getCache();
+  res.json(data?.standings || {});
+});
+
+// API: Injuries
+app.get('/api/injuries', async (req, res) => {
+  const data = getCache();
+  res.json(data?.allInjuries || []);
+});
+
+// API: News
+app.get('/api/news', async (req, res) => {
+  const data = getCache();
+  res.json(data?.news || []);
+});
+
+// API: Odds
+app.get('/api/odds', async (req, res) => {
+  const data = getCache();
+  const odds = data?.games?.filter(g => g.externalOdds || g.odds) || [];
+  res.json(odds);
+});
+
+// API: All teams list (cached 1hr)
+app.get('/api/teams', async (req, res) => {
+  const cached = cache.get('teams');
+  if (cached) return res.json(cached);
+  const data = getCache();
+  if (data?.teams?.length) {
+    cache.set('teams', data.teams, TTL.TEAMS_LIST);
+    return res.json(data.teams);
+  }
+  const teams = await espn.getTeams();
+  cache.set('teams', teams, TTL.TEAMS_LIST);
+  res.json(teams);
+});
+
+// API: Team detail + stats (cached 15min per team)
+app.get('/api/teams/:id', async (req, res) => {
+  const cacheKey = `team-${req.params.id}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const [detail, stats, roster] = await Promise.all([
+      espn.getTeamDetail(req.params.id),
+      espn.getTeamStats(req.params.id),
+      espn.getPlayerStats(req.params.id)
+    ]);
+    const allInjuries = getCache()?.allInjuries || [];
+    const teamInjuries = allInjuries.filter(i =>
+      detail && (i.team === detail.name || i.teamAbbr === detail.abbr)
+    );
+    const result = { detail, stats, roster, injuries: teamInjuries };
+    cache.set(cacheKey, result, TTL.TEAM_DETAIL);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Player overview with season stats + shooting splits from gamelog (cached 30min)
+app.get('/api/players/:id', async (req, res) => {
+  const cacheKey = `player-${req.params.id}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    // Fetch overview + gamelog in parallel
+    const [data, gamelog] = await Promise.all([
+      espn.getPlayerOverview(req.params.id),
+      espn.getPlayerGamelog(req.params.id)
+    ]);
+
+    if (!data) return res.json({ error: 'Player not found' });
+
+    // Parse gamelog to get FGM/FGA/3PM/3PA/FTM/FTA averages
+    if (gamelog?.games?.length) {
+      let fgm = 0, fga = 0, tpm = 0, tpa = 0, ftm = 0, fta = 0;
+      let n = 0;
+      for (const g of gamelog.games) {
+        const s = g.stats;
+        // Format: "9-18"
+        const fg = (s['fieldGoalsMade-fieldGoalsAttempted'] || s['_FG'] || '').split('-');
+        const tp = (s['threePointFieldGoalsMade-threePointFieldGoalsAttempted'] || s['_3PT'] || '').split('-');
+        const ft = (s['freeThrowsMade-freeThrowsAttempted'] || s['_FT'] || '').split('-');
+        if (fg.length === 2) { fgm += parseFloat(fg[0]) || 0; fga += parseFloat(fg[1]) || 0; }
+        if (tp.length === 2) { tpm += parseFloat(tp[0]) || 0; tpa += parseFloat(tp[1]) || 0; }
+        if (ft.length === 2) { ftm += parseFloat(ft[0]) || 0; fta += parseFloat(ft[1]) || 0; }
+        n++;
+      }
+      if (n > 0) {
+        // Add computed shooting stats to season data
+        data.season = data.season || {};
+        data.season.fgm = (fgm / n).toFixed(1);
+        data.season.fga = (fga / n).toFixed(1);
+        data.season.tpm = (tpm / n).toFixed(1);
+        data.season.tpa = (tpa / n).toFixed(1);
+        data.season.ftm = (ftm / n).toFixed(1);
+        data.season.fta = (fta / n).toFixed(1);
+        data.season.fgmTotal = fgm;
+        data.season.fgaTotal = fga;
+        data.season.tpmTotal = tpm;
+        data.season.tpaTotal = tpa;
+        data.season.ftmTotal = ftm;
+        data.season.ftaTotal = fta;
+        data.season.gamelogGames = n;
+      }
+    }
+
+    cache.set(cacheKey, data, TTL.PLAYER_STATS);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Team game-by-game schedule with windowed stats (cached 30min)
+app.get('/api/teams/:id/games', async (req, res) => {
+  const cacheKey = `team-games-${req.params.id}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const games = await espn.getTeamSchedule(req.params.id);
+
+    // Compute rolling stats
+    const allScores = games.map(g => parseInt(g.score) || 0);
+    const allOpp = games.map(g => parseInt(g.oppScore) || 0);
+    const allWins = games.map(g => g.won ? 1 : 0);
+
+    const computeWindow = (scores, oppScores, wins, start, len) => {
+      const s = scores.slice(start, start + len);
+      const o = oppScores.slice(start, start + len);
+      const w = wins.slice(start, start + len);
+      if (!s.length) return null;
+      const n = s.length;
+      const ppg = s.reduce((a, b) => a + b, 0) / n;
+      const oppg = o.reduce((a, b) => a + b, 0) / n;
+      const winCount = w.reduce((a, b) => a + b, 0);
+      const margin = s.map((v, i) => v - o[i]);
+      const avgMargin = margin.reduce((a, b) => a + b, 0) / n;
+      // Std dev of scoring
+      const mean = ppg;
+      const variance = s.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1 || 1);
+      return {
+        games: n,
+        wins: winCount,
+        losses: n - winCount,
+        winPct: +(winCount / n * 100).toFixed(1),
+        ppg: +ppg.toFixed(1),
+        oppg: +oppg.toFixed(1),
+        diff: +avgMargin.toFixed(1),
+        scoringStdDev: +Math.sqrt(variance).toFixed(1),
+        homeWins: 0, awayWins: 0 // computed below
+      };
+    };
+
+    // Full season
+    const full = computeWindow(allScores, allOpp, allWins, 0, games.length);
+
+    // Precomputed windows
+    const windows = {};
+    for (const w of [5, 10, 15, 20, 30]) {
+      if (games.length >= w) {
+        windows[`L${w}`] = computeWindow(allScores, allOpp, allWins, games.length - w, w);
+      }
+    }
+
+    // Home vs away splits
+    const homeGames = games.filter(g => g.home);
+    const awayGames = games.filter(g => !g.home);
+    const homeSplit = computeWindow(
+      homeGames.map(g => parseInt(g.score) || 0),
+      homeGames.map(g => parseInt(g.oppScore) || 0),
+      homeGames.map(g => g.won ? 1 : 0),
+      0, homeGames.length
+    );
+    const awaySplit = computeWindow(
+      awayGames.map(g => parseInt(g.score) || 0),
+      awayGames.map(g => parseInt(g.oppScore) || 0),
+      awayGames.map(g => g.won ? 1 : 0),
+      0, awayGames.length
+    );
+
+    const result = { games, full, windows, homeSplit, awaySplit, totalGames: games.length };
+    cache.set(cacheKey, result, TTL.TEAM_DETAIL);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Player gamelog + statistical analysis (cached 1hr)
+app.get('/api/players/:id/gamelog', async (req, res) => {
+  const cacheKey = `gamelog-${req.params.id}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const gamelog = await espn.getPlayerGamelog(req.params.id);
+    if (!gamelog) return res.json({ error: 'No gamelog data' });
+
+    // Compute statistical distributions for key stat columns
+    const statKeys = ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FGM', 'FGA', '3PM', '3PA', 'FTM', 'FTA'];
+    const distributions = {};
+
+    for (const key of statKeys) {
+      const values = gamelog.games
+        .map(g => parseFloat(g.stats[`_${key}`] || g.stats[key] || '0'))
+        .filter(v => !isNaN(v));
+
+      if (values.length < 3) continue;
+
+      const n = values.length;
+      const mean = values.reduce((a, b) => a + b, 0) / n;
+      const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
+      const stdDev = Math.sqrt(variance);
+      const sorted = [...values].sort((a, b) => a - b);
+      const median = n % 2 === 0
+        ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2
+        : sorted[Math.floor(n / 2)];
+      const min = sorted[0];
+      const max = sorted[n - 1];
+      const q1 = sorted[Math.floor(n * 0.25)];
+      const q3 = sorted[Math.floor(n * 0.75)];
+      const iqr = q3 - q1;
+
+      // Skewness
+      const skewness = n > 2
+        ? (n / ((n - 1) * (n - 2))) * values.reduce((a, b) => a + ((b - mean) / stdDev) ** 3, 0)
+        : 0;
+
+      // Kurtosis (excess)
+      const kurtosis = n > 3
+        ? ((n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3))) *
+          values.reduce((a, b) => a + ((b - mean) / stdDev) ** 4, 0) -
+          (3 * (n - 1) ** 2) / ((n - 2) * (n - 3))
+        : 0;
+
+      // Distribution shape
+      let shape = 'Normal';
+      if (Math.abs(skewness) > 1) shape = skewness > 0 ? 'Right-skewed' : 'Left-skewed';
+      else if (Math.abs(skewness) > 0.5) shape = skewness > 0 ? 'Slightly right-skewed' : 'Slightly left-skewed';
+      if (kurtosis > 1) shape += ', heavy-tailed';
+      else if (kurtosis < -1) shape += ', light-tailed';
+
+      // Histogram bins (8 bins)
+      const binCount = 8;
+      const binWidth = (max - min) / binCount || 1;
+      const bins = Array(binCount).fill(0);
+      const binEdges = [];
+      for (let i = 0; i <= binCount; i++) binEdges.push(+(min + i * binWidth).toFixed(1));
+      for (const v of values) {
+        const idx = Math.min(Math.floor((v - min) / binWidth), binCount - 1);
+        bins[idx]++;
+      }
+
+      // Consistency score (lower CV = more consistent)
+      const cv = mean !== 0 ? (stdDev / mean) * 100 : 0;
+      let consistency = 'High';
+      if (cv > 50) consistency = 'Very Low';
+      else if (cv > 35) consistency = 'Low';
+      else if (cv > 20) consistency = 'Medium';
+
+      // Recent trend (last 10 vs season avg)
+      const recent = values.slice(-10);
+      const recentMean = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : mean;
+      const trend = recentMean - mean;
+      const trendPct = mean !== 0 ? (trend / mean * 100) : 0;
+
+      // Over/under analysis at common lines
+      const lines = [0.5, mean - 0.5, mean, mean + 0.5].filter(l => l >= 0);
+      const overUnder = lines.map(line => ({
+        line: +line.toFixed(1),
+        over: values.filter(v => v > line).length,
+        under: values.filter(v => v <= line).length,
+        overPct: +(values.filter(v => v > line).length / n * 100).toFixed(1)
+      }));
+
+      // Poisson analysis — NBA counting stats are naturally Poisson-distributed
+      // Lambda (rate parameter) = mean for Poisson
+      const lambda = mean;
+      // Poisson P(X=k) = (e^-λ * λ^k) / k!
+      const factorial = (n) => { let f = 1; for (let i = 2; i <= n; i++) f *= i; return f; };
+      const poissonPmf = (k, lam) => Math.exp(-lam) * Math.pow(lam, k) / factorial(Math.min(k, 170));
+      // Poisson CDF P(X <= k)
+      const poissonCdf = (k, lam) => {
+        let sum = 0;
+        for (let i = 0; i <= Math.floor(k); i++) sum += poissonPmf(i, lam);
+        return Math.min(sum, 1);
+      };
+
+      // Dispersion test: variance/mean ratio (should be ~1 for Poisson)
+      const dispersionIndex = mean > 0 ? variance / mean : 0;
+      // Chi-squared test for Poisson goodness of fit
+      const isCountData = Number.isInteger(min) && min >= 0;
+      let poissonFit = 'N/A';
+      let poissonPvalue = null;
+      if (isCountData && mean > 0) {
+        // Compare observed vs expected frequencies
+        const maxK = Math.min(Math.ceil(mean + 4 * stdDev), 60);
+        let chiSq = 0;
+        let dfCount = 0;
+        for (let k = 0; k <= maxK; k++) {
+          const observed = values.filter(v => Math.round(v) === k).length;
+          const expected = n * poissonPmf(k, lambda);
+          if (expected >= 1) {
+            chiSq += (observed - expected) ** 2 / expected;
+            dfCount++;
+          }
+        }
+        // Rough p-value using chi-squared approximation
+        const df = Math.max(dfCount - 2, 1);
+        // If chi-sq/df < 2, decent fit
+        const ratio = chiSq / df;
+        if (ratio < 1.5) poissonFit = 'Excellent';
+        else if (ratio < 2.5) poissonFit = 'Good';
+        else if (ratio < 4) poissonFit = 'Fair';
+        else poissonFit = 'Poor';
+      }
+
+      // Poisson probabilities for over/under at key lines
+      const poissonOU = [];
+      if (isCountData && mean > 0) {
+        const checkLines = [
+          Math.floor(mean) - 2, Math.floor(mean) - 1, Math.floor(mean),
+          Math.ceil(mean), Math.ceil(mean) + 1, Math.ceil(mean) + 2,
+          Math.round(mean * 2) / 2 // common half-line
+        ].filter(l => l >= 0);
+        const uniqueLines = [...new Set(checkLines)].sort((a, b) => a - b);
+        for (const line of uniqueLines) {
+          const overProb = +(1 - poissonCdf(line, lambda)).toFixed(4);
+          const underProb = +poissonCdf(line, lambda).toFixed(4);
+          // Convert probability to American odds
+          const overOdds = overProb >= 0.5
+            ? Math.round(-100 * overProb / (1 - overProb))
+            : Math.round(100 * (1 - overProb) / overProb);
+          const underOdds = underProb >= 0.5
+            ? Math.round(-100 * underProb / (1 - underProb))
+            : Math.round(100 * (1 - underProb) / underProb);
+          poissonOU.push({
+            line,
+            overProb: +(overProb * 100).toFixed(1),
+            underProb: +(underProb * 100).toFixed(1),
+            overOdds: overOdds > 0 ? `+${overOdds}` : `${overOdds}`,
+            underOdds: underOdds > 0 ? `+${underOdds}` : `${underOdds}`,
+            exactProb: +(poissonPmf(Math.round(line), lambda) * 100).toFixed(1)
+          });
+        }
+      }
+
+      distributions[key] = {
+        n,
+        mean: +mean.toFixed(2),
+        median: +median.toFixed(1),
+        stdDev: +stdDev.toFixed(2),
+        variance: +variance.toFixed(2),
+        min, max,
+        q1, q3, iqr: +iqr.toFixed(1),
+        skewness: +skewness.toFixed(3),
+        kurtosis: +kurtosis.toFixed(3),
+        shape,
+        cv: +cv.toFixed(1),
+        consistency,
+        histogram: { bins, binEdges },
+        recentMean: +recentMean.toFixed(2),
+        trend: +trend.toFixed(2),
+        trendPct: +trendPct.toFixed(1),
+        overUnder,
+        values: sorted,
+        // Poisson
+        poisson: {
+          lambda: +lambda.toFixed(2),
+          dispersionIndex: +dispersionIndex.toFixed(3),
+          isOverdispersed: dispersionIndex > 1.5,
+          isUnderdispersed: dispersionIndex < 0.7,
+          fit: poissonFit,
+          isCountData,
+          overUnder: poissonOU
+        }
+      };
+    }
+
+    const result = { gamelog, distributions };
+    cache.set(cacheKey, result, TTL.PLAYER_GAMELOG);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Cache stats
+app.get('/api/cache', (req, res) => {
+  res.json(cache.stats());
+});
+
+// API: Source status
+app.get('/api/status', (req, res) => {
+  const data = getCache();
+  res.json({
+    online: true,
+    lastSweep: data?.timestamp || null,
+    sweepMs: data?.sweepMs || 0,
+    sources: data?.sources || {},
+    gameCount: data?.games?.length || 0,
+    injuryCount: data?.injuries?.length || 0
+  });
+});
+
+// === Betting Slips API ===
+
+// Login or create user
+app.post('/api/users', (req, res) => {
+  const { username } = req.body;
+  if (!username) return res.status(400).json({ error: 'Username required' });
+  const result = store.loginUser(username);
+  res.json(result);
+});
+
+// Get user
+app.get('/api/users/:name', (req, res) => {
+  const user = store.getUser(req.params.name);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
+});
+
+// Leaderboard
+app.get('/api/leaderboard', (req, res) => {
+  res.json(store.getLeaderboard());
+});
+
+// Create slip
+app.post('/api/slips', (req, res) => {
+  const { user, legs, wager, gameDate } = req.body;
+  const result = store.createSlip({ user, legs, wager, gameDate });
+  if (result.error) return res.status(400).json(result);
+  // Broadcast new slip to all SSE clients
+  broadcast({ type: 'new_slip', slip: result.slip });
+  res.json(result);
+});
+
+// Get all slips
+app.get('/api/slips', (req, res) => {
+  const { status, user, limit } = req.query;
+  res.json(store.getSlips({ status, user, limit: limit ? parseInt(limit) : 50 }));
+});
+
+// Get single slip
+app.get('/api/slips/:id', (req, res) => {
+  const slip = store.getSlip(req.params.id);
+  if (!slip) return res.status(404).json({ error: 'Not found' });
+  res.json(slip);
+});
+
+// Grade a slip
+app.patch('/api/slips/:id/grade', (req, res) => {
+  const { results } = req.body;
+  const result = store.gradeSlip(req.params.id, results);
+  if (result.error) return res.status(400).json(result);
+  broadcast({ type: 'slip_graded', slip: result.slip });
+  res.json(result);
+});
+
+// Delete slip
+app.delete('/api/slips/:id', (req, res) => {
+  const { user } = req.body;
+  const result = store.deleteSlip(req.params.id, user);
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+// Real player props from The Odds API (DraftKings, FanDuel, BetMGM)
+// Falls back to ESPN season-average generated lines if no API key
+app.get('/api/props/event/:eventId', async (req, res) => {
+  try {
+    if (!odds.isConfigured()) {
+      return res.json({ source: 'none', error: 'No ODDS_API_KEY', data: [] });
+    }
+    const result = await odds.getPlayerProps(req.params.eventId);
+    res.json({ source: 'odds-api', ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// All upcoming game odds with real lines (cached 5min)
+app.get('/api/real-odds', async (req, res) => {
+  const cached = cache.get('real-odds');
+  if (cached) return res.json(cached);
+
+  try {
+    if (!odds.isConfigured()) {
+      return res.json({ source: 'espn', error: 'No ODDS_API_KEY — using ESPN embedded odds', data: [] });
+    }
+    const result = { source: 'odds-api', ...(await odds.getGameOdds('h2h,spreads,totals')) };
+    cache.set('real-odds', result, TTL.GAME_ODDS);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Generate prop lines from player season averages (fallback when no API key)
+app.get('/api/props/:teamId', async (req, res) => {
+  try {
+    const roster = await espn.getPlayerStats(req.params.teamId);
+    const props = [];
+    const overviews = await Promise.allSettled(
+      roster.slice(0, 12).map(p => espn.getPlayerOverview(p.id))
+    );
+
+    roster.slice(0, 12).forEach((player, i) => {
+      const ov = overviews[i]?.status === 'fulfilled' ? overviews[i].value : null;
+      const s = ov?.season;
+      if (!s?.avgPoints || parseFloat(s.avgPoints) < 2) return;
+
+      const lines = [];
+      const pts = parseFloat(s.avgPoints);
+      const reb = parseFloat(s.avgRebounds);
+      const ast = parseFloat(s.avgAssists);
+      const stl = parseFloat(s.avgSteals);
+      const blk = parseFloat(s.avgBlocks);
+
+      if (pts >= 5) lines.push({ stat: 'PTS', line: Math.round(pts * 2) / 2, avg: pts, source: 'model' });
+      if (reb >= 2) lines.push({ stat: 'REB', line: Math.round(reb * 2) / 2, avg: reb, source: 'model' });
+      if (ast >= 1.5) lines.push({ stat: 'AST', line: Math.round(ast * 2) / 2, avg: ast, source: 'model' });
+      if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.round(stl * 2) / 2, avg: stl, source: 'model' });
+      if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.round(blk * 2) / 2, avg: blk, source: 'model' });
+      if (pts >= 10) lines.push({ stat: 'PRA', line: Math.round((pts + reb + ast) * 2) / 2, avg: +(pts + reb + ast).toFixed(1), source: 'model' });
+
+      if (lines.length) {
+        props.push({
+          id: player.id, name: player.name, position: player.position,
+          jersey: player.jersey, headshot: player.headshot, lines
+        });
+      }
+    });
+
+    res.json(props);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Merged props: real lines + model fallback, with Poisson fair value (cached 3min)
+app.get('/api/props/game/:gameIndex', async (req, res) => {
+  const propsCacheKey = `props-game-${req.params.gameIndex}`;
+  const propsCached = cache.get(propsCacheKey);
+  if (propsCached) return res.json(propsCached);
+
+  try {
+    const sweepCache = getCache();
+    const game = sweepCache?.games?.[parseInt(req.params.gameIndex)];
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+
+    let realProps = null;
+    let realGameOdds = null;
+
+    // Try real odds first
+    if (odds.isConfigured()) {
+      // Get events to find the matching event ID
+      const events = await odds.getEvents();
+      const matchEvent = events.data?.find(e => {
+        const h = e.home_team?.toLowerCase();
+        const a = e.away_team?.toLowerCase();
+        const gh = game.home.name.toLowerCase();
+        const ga = game.away.name.toLowerCase();
+        return (h?.includes(gh.split(' ').pop()) || gh.includes(h?.split(' ').pop())) &&
+               (a?.includes(ga.split(' ').pop()) || ga.includes(a?.split(' ').pop()));
+      });
+
+      if (matchEvent) {
+        const propsResult = await odds.getPlayerProps(matchEvent.id);
+        if (propsResult.data) realProps = propsResult.data;
+      }
+
+      const gameOddsResult = await odds.getGameOdds();
+      if (gameOddsResult.data) {
+        realGameOdds = gameOddsResult.data.find(g => {
+          const h = g.homeTeam?.toLowerCase();
+          const gh = game.home.name.toLowerCase();
+          return h?.includes(gh.split(' ').pop()) || gh.includes(h?.split(' ').pop());
+        });
+      }
+    }
+
+    // Get team IDs for ESPN fallback
+    const teams = sweepCache?.teams || await espn.getTeams();
+    const homeTeam = teams.find(t => t.abbr === game.home.abbr);
+    const awayTeam = teams.find(t => t.abbr === game.away.abbr);
+
+    // Build merged response
+    const response = {
+      game: { home: game.home, away: game.away, date: game.date, status: game.status },
+      source: realProps ? 'odds-api' : 'model',
+      gameLines: null,
+      playerProps: []
+    };
+
+    // Game lines
+    if (realGameOdds?.bookmakers?.length) {
+      response.gameLines = {
+        source: 'odds-api',
+        books: realGameOdds.bookmakers.map(bk => {
+          const markets = {};
+          bk.markets.forEach(m => { markets[m.key] = m.outcomes; });
+          return { name: bk.name, markets };
+        })
+      };
+    } else if (game.odds) {
+      response.gameLines = {
+        source: 'espn',
+        spread: game.odds.spread,
+        overUnder: game.odds.overUnder,
+        provider: game.odds.provider
+      };
+    }
+
+    // Player props
+    if (realProps?.length) {
+      response.playerProps = realProps.map(p => ({
+        name: p.name,
+        source: 'odds-api',
+        lines: p.lines.map(l => ({
+          stat: l.stat,
+          line: l.line,
+          overOdds: l.bestOver?.odds || l.over?.odds || -110,
+          underOdds: l.bestUnder?.odds || l.under?.odds || -110,
+          book: l.bestOver?.book || l.over?.book || 'Best',
+          allBooks: l.allBooks || []
+        }))
+      }));
+    } else {
+      // Fallback to ESPN model
+      const fetchProps = async (teamId, teamAbbr) => {
+        if (!teamId) return [];
+        const roster = await espn.getPlayerStats(teamId);
+        const overviews = await Promise.allSettled(
+          roster.slice(0, 10).map(p => espn.getPlayerOverview(p.id))
+        );
+        const result = [];
+        roster.slice(0, 10).forEach((player, i) => {
+          const ov = overviews[i]?.status === 'fulfilled' ? overviews[i].value : null;
+          const s = ov?.season;
+          if (!s?.avgPoints || parseFloat(s.avgPoints) < 2) return;
+          const pts = parseFloat(s.avgPoints);
+          const reb = parseFloat(s.avgRebounds);
+          const ast = parseFloat(s.avgAssists);
+          const stl = parseFloat(s.avgSteals);
+          const blk = parseFloat(s.avgBlocks);
+          const lines = [];
+          if (pts >= 5) lines.push({ stat: 'PTS', line: Math.round(pts * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: pts });
+          if (reb >= 2) lines.push({ stat: 'REB', line: Math.round(reb * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: reb });
+          if (ast >= 1.5) lines.push({ stat: 'AST', line: Math.round(ast * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: ast });
+          if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.round(stl * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: stl });
+          if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.round(blk * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: blk });
+          if (pts >= 10) lines.push({ stat: 'PRA', line: Math.round((pts + reb + ast) * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: +(pts+reb+ast).toFixed(1) });
+          if (lines.length) result.push({ name: player.name, team: teamAbbr, source: 'model', headshot: player.headshot, position: player.position, lines });
+        });
+        return result;
+      };
+
+      const [homeProps, awayProps] = await Promise.all([
+        fetchProps(homeTeam?.id, game.home.abbr),
+        fetchProps(awayTeam?.id, game.away.abbr)
+      ]);
+      response.playerProps = [...awayProps, ...homeProps];
+    }
+
+    cache.set(propsCacheKey, response, TTL.PROPS_MERGED);
+    res.json(response);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// SSE: Live event stream
+app.get('/api/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive'
+  });
+
+  res.write(`data: ${JSON.stringify({ type: 'connected', time: new Date().toISOString() })}\n\n`);
+  clients.add(res);
+
+  req.on('close', () => {
+    clients.delete(res);
+  });
+});
+
+function broadcast(data) {
+  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  for (const client of clients) {
+    client.write(msg);
+  }
+}
+
+// Auto-sweep loop
+async function sweepLoop() {
+  try {
+    const data = await runSweep(true);
+    broadcast({ type: 'sweep', timestamp: data.timestamp, games: data.games, injuries: data.injuries });
+  } catch (e) {
+    console.error('[SWEEP-LOOP]', e.message);
+  }
+}
+
+// Initial sweep + start loop
+app.listen(PORT, async () => {
+  console.log(`\n  NBA PLAYOFF INTELLIGENCE TERMINAL`);
+  console.log(`  ══════════════════════════════════`);
+  console.log(`  Dashboard: http://localhost:${PORT}`);
+  console.log(`  API:       http://localhost:${PORT}/api/sweep`);
+  console.log(`  Stream:    http://localhost:${PORT}/api/stream`);
+  console.log(`  ──────────────────────────────────`);
+  console.log(`  Sources: ESPN (free) | NBA.com (free)`);
+  console.log(`  Optional: ODDS_API_KEY, BDL_API_KEY`);
+  console.log(`  ══════════════════════════════════\n`);
+
+  await sweepLoop();
+  setInterval(sweepLoop, 60_000);
+});

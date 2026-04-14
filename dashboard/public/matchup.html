@@ -1,0 +1,1944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBA MATCHUP ANALYZER</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+
+  :root {
+    --bg: #030508;
+    --panel: #0a0e14;
+    --panel2: #0d1219;
+    --border: #1a2a3a;
+    --border-glow: #0f4f6f;
+    --cyan: #00e5ff;
+    --green: #00ff88;
+    --amber: #ffb300;
+    --red: #ff3d3d;
+    --magenta: #ff00ff;
+    --text: #c8d6e5;
+    --dim: #4a5568;
+    --blue: #3498db;
+    --purple: #9b59b6;
+    --team-a: #00e5ff;
+    --team-b: #ff6b35;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    min-height: 100vh;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.015) 2px, rgba(0,229,255,0.015) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Header */
+  .header {
+    background: linear-gradient(180deg, #0a1520 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--border-glow);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    background: linear-gradient(135deg, var(--cyan), var(--green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .logo-sub {
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 16px;
+  }
+
+  .nav-links a {
+    color: var(--dim);
+    text-decoration: none;
+    font-size: 10px;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    transition: all 0.2s;
+  }
+
+  .nav-links a:hover, .nav-links a.active {
+    color: var(--cyan);
+    border-color: var(--border-glow);
+    background: rgba(0,229,255,0.05);
+  }
+
+  /* Selector Bar */
+  .selector-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+
+  .team-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .team-selector.right { justify-content: flex-end; }
+
+  .vs-badge {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--dim);
+    text-align: center;
+    padding: 0 20px;
+  }
+
+  select {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    min-width: 200px;
+  }
+
+  select:focus { border-color: var(--cyan); outline: none; }
+
+  .team-selector .team-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .team-badge img {
+    width: 36px; height: 36px;
+    object-fit: contain;
+  }
+
+  .team-badge .team-info {
+    font-size: 11px;
+  }
+
+  .team-badge .team-name-lg {
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  .team-badge .team-rec {
+    color: var(--dim);
+    font-size: 10px;
+  }
+
+  /* Main Layout */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    padding: 2px;
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+
+  .main .full-width { grid-column: 1 / -1; }
+
+  /* Panel */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .panel:hover { border-color: var(--border-glow); }
+
+  .panel-header {
+    background: linear-gradient(90deg, rgba(0,229,255,0.08) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--cyan);
+  }
+
+  .panel-header.team-a-header {
+    background: linear-gradient(90deg, rgba(0,229,255,0.12) 0%, transparent 100%);
+  }
+
+  .panel-header.team-b-header {
+    background: linear-gradient(90deg, rgba(255,107,53,0.12) 0%, transparent 100%);
+    color: var(--team-b);
+  }
+
+  .panel-body {
+    padding: 10px 12px;
+    max-height: 600px;
+    overflow-y: auto;
+  }
+
+  .panel-body::-webkit-scrollbar { width: 4px; }
+  .panel-body::-webkit-scrollbar-track { background: var(--bg); }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+  /* Comparison Bars */
+  .comp-row {
+    display: grid;
+    grid-template-columns: 80px 1fr 50px 1fr 80px;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .comp-label {
+    font-size: 9px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-align: right;
+  }
+
+  .comp-val {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .comp-val.left { text-align: right; color: var(--team-a); }
+  .comp-val.right { text-align: left; color: var(--team-b); }
+
+  .comp-stat-name {
+    text-align: center;
+    font-size: 9px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .comp-bar-container {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.03);
+  }
+
+  .comp-bar-left {
+    background: var(--team-a);
+    border-radius: 4px 0 0 4px;
+    transition: width 0.4s ease;
+  }
+
+  .comp-bar-right {
+    background: var(--team-b);
+    border-radius: 0 4px 4px 0;
+    transition: width 0.4s ease;
+    margin-left: auto;
+  }
+
+  .comp-bar-fill-left {
+    height: 100%;
+    background: linear-gradient(90deg, transparent, var(--team-a));
+    transition: width 0.4s ease;
+  }
+
+  .comp-bar-fill-right {
+    height: 100%;
+    background: linear-gradient(270deg, transparent, var(--team-b));
+    transition: width 0.4s ease;
+  }
+
+  /* Roster Table */
+  .roster-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .roster-table th {
+    text-align: left;
+    padding: 5px 6px;
+    color: var(--dim);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .roster-table th:hover { color: var(--cyan); }
+  .roster-table th.sorted { color: var(--cyan); }
+
+  .roster-table td {
+    padding: 5px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .roster-table tr { cursor: pointer; transition: background 0.15s; }
+  .roster-table tr:hover td { background: rgba(0,229,255,0.04); }
+  .roster-table tr.selected td { background: rgba(0,229,255,0.08); border-color: var(--border-glow); }
+
+  .player-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .player-headshot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(255,255,255,0.05);
+  }
+
+  .player-name { font-weight: 500; }
+  .player-pos { color: var(--dim); font-size: 10px; }
+
+  /* Player Compare Panel */
+  .player-compare {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0;
+    padding: 0;
+  }
+
+  .player-card {
+    padding: 16px;
+    text-align: center;
+  }
+
+  .player-card.a { border-right: 1px solid var(--border); }
+  .player-card.b { border-left: 1px solid var(--border); }
+
+  .player-card .headshot-lg {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: rgba(255,255,255,0.05);
+    margin: 0 auto 8px;
+    display: block;
+    border: 2px solid var(--border);
+  }
+
+  .player-card.a .headshot-lg { border-color: var(--team-a); }
+  .player-card.b .headshot-lg { border-color: var(--team-b); }
+
+  .player-card .p-name {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 2px;
+  }
+
+  .player-card .p-meta {
+    color: var(--dim);
+    font-size: 10px;
+    margin-bottom: 10px;
+  }
+
+  .player-card .p-stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+  }
+
+  .p-stat-box {
+    background: rgba(0,0,0,0.3);
+    padding: 6px 4px;
+    border-radius: 3px;
+  }
+
+  .p-stat-val {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .player-card.a .p-stat-val { color: var(--team-a); }
+  .player-card.b .p-stat-val { color: var(--team-b); }
+
+  .p-stat-label {
+    font-size: 8px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .player-compare-center {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 60px 0 0 0;
+    min-width: 160px;
+  }
+
+  .pc-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 11px;
+    height: 28px;
+  }
+
+  .pc-val { font-weight: 600; min-width: 35px; }
+  .pc-val.a { color: var(--team-a); text-align: right; }
+  .pc-val.b { color: var(--team-b); text-align: left; }
+  .pc-label {
+    font-size: 8px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    min-width: 30px;
+    text-align: center;
+  }
+
+  .pc-bar {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .pc-bar.a { background: linear-gradient(90deg, transparent, var(--team-a)); }
+  .pc-bar.b { background: linear-gradient(270deg, transparent, var(--team-b)); }
+
+  /* Injury list */
+  .injury-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    font-size: 11px;
+  }
+
+  .injury-badge {
+    padding: 2px 6px;
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .injury-out { background: rgba(255,61,61,0.2); color: var(--red); }
+  .injury-dtd { background: rgba(255,179,0,0.15); color: var(--amber); }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 40px;
+    color: var(--dim);
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 24px; height: 24px;
+    border: 2px solid var(--border);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+  .empty-state {
+    text-align: center;
+    padding: 30px;
+    color: var(--dim);
+    font-size: 11px;
+  }
+
+  .empty-state .arrow {
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: var(--cyan);
+  }
+
+  /* Player dropdown */
+  .player-select-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .player-select-row label {
+    font-size: 9px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .player-select-row select {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Odds embedded */
+  .odds-embed {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .odds-box {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    text-align: center;
+  }
+
+  .odds-box-label {
+    font-size: 8px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .odds-box-val {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--cyan);
+  }
+
+  .odds-box-sub {
+    font-size: 9px;
+    color: var(--dim);
+    margin-top: 2px;
+  }
+
+  /* Sliders */
+  .slider-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(0,0,0,0.3);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .slider-group label {
+    font-size: 9px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    min-width: 70px;
+  }
+
+  .slider-group input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 160px;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .slider-group input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 6px var(--cyan);
+    cursor: pointer;
+  }
+
+  .slider-group input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 2px solid var(--bg);
+    box-shadow: 0 0 6px var(--cyan);
+    cursor: pointer;
+  }
+
+  .slider-val {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    color: var(--cyan);
+    font-weight: 700;
+    min-width: 50px;
+  }
+
+  .slider-presets {
+    display: flex;
+    gap: 4px;
+  }
+
+  .slider-presets button {
+    background: rgba(0,229,255,0.06);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    padding: 3px 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .slider-presets button:hover,
+  .slider-presets button.active {
+    color: var(--cyan);
+    border-color: var(--cyan);
+    background: rgba(0,229,255,0.12);
+  }
+
+  .window-indicator {
+    font-size: 10px;
+    color: var(--amber);
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .window-indicator .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+    animation: pulse 1.5s infinite;
+  }
+
+  /* Stats Deep Dive Panel */
+  .stats-deep {
+    background: var(--panel2);
+    border: 1px solid var(--border-glow);
+    border-radius: 6px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+
+  .stats-deep-header {
+    background: linear-gradient(90deg, rgba(0,229,255,0.1), transparent);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stats-deep-header h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--cyan);
+  }
+
+  .stats-deep-close {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--dim);
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+  }
+
+  .stats-deep-close:hover { color: var(--cyan); border-color: var(--cyan); }
+
+  .stats-deep-body {
+    padding: 12px 14px;
+    max-height: 700px;
+    overflow-y: auto;
+  }
+
+  .dist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+  }
+
+  .dist-card {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px;
+  }
+
+  .dist-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .dist-stat-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 1px;
+  }
+
+  .dist-shape-badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: rgba(0,229,255,0.1);
+    color: var(--cyan);
+  }
+
+  .dist-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .dist-stat-item {
+    text-align: center;
+    padding: 4px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 2px;
+  }
+
+  .dist-stat-item .val {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .dist-stat-item .lbl {
+    font-size: 8px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Histogram */
+  .histogram {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 50px;
+    margin-bottom: 6px;
+    padding-top: 4px;
+  }
+
+  .hist-bar {
+    flex: 1;
+    background: linear-gradient(180deg, var(--cyan), rgba(0,229,255,0.2));
+    border-radius: 2px 2px 0 0;
+    min-height: 1px;
+    position: relative;
+    transition: height 0.3s;
+  }
+
+  .hist-bar:hover {
+    background: var(--green);
+  }
+
+  .hist-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 8px;
+    color: var(--dim);
+  }
+
+  /* Over/Under analysis */
+  .ou-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    font-size: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .ou-line {
+    color: var(--dim);
+    min-width: 40px;
+    text-align: right;
+  }
+
+  .ou-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .ou-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  .ou-pct {
+    min-width: 35px;
+    font-weight: 600;
+  }
+
+  /* Trend arrow */
+  .trend-up { color: var(--green); }
+  .trend-down { color: var(--red); }
+  .trend-flat { color: var(--dim); }
+
+  /* Consistency badge */
+  .consistency-high { color: var(--green); }
+  .consistency-medium { color: var(--amber); }
+  .consistency-low { color: var(--red); }
+  .consistency-very-low { color: var(--magenta); }
+
+  /* Box plot */
+  .boxplot {
+    height: 20px;
+    position: relative;
+    margin: 6px 0;
+    background: rgba(255,255,255,0.02);
+    border-radius: 2px;
+  }
+
+  .boxplot-whisker {
+    position: absolute;
+    top: 9px;
+    height: 2px;
+    background: var(--dim);
+  }
+
+  .boxplot-box {
+    position: absolute;
+    top: 3px;
+    height: 14px;
+    background: rgba(0,229,255,0.15);
+    border: 1px solid var(--cyan);
+    border-radius: 2px;
+  }
+
+  .boxplot-median {
+    position: absolute;
+    top: 2px;
+    height: 16px;
+    width: 2px;
+    background: var(--green);
+  }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+    .main .full-width { grid-column: 1; }
+    .selector-bar { grid-template-columns: 1fr; gap: 8px; }
+    .team-selector.right { justify-content: flex-start; }
+    .vs-badge { padding: 4px 0; }
+    .player-compare { grid-template-columns: 1fr; }
+    .player-compare-center { flex-direction: row; flex-wrap: wrap; min-width: 0; padding: 8px; }
+    .dist-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="logo">MATCHUP ANALYZER</div>
+    <div class="logo-sub">Team & Player Comparison // 2026 Playoffs</div>
+  </div>
+  <div class="nav-links">
+    <a href="/terminal.html">Terminal</a>
+    <a href="/matchup.html" class="active">Matchup</a>
+    <a href="/slips.html">Slips</a>
+    <a href="/bracket.html">Bracket</a>
+  </div>
+</div>
+
+<div class="selector-bar">
+  <div class="team-selector">
+    <select id="team-a-select" onchange="loadTeam('a')">
+      <option value="">-- Select Team A --</option>
+    </select>
+    <div class="team-badge" id="badge-a"></div>
+  </div>
+  <div class="vs-badge">VS</div>
+  <div class="team-selector right">
+    <div class="team-badge" id="badge-b"></div>
+    <select id="team-b-select" onchange="loadTeam('b')">
+      <option value="">-- Select Team B --</option>
+    </select>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Team Comparison Stats -->
+  <div class="panel full-width" id="comp-panel" style="display:none;">
+    <div class="panel-header">
+      Team Comparison
+      <span id="comp-window-label" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--amber);"></span>
+    </div>
+    <div class="slider-bar" id="team-slider-bar" style="display:none;">
+      <div class="slider-presets">
+        <button onclick="setTeamWindow('full')" class="active">SEASON</button>
+        <button onclick="setTeamWindow('L5')">L5</button>
+        <button onclick="setTeamWindow('L10')">L10</button>
+        <button onclick="setTeamWindow('L15')">L15</button>
+        <button onclick="setTeamWindow('L20')">L20</button>
+        <button onclick="setTeamWindow('L30')">L30</button>
+        <button onclick="setTeamWindow('home')">HOME</button>
+        <button onclick="setTeamWindow('away')">AWAY</button>
+      </div>
+    </div>
+    <div class="panel-body" id="comp-body"></div>
+  </div>
+
+  <!-- Odds Panel -->
+  <div class="panel full-width" id="odds-panel" style="display:none;">
+    <div class="panel-header">Betting Lines</div>
+    <div class="panel-body" id="odds-body"></div>
+  </div>
+
+  <!-- Team A Roster -->
+  <div class="panel">
+    <div class="panel-header team-a-header">
+      <span id="roster-a-title">Team A Roster</span>
+      <span id="roster-a-count" style="font-family:'JetBrains Mono';font-size:10px;"></span>
+    </div>
+    <div class="panel-body" id="roster-a">
+      <div class="empty-state"><div class="arrow">&uarr;</div>Select a team above</div>
+    </div>
+  </div>
+
+  <!-- Team B Roster -->
+  <div class="panel">
+    <div class="panel-header team-b-header">
+      <span id="roster-b-title">Team B Roster</span>
+      <span id="roster-b-count" style="font-family:'JetBrains Mono';font-size:10px;"></span>
+    </div>
+    <div class="panel-body" id="roster-b">
+      <div class="empty-state"><div class="arrow">&uarr;</div>Select a team above</div>
+    </div>
+  </div>
+
+  <!-- Player Compare -->
+  <div class="panel full-width" id="player-panel" style="display:none;">
+    <div class="panel-header">Player Comparison</div>
+    <div class="player-select-row">
+      <label>Player A:</label>
+      <select id="player-a-select" onchange="loadPlayerCompare()">
+        <option value="">-- select --</option>
+      </select>
+      <label style="margin-left:16px;">Player B:</label>
+      <select id="player-b-select" onchange="loadPlayerCompare()">
+        <option value="">-- select --</option>
+      </select>
+    </div>
+    <div id="player-compare-body">
+      <div class="empty-state">Select players from each team to compare</div>
+    </div>
+  </div>
+
+  <!-- Team A Injuries -->
+  <div class="panel">
+    <div class="panel-header team-a-header">
+      <span>Injuries</span>
+      <span id="inj-a-count" style="font-family:'JetBrains Mono';font-size:10px;"></span>
+    </div>
+    <div class="panel-body" id="injuries-a">
+      <div class="empty-state" style="padding:12px;">--</div>
+    </div>
+  </div>
+
+  <!-- Team B Injuries -->
+  <div class="panel">
+    <div class="panel-header team-b-header">
+      <span>Injuries</span>
+      <span id="inj-b-count" style="font-family:'JetBrains Mono';font-size:10px;"></span>
+    </div>
+    <div class="panel-body" id="injuries-b">
+      <div class="empty-state" style="padding:12px;">--</div>
+    </div>
+  </div>
+
+  <!-- Player Stats Deep Dive -->
+  <div class="panel full-width" id="deep-dive-panel" style="display:none;">
+    <div class="panel-header">
+      <span id="deep-dive-title">Player Statistical Analysis</span>
+      <button class="stats-deep-close" onclick="closeDeepDive()">CLOSE</button>
+    </div>
+    <div class="slider-bar" id="slider-bar" style="display:none;">
+      <div class="slider-group">
+        <label>Game Window</label>
+        <input type="range" id="window-slider" min="5" max="82" value="82" step="1" oninput="onWindowSlide()">
+        <span class="slider-val" id="window-val">ALL</span>
+      </div>
+      <div class="slider-presets">
+        <button onclick="setWindow(5)">L5</button>
+        <button onclick="setWindow(10)">L10</button>
+        <button onclick="setWindow(15)">L15</button>
+        <button onclick="setWindow(20)">L20</button>
+        <button onclick="setWindow(30)">L30</button>
+        <button onclick="setWindow(82)" class="active">ALL</button>
+      </div>
+      <div class="slider-group" style="margin-left:16px;">
+        <label>Start Game</label>
+        <input type="range" id="offset-slider" min="0" max="70" value="0" step="1" oninput="onOffsetSlide()">
+        <span class="slider-val" id="offset-val">0</span>
+      </div>
+      <div class="window-indicator" id="window-indicator">
+        <div class="dot"></div>
+        <span id="window-range-text">Games 1-82</span>
+      </div>
+    </div>
+    <div class="panel-body" id="deep-dive-body" style="max-height:800px;">
+      <div class="loading"><div class="spinner"></div><br>Loading gamelog...</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// State
+const state = {
+  teams: [],
+  a: { detail: null, stats: null, roster: [], injuries: [], players: {}, gameData: null },
+  b: { detail: null, stats: null, roster: [], injuries: [], players: {}, gameData: null }
+};
+
+// Init
+async function init() {
+  const res = await fetch('/api/teams');
+  state.teams = await res.json();
+
+  // Sort alphabetically
+  state.teams.sort((a, b) => a.name.localeCompare(b.name));
+
+  const optionsHtml = state.teams.map(t =>
+    `<option value="${t.id}">${t.name} ${t.record ? '(' + t.record + ')' : ''}</option>`
+  ).join('');
+
+  $('team-a-select').innerHTML = '<option value="">-- Select Team A --</option>' + optionsHtml;
+  $('team-b-select').innerHTML = '<option value="">-- Select Team B --</option>' + optionsHtml;
+}
+
+async function loadTeam(side) {
+  const sel = $(`team-${side}-select`);
+  const teamId = sel.value;
+  if (!teamId) return;
+
+  const badge = $(`badge-${side}`);
+  const rosterEl = $(`roster-${side}`);
+  rosterEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  try {
+    // Fetch team detail + game log in parallel
+    const [teamRes, gamesRes] = await Promise.all([
+      fetch(`/api/teams/${teamId}`),
+      fetch(`/api/teams/${teamId}/games`)
+    ]);
+    const data = await teamRes.json();
+    const gamesData = await gamesRes.json();
+
+    state[side].detail = data.detail;
+    state[side].stats = data.stats;
+    state[side].roster = data.roster || [];
+    state[side].injuries = data.injuries || [];
+    state[side].gameData = gamesData;
+
+    // Badge
+    if (data.detail) {
+      badge.innerHTML = `
+        <img src="${data.detail.logo}" alt="" style="width:36px;height:36px;object-fit:contain;">
+        <div class="team-info">
+          <div class="team-name-lg" style="color:var(--team-${side})">${data.detail.abbr}</div>
+          <div class="team-rec">${data.detail.record?.summary || ''} | ${data.detail.standingSummary || ''}</div>
+        </div>`;
+    }
+
+    // Roster title
+    $(`roster-${side}-title`).textContent = data.detail?.name || `Team ${side.toUpperCase()}`;
+    $(`roster-${side}-count`).textContent = state[side].roster.length + ' players';
+
+    // Load player stats for all roster members
+    await loadRosterStats(side);
+
+    // Render roster
+    renderRoster(side);
+
+    // Render injuries
+    renderInjuries(side);
+
+    // If both teams loaded, show comparison
+    if (state.a.detail && state.b.detail) {
+      $('team-slider-bar').style.display = 'flex';
+      currentTeamWindow = 'full';
+      renderTeamComparison();
+      renderOdds();
+      showPlayerPanel();
+    }
+  } catch (e) {
+    rosterEl.innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+  }
+}
+
+async function loadRosterStats(side) {
+  const roster = state[side].roster;
+  // Load stats for first 15 players in parallel
+  const toLoad = roster.slice(0, 15);
+  const results = await Promise.allSettled(
+    toLoad.map(p => fetch(`/api/players/${p.id}`).then(r => r.json()))
+  );
+
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value?.season) {
+      state[side].players[toLoad[i].id] = r.value;
+    }
+  });
+}
+
+function renderRoster(side) {
+  const el = $(`roster-${side}`);
+  const roster = state[side].roster;
+  const players = state[side].players;
+
+  if (!roster.length) {
+    el.innerHTML = '<div class="empty-state">No roster data</div>';
+    return;
+  }
+
+  // Sort by PPG descending
+  const sorted = [...roster].sort((a, b) => {
+    const aPts = parseFloat(players[a.id]?.season?.avgPoints || '0');
+    const bPts = parseFloat(players[b.id]?.season?.avgPoints || '0');
+    return bPts - aPts;
+  });
+
+  el.innerHTML = `
+    <table class="roster-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>PTS</th>
+          <th>REB</th>
+          <th>AST</th>
+          <th>FGM</th>
+          <th>FGA</th>
+          <th>FG%</th>
+          <th>3PM</th>
+          <th>3PA</th>
+          <th>3P%</th>
+          <th>FTM</th>
+          <th>FTA</th>
+          <th>FT%</th>
+          <th>STL</th>
+          <th>BLK</th>
+          <th>MIN</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(p => {
+          const s = players[p.id]?.season || {};
+          const hasStat = s.avgPoints;
+          return `
+            <tr onclick="selectPlayer('${side}','${p.id}')" id="row-${side}-${p.id}">
+              <td>
+                <div class="player-cell">
+                  ${p.headshot ? `<img class="player-headshot" src="${p.headshot}" alt="" onerror="this.style.display='none'">` : ''}
+                  <div>
+                    <div class="player-name">#${p.jersey} ${p.name}</div>
+                    <div class="player-pos">${p.position} | ${p.height} ${p.weight}lbs</div>
+                  </div>
+                </div>
+              </td>
+              <td style="color:var(--cyan);font-weight:600">${hasStat ? s.avgPoints : '-'}</td>
+              <td>${hasStat ? s.avgRebounds : '-'}</td>
+              <td>${hasStat ? s.avgAssists : '-'}</td>
+              <td>${s.fgm || '-'}</td>
+              <td>${s.fga || '-'}</td>
+              <td>${hasStat ? s.fieldGoalPct + '%' : '-'}</td>
+              <td style="color:var(--green)">${s.tpm || '-'}</td>
+              <td>${s.tpa || '-'}</td>
+              <td>${hasStat ? s.threePointPct + '%' : '-'}</td>
+              <td>${s.ftm || '-'}</td>
+              <td>${s.fta || '-'}</td>
+              <td>${hasStat ? s.freeThrowPct + '%' : '-'}</td>
+              <td>${hasStat ? s.avgSteals : '-'}</td>
+              <td>${hasStat ? s.avgBlocks : '-'}</td>
+              <td style="color:var(--dim)">${hasStat ? s.avgMinutes : '-'}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderInjuries(side) {
+  const el = $(`injuries-${side}`);
+  const injuries = state[side].injuries;
+  $(`inj-${side}-count`).textContent = injuries.length || '';
+
+  if (!injuries.length) {
+    el.innerHTML = '<div style="color:var(--green);font-size:10px;padding:8px;">All clear</div>';
+    return;
+  }
+
+  el.innerHTML = injuries.map(inj => {
+    const cls = inj.status === 'Out' ? 'injury-out' : 'injury-dtd';
+    return `
+      <div class="injury-item">
+        <span class="injury-badge ${cls}">${inj.status}</span>
+        <span style="font-weight:500">${inj.player}</span>
+        <span style="color:var(--dim);font-size:10px">${inj.position}</span>
+        <span style="color:var(--dim);font-size:9px;margin-left:auto;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${inj.detail || ''}</span>
+      </div>`;
+  }).join('');
+}
+
+// Extract per-game value from a team stat entry
+function pgVal(stat) {
+  if (!stat) return 0;
+  // Percentages: use display directly (46.7, 36.7, etc.)
+  if (stat.name?.includes('Percentage') || stat.name?.includes('Efficiency') || stat.name?.includes('Ratio')) {
+    return parseFloat(stat.display || '0');
+  }
+  // Counting stats: prefer perGame, fallback to display
+  if (stat.perGame != null && stat.perGame !== 'None') return parseFloat(stat.perGame);
+  // If display looks like a per-game number (< 200), use it
+  const d = parseFloat(stat.display || '0');
+  return d > 200 ? 0 : d; // season totals are 1000+, skip those
+}
+
+function pgDisp(stat) {
+  if (!stat) return '-';
+  if (stat.name?.includes('Percentage')) return stat.display + '%';
+  if (stat.name?.includes('Efficiency') || stat.name?.includes('Ratio')) return stat.display;
+  if (stat.perGame != null && stat.perGame !== 'None') return stat.perGame;
+  const d = parseFloat(stat.display || '0');
+  return d > 200 ? '-' : stat.display;
+}
+
+let currentTeamWindow = 'full';
+
+function setTeamWindow(w) {
+  currentTeamWindow = w;
+  document.querySelectorAll('#team-slider-bar .slider-presets button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderTeamComparison();
+}
+
+function getWindowStats(side) {
+  const gd = state[side].gameData;
+  if (!gd) return null;
+  if (currentTeamWindow === 'full') return gd.full;
+  if (currentTeamWindow === 'home') return gd.homeSplit;
+  if (currentTeamWindow === 'away') return gd.awaySplit;
+  return gd.windows?.[currentTeamWindow] || gd.full;
+}
+
+function renderTeamComparison() {
+  $('comp-panel').style.display = '';
+
+  // Check if we have windowed game data
+  const wa = getWindowStats('a');
+  const wb = getWindowStats('b');
+
+  // Update window label
+  const wLabel = currentTeamWindow === 'full' ? 'Full Season' :
+    currentTeamWindow === 'home' ? 'Home Games' :
+    currentTeamWindow === 'away' ? 'Away Games' : `Last ${currentTeamWindow.replace('L','')} Games`;
+  $('comp-window-label').textContent = wLabel;
+
+  // If we have windowed data, render from game logs
+  if (wa && wb) {
+    let html = '';
+    html += makeCompRow('Record', `${wa.wins}-${wa.losses}`, `${wb.wins}-${wb.losses}`, wa.wins, wb.wins, Math.max(wa.wins, wb.wins, 1));
+    html += makeCompRow('Win %', wa.winPct + '%', wb.winPct + '%', wa.winPct, wb.winPct, 100);
+    html += makeCompRow('PPG', wa.ppg, wb.ppg, wa.ppg, wb.ppg, Math.max(wa.ppg, wb.ppg, 1));
+    html += makeCompRow('Opp PPG', wa.oppg, wb.oppg, wb.oppg, wa.oppg, Math.max(wa.oppg, wb.oppg, 1));
+    const dA = wa.diff; const dB = wb.diff;
+    html += makeCompRow('Net Rating', (dA >= 0 ? '+' : '') + dA, (dB >= 0 ? '+' : '') + dB, dA + 20, dB + 20, Math.max(dA, dB, 0.1) + 20);
+    html += makeCompRow('Scoring StdDev', wa.scoringStdDev, wb.scoringStdDev, wb.scoringStdDev, wa.scoringStdDev, Math.max(wa.scoringStdDev, wb.scoringStdDev, 1)); // lower is more consistent
+    html += makeCompRow('Games', wa.games, wb.games, wa.games, wb.games, Math.max(wa.games, wb.games, 1));
+
+    // Also show the ESPN team stats for full season context if available
+    if (currentTeamWindow === 'full') {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Detailed Stats (Season)</div>';
+      html += renderEspnStats();
+    }
+
+    $('comp-body').innerHTML = html;
+    return;
+  }
+
+  // Fallback to full ESPN stats
+  $('comp-body').innerHTML = renderEspnStats();
+}
+
+function renderEspnStats() {
+  const sa = state.a.stats;
+  const sb = state.b.stats;
+
+  if (!sa || !sb || !Object.keys(sa).length || !Object.keys(sb).length) {
+    return '<div class="empty-state">Stats loading...</div>';
+  }
+
+  const comparisons = [
+    { key: 'PTS', label: 'Points/Game', higher: true },
+    { key: 'REB', label: 'Rebounds/Game', higher: true },
+    { key: 'AST', label: 'Assists/Game', higher: true },
+    { key: 'FG%', label: 'Field Goal %', higher: true },
+    { key: '3P%', label: '3-Point %', higher: true },
+    { key: 'FT%', label: 'Free Throw %', higher: true },
+    { key: '2P%', label: '2-Point %', higher: true },
+    { key: 'STL', label: 'Steals/Game', higher: true },
+    { key: 'BLK', label: 'Blocks/Game', higher: true },
+    { key: 'TO', label: 'Turnovers/Game', higher: false },
+    { key: 'AST/TO', label: 'Assist/Turnover', higher: true },
+    { key: 'OR', label: 'Off Rebounds/Game', higher: true },
+    { key: 'DR', label: 'Def Rebounds/Game', higher: true },
+    { key: '3PM', label: '3PT Made/Game', higher: true },
+    { key: 'FTM', label: 'FT Made/Game', higher: true },
+    { key: 'PF', label: 'Fouls/Game', higher: false },
+    { key: 'SC-EFF', label: 'Scoring Efficiency', higher: true },
+  ];
+
+  let html = '';
+  for (const comp of comparisons) {
+    const a = sa[comp.key];
+    const b = sb[comp.key];
+    if (!a && !b) continue;
+    const va = pgVal(a);
+    const vb = pgVal(b);
+    if (va === 0 && vb === 0) continue;
+    const max = Math.max(va, vb, 0.1);
+    const effA = comp.higher ? va : vb;
+    const effB = comp.higher ? vb : va;
+    html += makeCompRow(comp.label, pgDisp(a), pgDisp(b), effA, effB, max);
+  }
+  return html;
+}
+
+function makeCompRow(label, dispA, dispB, valA, valB, max) {
+  const pctA = (valA / max * 100).toFixed(0);
+  const pctB = (valB / max * 100).toFixed(0);
+  const winA = valA > valB;
+  const winB = valB > valA;
+
+  return `
+    <div class="comp-row">
+      <div class="comp-val left" style="${winA ? 'font-weight:700' : 'opacity:0.6'}">${dispA}</div>
+      <div class="comp-bar-container">
+        <div style="width:${pctA}%;background:var(--team-a);height:100%;border-radius:4px 0 0 4px;opacity:${winA?1:0.3}"></div>
+      </div>
+      <div class="comp-stat-name">${label}</div>
+      <div class="comp-bar-container" style="justify-content:flex-end">
+        <div style="width:${pctB}%;background:var(--team-b);height:100%;border-radius:0 4px 4px 0;margin-left:auto;opacity:${winB?1:0.3}"></div>
+      </div>
+      <div class="comp-val right" style="${winB ? 'font-weight:700' : 'opacity:0.6'}">${dispB}</div>
+    </div>`;
+}
+
+function renderOdds() {
+  // Check if there's a matchup in today's games
+  const sweep = state.sweepData;
+  if (!sweep) return;
+
+  const aName = state.a.detail?.name?.toLowerCase() || '';
+  const bName = state.b.detail?.name?.toLowerCase() || '';
+  const aAbbr = state.a.detail?.abbr || '';
+  const bAbbr = state.b.detail?.abbr || '';
+
+  const matchedGame = (sweep.games || []).find(g => {
+    const h = g.home.name.toLowerCase();
+    const a = g.away.name.toLowerCase();
+    return (h.includes(aName.split(' ').pop()) || a.includes(aName.split(' ').pop())) &&
+           (h.includes(bName.split(' ').pop()) || a.includes(bName.split(' ').pop()));
+  });
+
+  if (matchedGame?.odds) {
+    $('odds-panel').style.display = '';
+    $('odds-body').innerHTML = `
+      <div style="text-align:center;margin-bottom:8px;font-size:13px;font-weight:600;">
+        ${matchedGame.away.abbr} @ ${matchedGame.home.abbr}
+        <span style="color:var(--dim);font-size:10px;margin-left:8px;">${matchedGame.broadcast || ''}</span>
+      </div>
+      <div class="odds-embed">
+        <div class="odds-box">
+          <div class="odds-box-label">Spread</div>
+          <div class="odds-box-val">${matchedGame.odds.spread}</div>
+          <div class="odds-box-sub">${matchedGame.odds.provider}</div>
+        </div>
+        <div class="odds-box">
+          <div class="odds-box-label">Over/Under</div>
+          <div class="odds-box-val">${matchedGame.odds.overUnder}</div>
+          <div class="odds-box-sub">Total Points</div>
+        </div>
+        <div class="odds-box">
+          <div class="odds-box-label">Status</div>
+          <div class="odds-box-val" style="font-size:12px;">${matchedGame.status}</div>
+          <div class="odds-box-sub">${matchedGame.venue || ''}</div>
+        </div>
+      </div>`;
+  } else {
+    $('odds-panel').style.display = 'none';
+  }
+}
+
+function showPlayerPanel() {
+  $('player-panel').style.display = '';
+  const selA = $('player-a-select');
+  const selB = $('player-b-select');
+
+  selA.innerHTML = '<option value="">-- select --</option>' +
+    state.a.roster.map(p => {
+      const s = state.a.players[p.id]?.season;
+      const pts = s?.avgPoints ? ` (${s.avgPoints} ppg)` : '';
+      return `<option value="${p.id}">${p.name}${pts}</option>`;
+    }).join('');
+
+  selB.innerHTML = '<option value="">-- select --</option>' +
+    state.b.roster.map(p => {
+      const s = state.b.players[p.id]?.season;
+      const pts = s?.avgPoints ? ` (${s.avgPoints} ppg)` : '';
+      return `<option value="${p.id}">${p.name}${pts}</option>`;
+    }).join('');
+}
+
+function selectPlayer(side, playerId) {
+  // Highlight row
+  document.querySelectorAll(`#roster-${side} tr.selected`).forEach(r => r.classList.remove('selected'));
+  const row = document.getElementById(`row-${side}-${playerId}`);
+  if (row) row.classList.add('selected');
+
+  // Set dropdown
+  $(`player-${side}-select`).value = playerId;
+  loadPlayerCompare();
+}
+
+async function loadPlayerCompare() {
+  const idA = $('player-a-select').value;
+  const idB = $('player-b-select').value;
+  const body = $('player-compare-body');
+
+  if (!idA && !idB) {
+    body.innerHTML = '<div class="empty-state">Select players from each team to compare</div>';
+    return;
+  }
+
+  // Ensure we have stats
+  if (idA && !state.a.players[idA]) {
+    const res = await fetch(`/api/players/${idA}`);
+    state.a.players[idA] = await res.json();
+  }
+  if (idB && !state.b.players[idB]) {
+    const res = await fetch(`/api/players/${idB}`);
+    state.b.players[idB] = await res.json();
+  }
+
+  const pa = idA ? state.a.players[idA] : null;
+  const pb = idB ? state.b.players[idB] : null;
+  const rosterA = state.a.roster.find(p => p.id === idA);
+  const rosterB = state.b.roster.find(p => p.id === idB);
+  const sa = pa?.season || {};
+  const sb = pb?.season || {};
+
+  const statFields = [
+    { key: 'avgPoints', label: 'PTS' },
+    { key: 'avgRebounds', label: 'REB' },
+    { key: 'avgAssists', label: 'AST' },
+    { key: 'avgSteals', label: 'STL' },
+    { key: 'avgBlocks', label: 'BLK' },
+    { key: 'fieldGoalPct', label: 'FG%' },
+    { key: 'threePointPct', label: '3P%' },
+    { key: 'freeThrowPct', label: 'FT%' },
+    { key: 'avgMinutes', label: 'MIN' },
+    { key: 'avgTurnovers', label: 'TO' },
+    { key: 'gamesPlayed', label: 'GP' },
+  ];
+
+  const makeCard = (roster, stats, side) => {
+    if (!roster) return '<div class="player-card ' + side + '"><div class="empty-state">Select player</div></div>';
+    const s = stats;
+    return `
+      <div class="player-card ${side}">
+        ${roster.headshot ? `<img class="headshot-lg" src="${roster.headshot}" alt="" onerror="this.style.display='none'">` : '<div class="headshot-lg"></div>'}
+        <div class="p-name">${roster.name}</div>
+        <div class="p-meta">#${roster.jersey} ${roster.position} | ${roster.height} ${roster.weight}lbs | Age ${roster.age}</div>
+        <div class="p-stat-grid">
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgPoints || '-'}</div><div class="p-stat-label">PTS</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgRebounds || '-'}</div><div class="p-stat-label">REB</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgAssists || '-'}</div><div class="p-stat-label">AST</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgSteals || '-'}</div><div class="p-stat-label">STL</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgBlocks || '-'}</div><div class="p-stat-label">BLK</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.fieldGoalPct ? s.fieldGoalPct + '%' : '-'}</div><div class="p-stat-label">FG%</div></div>
+        </div>
+      </div>`;
+  };
+
+  // Center comparison bars
+  let centerHtml = '';
+  if (pa && pb) {
+    centerHtml = statFields.map(f => {
+      const va = parseFloat(sa[f.key] || 0);
+      const vb = parseFloat(sb[f.key] || 0);
+      const max = Math.max(va, vb, 0.1);
+      const pctA = (va / max * 100).toFixed(0);
+      const pctB = (vb / max * 100).toFixed(0);
+      const winA = f.key === 'avgTurnovers' ? va < vb : va > vb;
+      const winB = f.key === 'avgTurnovers' ? vb < va : vb > va;
+
+      return `
+        <div class="pc-row">
+          <span class="pc-val a" style="${winA ? 'font-weight:700' : 'opacity:0.5'}">${sa[f.key] || '-'}</span>
+          <div class="pc-bar a" style="width:${pctA * 0.4}px"></div>
+          <span class="pc-label">${f.label}</span>
+          <div class="pc-bar b" style="width:${pctB * 0.4}px"></div>
+          <span class="pc-val b" style="${winB ? 'font-weight:700' : 'opacity:0.5'}">${sb[f.key] || '-'}</span>
+        </div>`;
+    }).join('');
+  }
+
+  body.innerHTML = `
+    <div class="player-compare">
+      ${makeCard(rosterA, sa, 'a')}
+      <div class="player-compare-center">${centerHtml || '<div class="empty-state" style="padding:40px 8px;">Select both<br>players</div>'}</div>
+      ${makeCard(rosterB, sb, 'b')}
+    </div>`;
+}
+
+// Load sweep data for odds
+async function loadSweepData() {
+  try {
+    const res = await fetch('/api/sweep');
+    state.sweepData = await res.json();
+  } catch {}
+}
+
+// Deep Dive Statistical Analysis
+// Store raw gamelog for client-side recomputation
+let deepDiveRaw = null;
+let deepDiveLabels = [];
+const KEY_STATS = ['PTS', 'REB', 'AST', 'STL', 'BLK', '3PM', 'FGM', 'FGA', 'FTM', 'TO', 'MIN'];
+
+async function openDeepDive(side, playerId) {
+  const panel = $('deep-dive-panel');
+  const body = $('deep-dive-body');
+  const sliderBar = $('slider-bar');
+  panel.style.display = '';
+  sliderBar.style.display = 'none';
+  body.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading gamelog & computing distributions...</div>';
+
+  const roster = state[side].roster.find(p => p.id === playerId);
+  $('deep-dive-title').textContent = `Statistical Analysis: ${roster?.name || 'Player'}`;
+
+  try {
+    const res = await fetch(`/api/players/${playerId}/gamelog`);
+    const data = await res.json();
+
+    if (data.error || !data.distributions) {
+      body.innerHTML = `<div class="empty-state">${data.error || 'No gamelog data available'}</div>`;
+      return;
+    }
+
+    // Store raw values for each stat so we can recompute with window
+    deepDiveRaw = {};
+    deepDiveLabels = data.gamelog?.labels || [];
+    const allDist = data.distributions;
+    for (const key of KEY_STATS) {
+      if (allDist[key]?.values) {
+        // values from server are sorted — we need original order for windowing
+        // Use the gamelog games array to get values in game order
+        const games = data.gamelog?.games || [];
+        const vals = games.map(g => parseFloat(g.stats[`_${key}`] || g.stats[key] || '0')).filter(v => !isNaN(v));
+        deepDiveRaw[key] = vals;
+      }
+    }
+
+    const totalGames = Object.values(deepDiveRaw)[0]?.length || 82;
+
+    // Configure sliders
+    const ws = $('window-slider');
+    const os = $('offset-slider');
+    ws.max = totalGames;
+    ws.value = totalGames;
+    os.max = Math.max(totalGames - 5, 0);
+    os.value = 0;
+    $('window-val').textContent = 'ALL';
+    $('offset-val').textContent = '0';
+    updateWindowIndicator();
+    sliderBar.style.display = 'flex';
+
+    // Reset preset buttons
+    document.querySelectorAll('.slider-presets button').forEach(b => b.classList.remove('active'));
+    document.querySelector('.slider-presets button:last-child').classList.add('active');
+
+    // Render with full data
+    renderDistributions(allDist);
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+  }
+}
+
+function renderDistributions(dist) {
+  $('deep-dive-body').innerHTML = `
+    <div class="dist-grid">
+      ${KEY_STATS.map(key => {
+        const d = dist[key];
+        if (!d) return '';
+        return renderDistCard(key, d);
+      }).join('')}
+    </div>`;
+}
+
+// Client-side distribution computation (mirrors server logic)
+function computeDist(values) {
+  if (values.length < 3) return null;
+  const n = values.length;
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
+  const stdDev = Math.sqrt(variance);
+  const sorted = [...values].sort((a, b) => a - b);
+  const median = n % 2 === 0 ? (sorted[n/2 - 1] + sorted[n/2]) / 2 : sorted[Math.floor(n/2)];
+  const min = sorted[0];
+  const max = sorted[n - 1];
+  const q1 = sorted[Math.floor(n * 0.25)];
+  const q3 = sorted[Math.floor(n * 0.75)];
+  const iqr = q3 - q1;
+
+  const skewness = n > 2 && stdDev > 0
+    ? (n / ((n-1) * (n-2))) * values.reduce((a, b) => a + ((b - mean) / stdDev) ** 3, 0)
+    : 0;
+  const kurtosis = n > 3 && stdDev > 0
+    ? ((n * (n+1)) / ((n-1)*(n-2)*(n-3))) * values.reduce((a, b) => a + ((b - mean) / stdDev) ** 4, 0) - (3 * (n-1)**2) / ((n-2)*(n-3))
+    : 0;
+
+  let shape = 'Normal';
+  if (Math.abs(skewness) > 1) shape = skewness > 0 ? 'Right-skewed' : 'Left-skewed';
+  else if (Math.abs(skewness) > 0.5) shape = skewness > 0 ? 'Slightly right-skewed' : 'Slightly left-skewed';
+  if (kurtosis > 1) shape += ', heavy-tailed';
+  else if (kurtosis < -1) shape += ', light-tailed';
+
+  const binCount = 8;
+  const binWidth = (max - min) / binCount || 1;
+  const bins = Array(binCount).fill(0);
+  const binEdges = [];
+  for (let i = 0; i <= binCount; i++) binEdges.push(+(min + i * binWidth).toFixed(1));
+  for (const v of values) {
+    const idx = Math.min(Math.floor((v - min) / binWidth), binCount - 1);
+    bins[idx]++;
+  }
+
+  const cv = mean !== 0 ? (stdDev / mean) * 100 : 0;
+  let consistency = 'High';
+  if (cv > 50) consistency = 'Very Low';
+  else if (cv > 35) consistency = 'Low';
+  else if (cv > 20) consistency = 'Medium';
+
+  const recent = values.slice(-10);
+  const recentMean = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : mean;
+  const trend = recentMean - mean;
+  const trendPct = mean !== 0 ? (trend / mean * 100) : 0;
+
+  const lines = [0.5, mean - 0.5, mean, mean + 0.5].filter(l => l >= 0);
+  const overUnder = lines.map(line => ({
+    line: +line.toFixed(1),
+    over: values.filter(v => v > line).length,
+    under: values.filter(v => v <= line).length,
+    overPct: +(values.filter(v => v > line).length / n * 100).toFixed(1)
+  }));
+
+  return {
+    n, mean: +mean.toFixed(2), median: +median.toFixed(1), stdDev: +stdDev.toFixed(2),
+    variance: +variance.toFixed(2), min, max, q1, q3, iqr: +iqr.toFixed(1),
+    skewness: +skewness.toFixed(3), kurtosis: +kurtosis.toFixed(3), shape,
+    cv: +cv.toFixed(1), consistency,
+    histogram: { bins, binEdges },
+    recentMean: +recentMean.toFixed(2), trend: +trend.toFixed(2), trendPct: +trendPct.toFixed(1),
+    overUnder, values: sorted
+  };
+}
+
+function recomputeWithWindow() {
+  if (!deepDiveRaw) return;
+  const ws = parseInt($('window-slider').value);
+  const os = parseInt($('offset-slider').value);
+
+  const newDist = {};
+  for (const key of KEY_STATS) {
+    const all = deepDiveRaw[key];
+    if (!all) continue;
+    const sliced = all.slice(os, os + ws);
+    const d = computeDist(sliced);
+    if (d) newDist[key] = d;
+  }
+  renderDistributions(newDist);
+}
+
+function onWindowSlide() {
+  const ws = $('window-slider');
+  const total = Object.values(deepDiveRaw)[0]?.length || 82;
+  const val = parseInt(ws.value);
+  $('window-val').textContent = val >= total ? 'ALL' : `L${val}`;
+
+  // Update preset highlights
+  document.querySelectorAll('.slider-presets button').forEach(b => b.classList.remove('active'));
+  const presets = { 5: 0, 10: 1, 15: 2, 20: 3, 30: 4 };
+  if (val >= total) document.querySelector('.slider-presets button:last-child').classList.add('active');
+  else if (presets[val] !== undefined) document.querySelectorAll('.slider-presets button')[presets[val]].classList.add('active');
+
+  // Clamp offset
+  const os = $('offset-slider');
+  os.max = Math.max(total - val, 0);
+  if (parseInt(os.value) > parseInt(os.max)) os.value = os.max;
+  $('offset-val').textContent = os.value;
+
+  updateWindowIndicator();
+  recomputeWithWindow();
+}
+
+function onOffsetSlide() {
+  $('offset-val').textContent = $('offset-slider').value;
+  updateWindowIndicator();
+  recomputeWithWindow();
+}
+
+function setWindow(n) {
+  const total = Object.values(deepDiveRaw)[0]?.length || 82;
+  const ws = $('window-slider');
+  ws.value = Math.min(n, total);
+
+  // For presets, set offset to show most recent N games
+  const os = $('offset-slider');
+  os.max = Math.max(total - parseInt(ws.value), 0);
+  os.value = os.max; // most recent games
+
+  onWindowSlide();
+}
+
+function updateWindowIndicator() {
+  const total = Object.values(deepDiveRaw)[0]?.length || 82;
+  const ws = parseInt($('window-slider').value);
+  const os = parseInt($('offset-slider').value);
+  const start = os + 1;
+  const end = Math.min(os + ws, total);
+  $('window-range-text').textContent = ws >= total ? `All ${total} games` : `Games ${start}-${end} of ${total}`;
+}
+
+function renderDistCard(key, d) {
+  const maxBin = Math.max(...d.histogram.bins, 1);
+  const trendClass = d.trend > 0.5 ? 'trend-up' : d.trend < -0.5 ? 'trend-down' : 'trend-flat';
+  const trendArrow = d.trend > 0.5 ? '&#9650;' : d.trend < -0.5 ? '&#9660;' : '&#9654;';
+  const consClass = d.consistency === 'High' ? 'consistency-high' :
+                    d.consistency === 'Medium' ? 'consistency-medium' :
+                    d.consistency === 'Low' ? 'consistency-low' : 'consistency-very-low';
+
+  // Box plot positioning
+  const range = d.max - d.min || 1;
+  const q1Pct = ((d.q1 - d.min) / range * 100).toFixed(1);
+  const q3Pct = ((d.q3 - d.min) / range * 100).toFixed(1);
+  const medPct = ((d.median - d.min) / range * 100).toFixed(1);
+  const boxWidth = (q3Pct - q1Pct).toFixed(1);
+
+  return `
+    <div class="dist-card">
+      <div class="dist-card-header">
+        <span class="dist-stat-name">${key}</span>
+        <span class="dist-shape-badge">${d.shape}</span>
+      </div>
+
+      <div class="dist-stats-row">
+        <div class="dist-stat-item">
+          <div class="val">${d.mean}</div>
+          <div class="lbl">Mean</div>
+        </div>
+        <div class="dist-stat-item">
+          <div class="val">${d.median}</div>
+          <div class="lbl">Median</div>
+        </div>
+        <div class="dist-stat-item">
+          <div class="val">${d.stdDev}</div>
+          <div class="lbl">Std Dev</div>
+        </div>
+        <div class="dist-stat-item">
+          <div class="val" style="font-size:11px"><span class="${consClass}">${d.consistency}</span></div>
+          <div class="lbl">Consist.</div>
+        </div>
+      </div>
+
+      <div class="dist-stats-row">
+        <div class="dist-stat-item">
+          <div class="val" style="font-size:11px">${d.min}</div>
+          <div class="lbl">Min</div>
+        </div>
+        <div class="dist-stat-item">
+          <div class="val" style="font-size:11px">${d.max}</div>
+          <div class="lbl">Max</div>
+        </div>
+        <div class="dist-stat-item">
+          <div class="val" style="font-size:11px">${d.skewness}</div>
+          <div class="lbl">Skew</div>
+        </div>
+        <div class="dist-stat-item">
+          <div class="val ${trendClass}" style="font-size:11px">${trendArrow} ${d.trendPct > 0 ? '+' : ''}${d.trendPct}%</div>
+          <div class="lbl">L10 Trend</div>
+        </div>
+      </div>
+
+      <!-- Histogram -->
+      <div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Distribution (${d.n} games)</div>
+      <div class="histogram">
+        ${d.histogram.bins.map((count, i) => {
+          const h = (count / maxBin * 100).toFixed(0);
+          const edge = d.histogram.binEdges[i];
+          return `<div class="hist-bar" style="height:${h}%" title="${edge}-${d.histogram.binEdges[i+1]}: ${count} games"></div>`;
+        }).join('')}
+      </div>
+      <div class="hist-labels">
+        <span>${d.histogram.binEdges[0]}</span>
+        <span>${d.histogram.binEdges[Math.floor(d.histogram.binEdges.length/2)]}</span>
+        <span>${d.histogram.binEdges[d.histogram.binEdges.length-1]}</span>
+      </div>
+
+      <!-- Box Plot -->
+      <div class="boxplot">
+        <div class="boxplot-whisker" style="left:0;right:0;"></div>
+        <div class="boxplot-box" style="left:${q1Pct}%;width:${boxWidth}%;"></div>
+        <div class="boxplot-median" style="left:${medPct}%;"></div>
+      </div>
+      <div class="hist-labels" style="margin-bottom:8px;">
+        <span>Q1: ${d.q1}</span>
+        <span style="color:var(--green)">Med: ${d.median}</span>
+        <span>Q3: ${d.q3}</span>
+      </div>
+
+      <!-- Over/Under -->
+      <div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Over/Under Hit Rates (Actual)</div>
+      ${d.overUnder.map(ou => {
+        const color = ou.overPct > 60 ? 'var(--green)' : ou.overPct < 40 ? 'var(--red)' : 'var(--amber)';
+        return `
+          <div class="ou-row">
+            <span class="ou-line">O ${ou.line}</span>
+            <div class="ou-bar-wrap">
+              <div class="ou-bar-fill" style="width:${ou.overPct}%;background:${color}"></div>
+            </div>
+            <span class="ou-pct" style="color:${color}">${ou.overPct}%</span>
+            <span style="color:var(--dim);font-size:9px">${ou.over}/${ou.over + ou.under}</span>
+          </div>`;
+      }).join('')}
+
+      ${d.poisson ? `
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.05);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;">Poisson Model (\\u03BB=${d.poisson.lambda})</span>
+          <span style="font-size:9px;padding:2px 6px;border-radius:2px;background:${
+            d.poisson.fit === 'Excellent' ? 'rgba(0,255,136,0.15)' :
+            d.poisson.fit === 'Good' ? 'rgba(0,229,255,0.1)' :
+            d.poisson.fit === 'Fair' ? 'rgba(255,179,0,0.1)' : 'rgba(255,61,61,0.1)'
+          };color:${
+            d.poisson.fit === 'Excellent' ? 'var(--green)' :
+            d.poisson.fit === 'Good' ? 'var(--cyan)' :
+            d.poisson.fit === 'Fair' ? 'var(--amber)' : 'var(--red)'
+          };">Fit: ${d.poisson.fit}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;">
+          <div style="background:rgba(0,0,0,0.2);padding:4px;border-radius:2px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;color:var(--purple)">${d.poisson.dispersionIndex}</div>
+            <div style="font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Var/Mean</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2);padding:4px;border-radius:2px;text-align:center;">
+            <div style="font-size:12px;font-weight:700;color:${d.poisson.isOverdispersed ? 'var(--amber)' : d.poisson.isUnderdispersed ? 'var(--cyan)' : 'var(--green)'}">
+              ${d.poisson.isOverdispersed ? 'Over' : d.poisson.isUnderdispersed ? 'Under' : 'Normal'}
+            </div>
+            <div style="font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Dispersion</div>
+          </div>
+        </div>
+        ${d.poisson.overUnder.length ? `
+          <div style="font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Poisson O/U Probabilities + Fair Odds</div>
+          ${d.poisson.overUnder.map(ou => {
+            const color = ou.overProb > 55 ? 'var(--green)' : ou.overProb < 45 ? 'var(--red)' : 'var(--amber)';
+            return `
+              <div class="ou-row">
+                <span class="ou-line" style="min-width:30px;">O ${ou.line}</span>
+                <div class="ou-bar-wrap">
+                  <div class="ou-bar-fill" style="width:${ou.overProb}%;background:${color}"></div>
+                </div>
+                <span class="ou-pct" style="color:${color};min-width:40px;">${ou.overProb}%</span>
+                <span style="color:var(--purple);font-size:9px;min-width:45px;">${ou.overOdds}</span>
+                <span style="color:var(--dim);font-size:8px;min-width:25px;">=${ou.exactProb}%</span>
+              </div>`;
+          }).join('')}
+        ` : ''}
+      </div>
+      ` : ''}
+    </div>`;
+}
+
+function closeDeepDive() {
+  $('deep-dive-panel').style.display = 'none';
+}
+
+// Override selectPlayer to also add deep-dive button
+const _origSelectPlayer = selectPlayer;
+selectPlayer = function(side, playerId) {
+  _origSelectPlayer(side, playerId);
+  // Also trigger deep dive
+  openDeepDive(side, playerId);
+};
+
+// Boot
+Promise.all([init(), loadSweepData()]);
+</script>
+</body>
+</html>

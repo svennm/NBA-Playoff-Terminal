@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBA PLAYOFF SLIPS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root {
+    --bg: #030508; --panel: #0a0e14; --panel2: #0d1219;
+    --border: #1a2a3a; --border-glow: #0f4f6f;
+    --cyan: #00e5ff; --green: #00ff88; --amber: #ffb300;
+    --red: #ff3d3d; --magenta: #ff00ff; --text: #c8d6e5;
+    --dim: #4a5568; --blue: #3498db; --purple: #9b59b6;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px; min-height:100vh; }
+  body::after { content:''; position:fixed; top:0;left:0;right:0;bottom:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.015) 2px,rgba(0,229,255,0.015) 4px); pointer-events:none; z-index:9999; }
+
+  .header { background:linear-gradient(180deg,#0a1520,var(--bg)); border-bottom:1px solid var(--border-glow); padding:12px 20px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+  .logo { font-family:'Orbitron',sans-serif; font-size:16px; font-weight:900; letter-spacing:3px; background:linear-gradient(135deg,var(--cyan),var(--green)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  .logo-sub { font-size:9px; color:var(--dim); letter-spacing:4px; text-transform:uppercase; }
+  .nav-links { display:flex; gap:12px; align-items:center; }
+  .nav-links a { color:var(--dim); text-decoration:none; font-size:10px; font-family:'Orbitron',sans-serif; letter-spacing:2px; text-transform:uppercase; padding:4px 10px; border:1px solid var(--border); border-radius:3px; transition:all .2s; }
+  .nav-links a:hover,.nav-links a.active { color:var(--cyan); border-color:var(--border-glow); background:rgba(0,229,255,0.05); }
+  .user-badge { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--green); }
+  .user-badge .bankroll { color:var(--amber); font-weight:700; font-family:'Orbitron',sans-serif; }
+
+  /* Login overlay */
+  .login-overlay { position:fixed; top:0;left:0;right:0;bottom:0; background:rgba(3,5,8,0.95); z-index:200; display:flex; align-items:center; justify-content:center; }
+  .login-box { background:var(--panel); border:1px solid var(--border-glow); border-radius:8px; padding:40px; text-align:center; max-width:400px; width:90%; }
+  .login-box h2 { font-family:'Orbitron',sans-serif; font-size:18px; color:var(--cyan); letter-spacing:3px; margin-bottom:8px; }
+  .login-box p { color:var(--dim); font-size:11px; margin-bottom:20px; }
+  .login-box input { background:var(--bg); color:var(--text); border:1px solid var(--border); padding:12px 16px; font-family:'JetBrains Mono',monospace; font-size:14px; border-radius:4px; width:100%; text-align:center; margin-bottom:12px; }
+  .login-box input:focus { border-color:var(--cyan); outline:none; }
+  .login-box button { background:linear-gradient(135deg,rgba(0,229,255,0.2),rgba(0,255,136,0.2)); color:var(--cyan); border:1px solid var(--cyan); padding:10px 30px; font-family:'Orbitron',sans-serif; font-size:12px; letter-spacing:2px; border-radius:4px; cursor:pointer; transition:all .2s; }
+  .login-box button:hover { background:rgba(0,229,255,0.3); }
+  .login-error { color:var(--red); font-size:10px; margin-top:8px; }
+
+  /* Main layout */
+  .main { display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:2px; max-width:1600px; margin:0 auto; }
+  .main .full-width { grid-column:1/-1; }
+
+  .panel { background:var(--panel); border:1px solid var(--border); overflow:hidden; }
+  .panel:hover { border-color:var(--border-glow); }
+  .panel-header { background:linear-gradient(90deg,rgba(0,229,255,0.08),transparent); border-bottom:1px solid var(--border); padding:8px 12px; display:flex; align-items:center; justify-content:space-between; font-family:'Orbitron',sans-serif; font-size:10px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--cyan); }
+  .panel-header .count { background:rgba(0,229,255,0.15); padding:2px 8px; border-radius:2px; font-family:'JetBrains Mono',monospace; font-size:10px; }
+  .panel-body { padding:10px 12px; max-height:700px; overflow-y:auto; }
+  .panel-body::-webkit-scrollbar { width:4px; }
+  .panel-body::-webkit-scrollbar-track { background:var(--bg); }
+  .panel-body::-webkit-scrollbar-thumb { background:var(--border-glow); border-radius:2px; }
+
+  /* Game selector */
+  select { background:var(--bg); color:var(--text); border:1px solid var(--border); padding:8px 12px; font-family:'JetBrains Mono',monospace; font-size:12px; border-radius:4px; cursor:pointer; width:100%; }
+  select:focus { border-color:var(--cyan); outline:none; }
+
+  /* Prop lines */
+  .prop-group { margin-bottom:12px; }
+  .prop-player { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border); font-weight:600; }
+  .prop-player img { width:28px; height:28px; border-radius:50%; object-fit:cover; background:rgba(255,255,255,0.05); }
+  .prop-lines { display:flex; flex-wrap:wrap; gap:4px; padding:6px 0; }
+  .prop-btn { background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:4px; padding:6px 10px; cursor:pointer; transition:all .15s; font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text); display:flex; flex-direction:column; align-items:center; min-width:70px; }
+  .prop-btn:hover { border-color:var(--cyan); background:rgba(0,229,255,0.05); }
+  .prop-btn.selected { border-color:var(--green); background:rgba(0,255,136,0.1); color:var(--green); }
+  .prop-btn .stat { font-size:9px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; }
+  .prop-btn .line { font-weight:700; font-size:13px; }
+  .prop-btn .pick { font-size:9px; margin-top:2px; }
+  .prop-btn .odds { font-size:9px; color:var(--amber); }
+
+  /* Bet slip builder */
+  .slip-builder { background:var(--panel2); border:1px solid var(--border-glow); border-radius:6px; padding:12px; }
+  .slip-leg { display:flex; align-items:center; justify-content:space-between; padding:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:4px; margin-bottom:4px; font-size:11px; }
+  .slip-leg .remove { color:var(--red); cursor:pointer; font-size:14px; padding:0 4px; }
+  .slip-leg .remove:hover { color:#ff6666; }
+  .slip-leg .leg-info { flex:1; }
+  .slip-leg .leg-player { font-weight:600; }
+  .slip-leg .leg-detail { color:var(--dim); font-size:10px; }
+  .slip-leg .leg-odds { color:var(--amber); font-weight:600; min-width:50px; text-align:right; }
+
+  .slip-summary { padding:10px 0; border-top:1px solid var(--border); margin-top:8px; }
+  .slip-row { display:flex; justify-content:space-between; padding:3px 0; font-size:11px; }
+  .slip-row .label { color:var(--dim); }
+  .slip-row .value { font-weight:600; }
+  .slip-row .value.payout { color:var(--green); font-size:13px; }
+
+  .wager-input { display:flex; align-items:center; gap:8px; margin:8px 0; }
+  .wager-input input { background:var(--bg); color:var(--cyan); border:1px solid var(--border); padding:8px 12px; font-family:'Orbitron',sans-serif; font-size:14px; font-weight:700; border-radius:4px; width:120px; text-align:center; }
+  .wager-input input:focus { border-color:var(--cyan); outline:none; }
+  .wager-presets { display:flex; gap:4px; }
+  .wager-presets button { background:rgba(0,229,255,0.06); border:1px solid var(--border); color:var(--dim); padding:4px 8px; font-family:'JetBrains Mono',monospace; font-size:9px; border-radius:3px; cursor:pointer; }
+  .wager-presets button:hover { color:var(--cyan); border-color:var(--cyan); }
+
+  .submit-btn { background:linear-gradient(135deg,rgba(0,255,136,0.2),rgba(0,229,255,0.2)); color:var(--green); border:1px solid var(--green); padding:12px; font-family:'Orbitron',sans-serif; font-size:12px; letter-spacing:2px; border-radius:4px; cursor:pointer; width:100%; margin-top:8px; transition:all .2s; }
+  .submit-btn:hover { background:rgba(0,255,136,0.3); }
+  .submit-btn:disabled { opacity:0.3; cursor:not-allowed; }
+
+  /* Slip cards (feed) */
+  .slip-card { background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:8px; transition:border-color .2s; }
+  .slip-card:hover { border-color:var(--border-glow); }
+  .slip-card.won { border-left:3px solid var(--green); }
+  .slip-card.lost { border-left:3px solid var(--red); }
+  .slip-card.active { border-left:3px solid var(--amber); }
+
+  .slip-card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .slip-card-user { font-weight:700; font-size:12px; }
+  .slip-card-meta { font-size:9px; color:var(--dim); }
+  .slip-card-odds { font-family:'Orbitron',sans-serif; font-size:12px; font-weight:700; }
+  .slip-card-odds.plus { color:var(--green); }
+  .slip-card-odds.minus { color:var(--amber); }
+
+  .slip-card-leg { display:flex; align-items:center; gap:6px; padding:3px 0; font-size:10px; border-bottom:1px solid rgba(255,255,255,0.03); }
+  .slip-card-leg:last-child { border-bottom:none; }
+  .leg-result { width:6px; height:6px; border-radius:50%; }
+  .leg-result.won { background:var(--green); box-shadow:0 0 4px var(--green); }
+  .leg-result.lost { background:var(--red); box-shadow:0 0 4px var(--red); }
+  .leg-result.pending { background:var(--amber); box-shadow:0 0 4px var(--amber); }
+
+  .slip-card-footer { display:flex; justify-content:space-between; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.05); font-size:10px; }
+  .slip-card-footer .wager { color:var(--dim); }
+  .slip-card-footer .payout { color:var(--green); font-weight:700; }
+
+  .slip-status { padding:2px 8px; border-radius:2px; font-size:9px; font-weight:700; text-transform:uppercase; }
+  .slip-status.active { background:rgba(255,179,0,0.15); color:var(--amber); }
+  .slip-status.won { background:rgba(0,255,136,0.15); color:var(--green); }
+  .slip-status.lost { background:rgba(255,61,61,0.15); color:var(--red); }
+
+  /* Leaderboard */
+  .lb-table { width:100%; border-collapse:collapse; font-size:11px; }
+  .lb-table th { text-align:left; padding:5px 6px; color:var(--dim); font-size:9px; text-transform:uppercase; letter-spacing:1px; border-bottom:1px solid var(--border); }
+  .lb-table td { padding:5px 6px; border-bottom:1px solid rgba(255,255,255,0.03); }
+  .lb-table tr:hover td { background:rgba(0,229,255,0.03); }
+  .lb-rank { font-weight:700; color:var(--cyan); }
+  .lb-bankroll { font-family:'Orbitron',sans-serif; font-weight:700; }
+  .lb-bankroll.positive { color:var(--green); }
+  .lb-bankroll.negative { color:var(--red); }
+
+  /* Tabs */
+  .tab-row { display:flex; gap:0; border-bottom:1px solid var(--border); }
+  .tab { padding:8px 16px; font-size:10px; color:var(--dim); cursor:pointer; border-bottom:2px solid transparent; transition:all .15s; font-family:'Orbitron',sans-serif; letter-spacing:1px; }
+  .tab:hover { color:var(--text); }
+  .tab.active { color:var(--cyan); border-bottom-color:var(--cyan); }
+
+  .empty { text-align:center; padding:30px; color:var(--dim); font-size:11px; }
+
+  @media(max-width:900px) { .main{grid-template-columns:1fr;} .main .full-width{grid-column:1;} }
+</style>
+</head>
+<body>
+
+<!-- Login Overlay -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <h2>ENTER THE ARENA</h2>
+    <p>Pick a username to start making slips with your crew</p>
+    <input type="text" id="username-input" placeholder="username" maxlength="20" onkeydown="if(event.key==='Enter')doLogin()">
+    <br>
+    <button onclick="doLogin()">LOCK IN</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<div class="header">
+  <div>
+    <div class="logo">PLAYOFF SLIPS</div>
+    <div class="logo-sub">Build Parlays // Track Your Crew</div>
+  </div>
+  <div class="nav-links">
+    <a href="/terminal.html">Terminal</a>
+    <a href="/matchup.html">Matchup</a>
+    <a href="/slips.html" class="active">Slips</a>
+    <a href="/bracket.html">Bracket</a>
+    <div class="user-badge" id="user-badge" style="display:none;">
+      <span id="display-name"></span>
+      <span class="bankroll">$<span id="user-bankroll">1000</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Left: Slip Builder -->
+  <div class="panel">
+    <div class="panel-header">Build Your Slip</div>
+    <div class="panel-body">
+      <div style="margin-bottom:8px;">
+        <label style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Select a Game</label>
+        <select id="game-select" onchange="loadGameProps()" style="margin-top:4px;">
+          <option value="">-- Pick a game --</option>
+        </select>
+      </div>
+
+      <div id="props-area">
+        <div class="empty">Select a game to see player props</div>
+      </div>
+
+      <!-- Slip Preview -->
+      <div class="slip-builder" id="slip-builder" style="display:none;">
+        <div style="font-family:'Orbitron',sans-serif;font-size:10px;color:var(--cyan);letter-spacing:2px;margin-bottom:8px;">YOUR SLIP</div>
+        <div id="slip-legs"></div>
+        <div class="slip-summary">
+          <div class="slip-row"><span class="label">Legs</span><span class="value" id="slip-leg-count">0</span></div>
+          <div class="slip-row"><span class="label">Total Odds</span><span class="value" id="slip-total-odds">--</span></div>
+          <div class="wager-input">
+            <span style="color:var(--dim);font-size:10px;">WAGER $</span>
+            <input type="number" id="wager-input" value="100" min="1" max="10000" oninput="updateSlipSummary()">
+            <div class="wager-presets">
+              <button onclick="setWager(10)">$10</button>
+              <button onclick="setWager(25)">$25</button>
+              <button onclick="setWager(50)">$50</button>
+              <button onclick="setWager(100)">$100</button>
+              <button onclick="setWager(250)">$250</button>
+            </div>
+          </div>
+          <div class="slip-row"><span class="label">To Win</span><span class="value payout" id="slip-payout">$0</span></div>
+        </div>
+        <button class="submit-btn" id="submit-btn" onclick="submitSlip()" disabled>LOCK IT IN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Active Slips Feed -->
+  <div class="panel">
+    <div class="panel-header">
+      Live Slip Feed
+      <span class="count" id="slip-feed-count">0</span>
+    </div>
+    <div class="tab-row">
+      <div class="tab active" onclick="setFeedTab('all')">All</div>
+      <div class="tab" onclick="setFeedTab('active')">Active</div>
+      <div class="tab" onclick="setFeedTab('won')">Won</div>
+      <div class="tab" onclick="setFeedTab('lost')">Lost</div>
+      <div class="tab" onclick="setFeedTab('mine')">Mine</div>
+    </div>
+    <div class="panel-body" id="slip-feed">
+      <div class="empty">No slips yet. Be the first!</div>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <div class="panel full-width">
+    <div class="panel-header">
+      Leaderboard
+      <span class="count" id="lb-count">0</span>
+    </div>
+    <div class="panel-body" id="leaderboard">
+      <div class="empty">No players yet</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let currentUser = null;
+let currentLegs = [];
+let allGames = [];
+let feedTab = 'all';
+
+// === Auth ===
+function checkLogin() {
+  const saved = localStorage.getItem('nba_user');
+  if (saved) {
+    try {
+      currentUser = JSON.parse(saved);
+      showLoggedIn();
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+async function doLogin() {
+  const name = $('username-input').value.trim();
+  if (!name) { $('login-error').textContent = 'Enter a username'; return; }
+
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: name })
+  });
+  const data = await res.json();
+
+  if (data.error && !data.existing) {
+    $('login-error').textContent = data.error;
+    return;
+  }
+
+  if (data.existing) {
+    // Login to existing
+    const uRes = await fetch(`/api/users/${name.toLowerCase()}`);
+    currentUser = await uRes.json();
+  } else {
+    currentUser = data.user;
+  }
+
+  localStorage.setItem('nba_user', JSON.stringify(currentUser));
+  showLoggedIn();
+}
+
+function showLoggedIn() {
+  $('login-overlay').style.display = 'none';
+  $('user-badge').style.display = 'flex';
+  $('display-name').textContent = currentUser.displayName;
+  $('user-bankroll').textContent = currentUser.bankroll;
+}
+
+// === Games ===
+async function loadGames() {
+  const res = await fetch('/api/sweep');
+  const data = await res.json();
+  allGames = data.games || [];
+
+  const sel = $('game-select');
+  // Also show upcoming games from standings/schedule
+  if (!allGames.length) {
+    sel.innerHTML = '<option value="">No games today — check back on game days</option>';
+    return;
+  }
+
+  sel.innerHTML = '<option value="">-- Pick a game --</option>' +
+    allGames.map((g, i) => {
+      const time = new Date(g.date).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+      const odds = g.odds ? ` | ${g.odds.spread} O/U ${g.odds.overUnder}` : '';
+      return `<option value="${i}">${g.away.abbr} @ ${g.home.abbr} — ${time}${odds}</option>`;
+    }).join('');
+}
+
+async function loadGameProps() {
+  const idx = $('game-select').value;
+  const area = $('props-area');
+  if (idx === '') { area.innerHTML = '<div class="empty">Select a game to see player props</div>'; return; }
+
+  const game = allGames[idx];
+  area.innerHTML = '<div class="empty"><div class="spinner" style="display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;"></div><br>Loading lines...</div>';
+
+  // Use merged props endpoint
+  const res = await fetch(`/api/props/game/${idx}`);
+  const data = await res.json();
+
+  if (data.error) {
+    area.innerHTML = `<div class="empty">${data.error}</div>`;
+    return;
+  }
+
+  const gameName = `${game.away.abbr} @ ${game.home.abbr}`;
+  const sourceTag = data.source === 'odds-api'
+    ? '<span style="color:var(--green);font-size:9px;background:rgba(0,255,136,0.1);padding:2px 6px;border-radius:2px;">LIVE ODDS</span>'
+    : '<span style="color:var(--amber);font-size:9px;background:rgba(255,179,0,0.1);padding:2px 6px;border-radius:2px;">MODEL LINES</span>';
+
+  // Game lines
+  let gameHtml = '';
+  const gl = data.gameLines;
+  if (gl) {
+    if (gl.source === 'odds-api' && gl.books?.length) {
+      // Real multi-book game lines
+      const bk = gl.books[0];
+      const spread = bk.markets.spreads;
+      const total = bk.markets.totals;
+      const ml = bk.markets.h2h;
+
+      gameHtml = `<div class="prop-group">
+        <div class="prop-player" style="color:var(--cyan);">GAME LINES <span style="font-size:9px;color:var(--green);font-weight:400;margin-left:8px;">${bk.name}</span></div>
+        <div class="prop-lines">
+          ${spread ? spread.map(s => `
+            <div class="prop-btn" onclick="toggleLeg(this,{type:'spread',game:'${gameName}',gameId:'${game.id}',pick:'${s.name} ${s.point>0?'+':''}${s.point}',line:${s.point},odds:${s.price},stat:'SPREAD',player:'${s.name}'})" data-leg-id="spread-${s.name}">
+              <span class="stat">Spread</span>
+              <span class="line">${s.name.split(' ').pop()}</span>
+              <span class="pick">${s.point > 0 ? '+' : ''}${s.point}</span>
+              <span class="odds">${s.price > 0 ? '+' : ''}${s.price}</span>
+            </div>`).join('') : ''}
+          ${total ? total.map(t => `
+            <div class="prop-btn" onclick="toggleLeg(this,{type:'total',game:'${gameName}',gameId:'${game.id}',pick:'${t.name} ${t.point}',line:${t.point},odds:${t.price},stat:'TOTAL',player:'${t.name}'})" data-leg-id="total-${t.name.toLowerCase()}">
+              <span class="stat">Total</span>
+              <span class="line">${t.name[0]} ${t.point}</span>
+              <span class="pick">${t.name}</span>
+              <span class="odds">${t.price > 0 ? '+' : ''}${t.price}</span>
+            </div>`).join('') : ''}
+          ${ml ? ml.map(m => `
+            <div class="prop-btn" onclick="toggleLeg(this,{type:'moneyline',game:'${gameName}',gameId:'${game.id}',pick:'${m.name} ML',line:0,odds:${m.price},stat:'ML',player:'${m.name}'})" data-leg-id="ml-${m.name}">
+              <span class="stat">ML</span>
+              <span class="line">${m.name.split(' ').pop()}</span>
+              <span class="pick">Win</span>
+              <span class="odds">${m.price > 0 ? '+' : ''}${m.price}</span>
+            </div>`).join('') : ''}
+        </div>
+      </div>`;
+    } else if (gl.spread || gl.overUnder) {
+      // ESPN fallback
+      const o = gl;
+      gameHtml = `<div class="prop-group">
+        <div class="prop-player" style="color:var(--cyan);">GAME LINES <span style="font-size:9px;color:var(--dim);font-weight:400;margin-left:8px;">${o.provider || 'ESPN'}</span></div>
+        <div class="prop-lines">
+          <div class="prop-btn" onclick="toggleLeg(this,{type:'spread',game:'${gameName}',gameId:'${game.id}',pick:'${o.spread}',line:0,odds:-110,stat:'SPREAD',player:'${o.spread?.split(' ')[0]}'})" data-leg-id="spread-espn">
+            <span class="stat">Spread</span>
+            <span class="line">${o.spread}</span>
+            <span class="odds">-110</span>
+          </div>
+          <div class="prop-btn" onclick="toggleLeg(this,{type:'total',game:'${gameName}',gameId:'${game.id}',pick:'Over ${o.overUnder}',line:${o.overUnder},odds:-110,stat:'TOTAL',player:'Over'})" data-leg-id="total-over">
+            <span class="stat">Total</span>
+            <span class="line">O ${o.overUnder}</span>
+            <span class="odds">-110</span>
+          </div>
+          <div class="prop-btn" onclick="toggleLeg(this,{type:'total',game:'${gameName}',gameId:'${game.id}',pick:'Under ${o.overUnder}',line:${o.overUnder},odds:-110,stat:'TOTAL',player:'Under'})" data-leg-id="total-under">
+            <span class="stat">Total</span>
+            <span class="line">U ${o.overUnder}</span>
+            <span class="odds">-110</span>
+          </div>
+        </div>
+      </div>`;
+    }
+  }
+
+  // Player props
+  const propsHtml = (data.playerProps || []).map((p, pi) => {
+    const bookTag = p.source === 'odds-api'
+      ? `<span style="color:var(--green);font-size:8px;margin-left:4px;">LIVE</span>`
+      : `<span style="color:var(--dim);font-size:8px;margin-left:4px;">MODEL</span>`;
+    const teamTag = p.team ? `<span style="color:var(--dim);font-size:10px;font-weight:400">${p.team} ${p.position || ''}</span>` : '';
+
+    return `
+      <div class="prop-group">
+        <div class="prop-player">
+          ${p.headshot ? `<img src="${p.headshot}" alt="" onerror="this.style.display='none'">` : ''}
+          <span>${p.name}</span>
+          ${teamTag}${bookTag}
+        </div>
+        <div class="prop-lines">
+          ${p.lines.map(l => {
+            const oOdds = l.overOdds || -115;
+            const uOdds = l.underOdds || -115;
+            const bookName = l.book && l.book !== 'Model' ? `<span style="font-size:7px;color:var(--green)">${l.book}</span>` : '';
+
+            return `
+              <div class="prop-btn" onclick="toggleLeg(this,{type:'prop',game:'${gameName}',gameId:'${game.id}',player:'${p.name.replace(/'/g,"\\'")}',stat:'${l.stat}',line:${l.line},pick:'Over ${l.line}',odds:${oOdds}})" data-leg-id="${pi}-${l.stat}-o">
+                <span class="stat">${l.stat}</span>
+                <span class="line">O ${l.line}</span>
+                <span class="pick">Over</span>
+                <span class="odds">${oOdds > 0 ? '+' : ''}${oOdds}</span>
+                ${bookName}
+              </div>
+              <div class="prop-btn" onclick="toggleLeg(this,{type:'prop',game:'${gameName}',gameId:'${game.id}',player:'${p.name.replace(/'/g,"\\'")}',stat:'${l.stat}',line:${l.line},pick:'Under ${l.line}',odds:${uOdds}})" data-leg-id="${pi}-${l.stat}-u">
+                <span class="stat">${l.stat}</span>
+                <span class="line">U ${l.line}</span>
+                <span class="pick">Under</span>
+                <span class="odds">${uOdds > 0 ? '+' : ''}${uOdds}</span>
+                ${bookName}
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  area.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border);">
+      ${sourceTag}
+      <span style="font-size:10px;color:var(--dim)">${data.playerProps?.length || 0} players</span>
+      ${data.source === 'model' ? '<span style="font-size:9px;color:var(--amber);">Set ODDS_API_KEY for real DK/FD/BetMGM lines</span>' : ''}
+    </div>
+    ${gameHtml}${propsHtml}`;
+}
+
+// === Slip Builder ===
+function toggleLeg(btn, legData) {
+  const legId = btn.dataset.legId;
+  const idx = currentLegs.findIndex(l => l._id === legId);
+
+  if (idx >= 0) {
+    currentLegs.splice(idx, 1);
+    btn.classList.remove('selected');
+  } else {
+    currentLegs.push({ ...legData, _id: legId });
+    btn.classList.add('selected');
+  }
+  renderSlipBuilder();
+}
+
+function renderSlipBuilder() {
+  const builder = $('slip-builder');
+  if (!currentLegs.length) { builder.style.display = 'none'; return; }
+  builder.style.display = '';
+
+  $('slip-legs').innerHTML = currentLegs.map((l, i) => `
+    <div class="slip-leg">
+      <div class="leg-info">
+        <div class="leg-player">${l.player}</div>
+        <div class="leg-detail">${l.stat} ${l.pick} | ${l.game}</div>
+      </div>
+      <div class="leg-odds">${l.odds > 0 ? '+' : ''}${l.odds}</div>
+      <span class="remove" onclick="removeLeg(${i})">&times;</span>
+    </div>`).join('');
+
+  updateSlipSummary();
+}
+
+function removeLeg(idx) {
+  const leg = currentLegs[idx];
+  // Deselect button
+  const btn = document.querySelector(`[data-leg-id="${leg._id}"]`);
+  if (btn) btn.classList.remove('selected');
+  currentLegs.splice(idx, 1);
+  renderSlipBuilder();
+}
+
+function updateSlipSummary() {
+  const n = currentLegs.length;
+  $('slip-leg-count').textContent = n;
+
+  let dec = 1;
+  for (const leg of currentLegs) {
+    const am = leg.odds;
+    dec *= am > 0 ? (am / 100) + 1 : (100 / Math.abs(am)) + 1;
+  }
+
+  const american = dec >= 2 ? `+${Math.round((dec - 1) * 100)}` : `-${Math.round(100 / (dec - 1))}`;
+  $('slip-total-odds').textContent = n > 0 ? american : '--';
+  $('slip-total-odds').style.color = american.startsWith('+') ? 'var(--green)' : 'var(--amber)';
+
+  const wager = parseFloat($('wager-input').value) || 0;
+  const payout = (wager * dec).toFixed(2);
+  $('slip-payout').textContent = n > 0 ? `$${payout}` : '$0';
+
+  $('submit-btn').disabled = n < 1 || wager < 1;
+}
+
+function setWager(amt) {
+  $('wager-input').value = amt;
+  updateSlipSummary();
+}
+
+async function submitSlip() {
+  if (!currentUser || !currentLegs.length) return;
+  $('submit-btn').disabled = true;
+  $('submit-btn').textContent = 'SUBMITTING...';
+
+  const wager = parseFloat($('wager-input').value) || 100;
+  const gameDate = allGames[$('game-select').value]?.date || null;
+
+  const res = await fetch('/api/slips', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user: currentUser.name,
+      legs: currentLegs.map(l => ({ type: l.type, game: l.game, gameId: l.gameId, player: l.player, stat: l.stat, line: l.line, pick: l.pick, odds: l.odds })),
+      wager,
+      gameDate
+    })
+  });
+
+  const data = await res.json();
+  if (data.error) {
+    alert(data.error);
+  } else {
+    // Clear slip
+    currentLegs = [];
+    document.querySelectorAll('.prop-btn.selected').forEach(b => b.classList.remove('selected'));
+    renderSlipBuilder();
+    loadFeed();
+    loadLeaderboard();
+  }
+
+  $('submit-btn').disabled = false;
+  $('submit-btn').textContent = 'LOCK IT IN';
+}
+
+// === Feed ===
+async function loadFeed() {
+  const params = new URLSearchParams();
+  if (feedTab === 'mine' && currentUser) params.set('user', currentUser.name);
+  else if (feedTab !== 'all') params.set('status', feedTab);
+
+  const res = await fetch(`/api/slips?${params}`);
+  const slips = await res.json();
+  $('slip-feed-count').textContent = slips.length;
+
+  if (!slips.length) {
+    $('slip-feed').innerHTML = '<div class="empty">No slips found</div>';
+    return;
+  }
+
+  $('slip-feed').innerHTML = slips.map(s => {
+    const oddsClass = s.totalOdds.startsWith('+') ? 'plus' : 'minus';
+    const time = new Date(s.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+
+    return `
+      <div class="slip-card ${s.status}">
+        <div class="slip-card-header">
+          <div>
+            <span class="slip-card-user">${s.user}</span>
+            <span class="slip-card-meta">${time}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="slip-status ${s.status}">${s.status}</span>
+            <span class="slip-card-odds ${oddsClass}">${s.totalOdds}</span>
+          </div>
+        </div>
+        ${s.legs.map(l => `
+          <div class="slip-card-leg">
+            <div class="leg-result ${l.result || 'pending'}"></div>
+            <span style="font-weight:500">${l.player}</span>
+            <span style="color:var(--dim)">${l.stat} ${l.pick}</span>
+            <span style="margin-left:auto;color:var(--amber);font-size:9px">${l.odds > 0 ? '+' : ''}${l.odds}</span>
+          </div>`).join('')}
+        <div class="slip-card-footer">
+          <span class="wager">$${s.wager} wager</span>
+          <span class="payout">To win $${s.payout}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function setFeedTab(tab) {
+  feedTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  loadFeed();
+}
+
+// === Leaderboard ===
+async function loadLeaderboard() {
+  const res = await fetch('/api/leaderboard');
+  const lb = await res.json();
+  $('lb-count').textContent = lb.length;
+
+  if (!lb.length) { $('leaderboard').innerHTML = '<div class="empty">No players yet</div>'; return; }
+
+  $('leaderboard').innerHTML = `
+    <table class="lb-table">
+      <thead><tr><th>#</th><th>Player</th><th>W</th><th>L</th><th>Win%</th><th>Bankroll</th></tr></thead>
+      <tbody>
+        ${lb.map((u, i) => `
+          <tr>
+            <td class="lb-rank">${i + 1}</td>
+            <td style="font-weight:500">${u.name}</td>
+            <td style="color:var(--green)">${u.wins}</td>
+            <td style="color:var(--red)">${u.losses}</td>
+            <td>${u.winPct}%</td>
+            <td class="lb-bankroll ${u.bankroll >= 1000 ? 'positive' : 'negative'}">$${u.bankroll}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// === SSE for live slip updates ===
+function connectSSE() {
+  const sse = new EventSource('/api/stream');
+  sse.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === 'new_slip' || data.type === 'slip_graded') {
+        loadFeed();
+        loadLeaderboard();
+      }
+    } catch {}
+  };
+}
+
+// === Boot ===
+async function boot() {
+  if (checkLogin()) {
+    // Already logged in
+  }
+  await loadGames();
+  await loadFeed();
+  await loadLeaderboard();
+  connectSSE();
+  // Refresh feed every 30s
+  setInterval(loadFeed, 30000);
+}
+
+boot();
+</script>
+<style>@keyframes spin{to{transform:rotate(360deg);}}</style>
+</body>
+</html>

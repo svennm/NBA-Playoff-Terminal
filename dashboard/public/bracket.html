@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBA PLAYOFF BRACKET 2026</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root {
+    --bg:#030508;--panel:#0a0e14;--panel2:#0d1219;--border:#1a2a3a;--border-glow:#0f4f6f;
+    --cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--red:#ff3d3d;--magenta:#ff00ff;
+    --text:#c8d6e5;--dim:#4a5568;--blue:#3498db;--purple:#9b59b6;
+    --east:#2196f3;--west:#f44336;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;min-height:100vh;overflow-x:auto;}
+  body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.015) 2px,rgba(0,229,255,0.015) 4px);pointer-events:none;z-index:9999;}
+
+  .header{background:linear-gradient(180deg,#0a1520,var(--bg));border-bottom:1px solid var(--border-glow);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+  .logo{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:3px;background:linear-gradient(135deg,var(--cyan),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .logo-sub{font-size:9px;color:var(--dim);letter-spacing:4px;text-transform:uppercase;}
+  .nav-links{display:flex;gap:12px;}
+  .nav-links a{color:var(--dim);text-decoration:none;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
+  .nav-links a:hover,.nav-links a.active{color:var(--cyan);border-color:var(--border-glow);background:rgba(0,229,255,0.05);}
+
+  /* Bracket layout */
+  .bracket-container{padding:20px;min-width:1200px;}
+
+  /* Conference labels */
+  .conf-section{margin-bottom:30px;}
+  .conf-label{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:900;letter-spacing:4px;text-transform:uppercase;padding:8px 16px;margin-bottom:12px;border-bottom:2px solid;}
+  .conf-label.east{color:var(--east);border-color:var(--east);}
+  .conf-label.west{color:var(--west);border-color:var(--west);}
+
+  /* Play-in section */
+  .playin-section{margin-bottom:24px;}
+  .playin-label{font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:3px;color:var(--amber);margin-bottom:8px;padding-left:4px;}
+  .playin-grid{display:grid;grid-template-columns:repeat(3,280px);gap:12px;align-items:start;}
+  .playin-round{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px;}
+  .playin-round-title{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;text-align:center;}
+
+  /* Bracket grid */
+  .bracket-grid{display:grid;grid-template-columns:280px 40px 280px 40px 280px 40px 280px;align-items:center;gap:0;}
+  .round-col{display:flex;flex-direction:column;gap:16px;}
+  .connector-col{display:flex;flex-direction:column;align-items:center;justify-content:center;}
+
+  .round-label{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;text-align:center;margin-bottom:8px;}
+
+  /* Matchup card */
+  .matchup{background:var(--panel);border:1px solid var(--border);border-radius:6px;overflow:hidden;transition:border-color .2s;}
+  .matchup:hover{border-color:var(--border-glow);}
+  .matchup.live{border-color:var(--green);box-shadow:0 0 12px rgba(0,255,136,0.1);}
+
+  .matchup-header{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:rgba(0,229,255,0.05);font-size:9px;color:var(--dim);}
+  .matchup-series{color:var(--cyan);font-weight:600;}
+
+  .team-row{display:flex;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.03);transition:background .15s;gap:6px;}
+  .team-row:last-child{border-bottom:none;}
+  .team-row:hover{background:rgba(0,229,255,0.03);}
+  .team-row.winner{background:rgba(0,255,136,0.05);}
+  .team-row.loser{opacity:0.4;}
+
+  .seed{width:20px;height:20px;line-height:20px;text-align:center;border-radius:3px;font-size:10px;font-weight:700;flex-shrink:0;}
+  .seed-top{background:rgba(0,229,255,0.15);color:var(--cyan);}
+  .seed-mid{background:rgba(0,255,136,0.12);color:var(--green);}
+  .seed-low{background:rgba(255,179,0,0.12);color:var(--amber);}
+  .seed-playin{background:rgba(255,61,61,0.12);color:var(--red);}
+
+  .team-logo-sm{width:22px;height:22px;object-fit:contain;flex-shrink:0;}
+  .team-name{font-weight:600;font-size:11px;flex:1;}
+  .team-record{font-size:9px;color:var(--dim);min-width:40px;text-align:right;}
+  .team-score{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;min-width:24px;text-align:center;}
+  .team-score.winning{color:var(--green);}
+
+  .matchup-odds{padding:4px 8px;background:rgba(0,0,0,0.2);display:flex;justify-content:space-between;font-size:9px;color:var(--dim);}
+  .matchup-odds .spread{color:var(--cyan);}
+  .matchup-odds .ou{color:var(--amber);}
+
+  /* TBD team */
+  .team-row.tbd{opacity:0.3;}
+  .team-row.tbd .team-name{font-style:italic;color:var(--dim);}
+
+  /* Connector lines */
+  .connector{width:2px;background:var(--border);position:relative;}
+
+  /* Finals badge */
+  .finals-badge{text-align:center;padding:16px;margin:20px auto;max-width:300px;}
+  .finals-badge .trophy{font-size:32px;margin-bottom:8px;}
+  .finals-badge .finals-text{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:900;letter-spacing:4px;color:var(--amber);}
+
+  /* Upcoming games panel */
+  .games-panel{max-width:1200px;margin:0 auto;padding:0 20px 20px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
+  .panel-header{background:linear-gradient(90deg,rgba(0,229,255,0.08),transparent);border-bottom:1px solid var(--border);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);}
+  .panel-header .count{background:rgba(0,229,255,0.15);padding:2px 8px;border-radius:2px;font-family:'JetBrains Mono',monospace;font-size:10px;}
+  .panel-body{padding:10px 12px;}
+
+  .game-row{display:grid;grid-template-columns:200px 60px 100px 80px 1fr;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:11px;}
+  .game-row:last-child{border-bottom:none;}
+  .game-matchup{font-weight:600;}
+  .game-time{color:var(--amber);font-size:10px;}
+  .game-note{color:var(--dim);font-size:9px;}
+  .game-spread{color:var(--cyan);font-size:10px;}
+  .game-status{font-size:10px;}
+  .game-status.live{color:var(--green);animation:pulse 1.5s infinite;}
+  .game-status.final{color:var(--dim);}
+  .game-status.sched{color:var(--amber);}
+
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+  /* Seed overview table */
+  .seed-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .seed-table th{text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);}
+  .seed-table td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .seed-table tr:hover td{background:rgba(0,229,255,0.03);}
+  .clinch-z{color:var(--green);font-weight:700;}
+  .clinch-y{color:var(--cyan);}
+  .clinch-x{color:var(--text);}
+  .clinch-pb{color:var(--amber);}
+
+  .conf-toggle{display:flex;gap:0;margin-bottom:12px;}
+  .conf-toggle button{flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);background:var(--panel);color:var(--dim);cursor:pointer;transition:all .15s;}
+  .conf-toggle button:first-child{border-radius:4px 0 0 4px;}
+  .conf-toggle button:last-child{border-radius:0 4px 4px 0;}
+  .conf-toggle button.active-east{background:rgba(33,150,243,0.15);color:var(--east);border-color:var(--east);}
+  .conf-toggle button.active-west{background:rgba(244,67,54,0.15);color:var(--west);border-color:var(--west);}
+
+  @media(max-width:1300px){.bracket-container{padding:10px;}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="logo">PLAYOFF BRACKET</div>
+    <div class="logo-sub">2026 NBA Playoffs // Play-In + Bracket</div>
+  </div>
+  <div class="nav-links">
+    <a href="/terminal.html">Terminal</a>
+    <a href="/matchup.html">Matchup</a>
+    <a href="/slips.html">Slips</a>
+    <a href="/bracket.html" class="active">Bracket</a>
+  </div>
+</div>
+
+<div class="bracket-container">
+
+  <!-- Play-In Tournament -->
+  <div id="playin-east" class="conf-section"></div>
+  <div id="playin-west" class="conf-section"></div>
+
+  <!-- First Round Brackets -->
+  <div id="bracket-east" class="conf-section"></div>
+  <div id="bracket-west" class="conf-section"></div>
+
+  <!-- Finals -->
+  <div class="finals-badge">
+    <div class="finals-text" id="finals-text">NBA FINALS 2026</div>
+    <div style="color:var(--dim);font-size:10px;margin-top:4px;" id="finals-sub">Bracket fills as matchups are set</div>
+  </div>
+
+</div>
+
+<!-- Upcoming Playoff Games -->
+<div class="games-panel">
+  <div class="panel" style="margin-bottom:12px;">
+    <div class="panel-header">
+      Upcoming Playoff Games
+      <span class="count" id="game-count">0</span>
+    </div>
+    <div class="panel-body" id="games-body">Loading...</div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div class="panel">
+      <div class="panel-header" style="color:var(--east);">Eastern Conference Seeds</div>
+      <div class="panel-body" id="east-seeds"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header" style="color:var(--west);">Western Conference Seeds</div>
+      <div class="panel-body" id="west-seeds"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+let standings = { east: [], west: [] };
+let games = [];
+let oddsData = [];
+
+async function init() {
+  const [sweepRes, standingsRes] = await Promise.all([
+    fetch('/api/sweep').then(r => r.json()),
+    fetch('/api/standings').then(r => r.json())
+  ]);
+
+  standings = standingsRes;
+  games = sweepRes.games || [];
+
+  // Try to get real odds
+  try {
+    const oddsRes = await fetch('/api/real-odds');
+    const od = await oddsRes.json();
+    oddsData = od.data || [];
+  } catch {}
+
+  renderPlayIn();
+  renderBrackets();
+  renderGames();
+  renderSeeds('east');
+  renderSeeds('west');
+}
+
+function getTeamByRank(conf, rank) {
+  const teams = standings[conf] || [];
+  // Sort by win pct to get proper seeding
+  const sorted = [...teams].sort((a, b) => Number(b.pct) - Number(a.pct));
+  return sorted[rank - 1] || null;
+}
+
+function seedClass(seed) {
+  if (seed <= 2) return 'seed-top';
+  if (seed <= 6) return 'seed-mid';
+  if (seed <= 8) return 'seed-low';
+  return 'seed-playin';
+}
+
+function teamRowHtml(team, seed, score = null) {
+  if (!team) return `
+    <div class="team-row tbd">
+      <span class="seed seed-playin">${seed || '?'}</span>
+      <div class="team-name">TBD</div>
+    </div>`;
+
+  return `
+    <div class="team-row">
+      <span class="seed ${seedClass(seed)}">${seed}</span>
+      <img class="team-logo-sm" src="${team.logo}" alt="" onerror="this.style.display='none'">
+      <span class="team-name">${team.abbr || team.team}</span>
+      <span class="team-record">${team.wins}-${team.losses}</span>
+      ${score !== null ? `<span class="team-score">${score}</span>` : ''}
+    </div>`;
+}
+
+function matchupHtml(topTeam, topSeed, botTeam, botSeed, label = '', odds = null) {
+  const oddsRow = odds ? `
+    <div class="matchup-odds">
+      <span class="spread">${odds.spread || ''}</span>
+      <span class="ou">${odds.ou || ''}</span>
+      <span>${odds.book || ''}</span>
+    </div>` : '';
+
+  return `
+    <div class="matchup">
+      <div class="matchup-header">
+        <span>${label}</span>
+        <span class="matchup-series"></span>
+      </div>
+      ${teamRowHtml(topTeam, topSeed)}
+      ${teamRowHtml(botTeam, botSeed)}
+      ${oddsRow}
+    </div>`;
+}
+
+function findOdds(teamA, teamB) {
+  if (!oddsData.length) return null;
+  const match = oddsData.find(g => {
+    const h = g.homeTeam?.toLowerCase() || '';
+    const a = g.awayTeam?.toLowerCase() || '';
+    const ta = (teamA?.abbr || teamA?.team || '').toLowerCase();
+    const tb = (teamB?.abbr || teamB?.team || '').toLowerCase();
+    return (h.includes(ta.split(' ').pop()) || h.includes(tb.split(' ').pop())) &&
+           (a.includes(ta.split(' ').pop()) || a.includes(tb.split(' ').pop()));
+  });
+  if (!match?.bookmakers?.[0]) return null;
+  const bk = match.bookmakers[0];
+  const markets = {};
+  bk.markets.forEach(m => { markets[m.key] = m.outcomes; });
+  const spread = markets.spreads?.[0];
+  const total = markets.totals?.[0];
+  return {
+    spread: spread ? `${spread.name.split(' ').pop()} ${spread.point > 0 ? '+' : ''}${spread.point}` : '',
+    ou: total ? `O/U ${total.point}` : '',
+    book: bk.name
+  };
+}
+
+function renderPlayIn() {
+  for (const conf of ['east', 'west']) {
+    const el = $(`playin-${conf}`);
+    const s7 = getTeamByRank(conf, 7);
+    const s8 = getTeamByRank(conf, 8);
+    const s9 = getTeamByRank(conf, 9);
+    const s10 = getTeamByRank(conf, 10);
+
+    el.innerHTML = `
+      <div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE PLAY-IN</div>
+      <div class="playin-grid">
+        <div class="playin-round">
+          <div class="playin-round-title">7 vs 8 — Winner gets 7th seed</div>
+          ${matchupHtml(s7, 7, s8, 8, '7/8 Game', findOdds(s7, s8))}
+        </div>
+        <div class="playin-round">
+          <div class="playin-round-title">9 vs 10 — Loser eliminated</div>
+          ${matchupHtml(s9, 9, s10, 10, '9/10 Game', findOdds(s9, s10))}
+        </div>
+        <div class="playin-round">
+          <div class="playin-round-title">8th Seed Game</div>
+          ${matchupHtml(null, '?', null, '?', 'Loser 7/8 vs Winner 9/10')}
+        </div>
+      </div>`;
+  }
+}
+
+function renderBrackets() {
+  for (const conf of ['east', 'west']) {
+    const el = $(`bracket-${conf}`);
+    const s1 = getTeamByRank(conf, 1);
+    const s2 = getTeamByRank(conf, 2);
+    const s3 = getTeamByRank(conf, 3);
+    const s4 = getTeamByRank(conf, 4);
+    const s5 = getTeamByRank(conf, 5);
+    const s6 = getTeamByRank(conf, 6);
+
+    el.innerHTML = `
+      <div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE BRACKET</div>
+      <div class="bracket-grid">
+        <!-- First Round -->
+        <div class="round-col">
+          <div class="round-label">First Round</div>
+          ${matchupHtml(s1, 1, null, 8, '(1) vs (8)', findOdds(s1, null))}
+          ${matchupHtml(s4, 4, s5, 5, '(4) vs (5)', findOdds(s4, s5))}
+          ${matchupHtml(s3, 3, s6, 6, '(3) vs (6)', findOdds(s3, s6))}
+          ${matchupHtml(s2, 2, null, 7, '(2) vs (7)', findOdds(s2, null))}
+        </div>
+
+        <!-- Connector -->
+        <div class="connector-col">
+          <svg width="40" height="400" style="opacity:0.3;">
+            <line x1="0" y1="60" x2="40" y2="140" stroke="var(--border-glow)" stroke-width="1"/>
+            <line x1="0" y1="160" x2="40" y2="140" stroke="var(--border-glow)" stroke-width="1"/>
+            <line x1="0" y1="250" x2="40" y2="310" stroke="var(--border-glow)" stroke-width="1"/>
+            <line x1="0" y1="370" x2="40" y2="310" stroke="var(--border-glow)" stroke-width="1"/>
+          </svg>
+        </div>
+
+        <!-- Semis -->
+        <div class="round-col">
+          <div class="round-label">Conference Semis</div>
+          <div style="margin-top:40px;">
+            ${matchupHtml(null, '?', null, '?', 'Winner (1)/(8) vs Winner (4)/(5)')}
+          </div>
+          <div style="margin-top:60px;">
+            ${matchupHtml(null, '?', null, '?', 'Winner (3)/(6) vs Winner (2)/(7)')}
+          </div>
+        </div>
+
+        <!-- Connector -->
+        <div class="connector-col">
+          <svg width="40" height="400" style="opacity:0.3;">
+            <line x1="0" y1="140" x2="40" y2="220" stroke="var(--border-glow)" stroke-width="1"/>
+            <line x1="0" y1="310" x2="40" y2="220" stroke="var(--border-glow)" stroke-width="1"/>
+          </svg>
+        </div>
+
+        <!-- Conf Finals -->
+        <div class="round-col">
+          <div class="round-label">Conference Finals</div>
+          <div style="margin-top:120px;">
+            ${matchupHtml(null, '?', null, '?', `${conf === 'east' ? 'ECF' : 'WCF'}`)}
+          </div>
+        </div>
+
+        <!-- Connector to Finals -->
+        <div class="connector-col">
+          <svg width="40" height="400" style="opacity:0.3;">
+            <line x1="0" y1="220" x2="40" y2="220" stroke="var(--amber)" stroke-width="1" stroke-dasharray="4,4"/>
+          </svg>
+        </div>
+
+        <!-- Finals slot -->
+        <div class="round-col">
+          <div class="round-label">NBA Finals</div>
+          <div style="margin-top:120px;">
+            <div class="matchup" style="border-color:var(--amber);">
+              <div class="matchup-header" style="background:rgba(255,179,0,0.08);">
+                <span style="color:var(--amber);">${conf === 'east' ? 'East Champion' : 'West Champion'}</span>
+              </div>
+              <div class="team-row tbd">
+                <span class="seed seed-playin">?</span>
+                <div class="team-name" style="color:var(--amber);">TBD</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+}
+
+function renderGames() {
+  const el = $('games-body');
+  // Merge sweep games + check for playoff/playin games in upcoming days
+  const playoffGames = games.filter(g => true); // all current games
+
+  $('game-count').textContent = playoffGames.length;
+
+  if (!playoffGames.length) {
+    el.innerHTML = '<div style="color:var(--dim);text-align:center;padding:12px;">No games today. Play-in starts Apr 14-15.</div>';
+    return;
+  }
+
+  el.innerHTML = playoffGames.map(g => {
+    const isLive = g.status === 'In Progress';
+    const isFinal = g.status === 'Final';
+    const statusCls = isLive ? 'live' : isFinal ? 'final' : 'sched';
+    const time = new Date(g.date).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+    const odds = g.odds;
+
+    return `
+      <div class="game-row">
+        <span class="game-matchup">${g.away.abbr} @ ${g.home.abbr}</span>
+        <span class="game-status ${statusCls}">${isLive ? `Q${g.period} ${g.clock}` : g.status}</span>
+        <span class="game-time">${time}</span>
+        <span class="game-spread">${odds ? odds.spread : ''}</span>
+        <span class="game-note">${g.broadcast || ''} ${odds ? `O/U ${odds.overUnder}` : ''}</span>
+      </div>`;
+  }).join('');
+}
+
+function renderSeeds(conf) {
+  const el = $(conf + '-seeds');
+  const teams = standings[conf] || [];
+  const sorted = [...teams].sort((a, b) => Number(b.pct) - Number(a.pct));
+
+  el.innerHTML = `
+    <table class="seed-table">
+      <thead><tr><th>#</th><th>Team</th><th>W-L</th><th>PCT</th><th>GB</th><th>PPG</th><th>OPP</th><th>DIFF</th><th>Status</th></tr></thead>
+      <tbody>
+        ${sorted.map((t, i) => {
+          const seed = i + 1;
+          const diff = parseFloat(t.diff);
+          const diffStr = diff > 0 ? `+${t.diff}` : t.diff;
+          const diffCls = diff > 0 ? 'color:var(--green)' : diff < 0 ? 'color:var(--red)' : '';
+
+          let status = '';
+          let statusCls = '';
+          if (seed <= 6) { status = seed <= 2 ? 'Clinched HCA' : 'Clinched'; statusCls = seed <= 2 ? 'clinch-z' : 'clinch-x'; }
+          else if (seed <= 10) { status = 'Play-In'; statusCls = 'clinch-pb'; }
+          else { status = 'Eliminated'; statusCls = 'color:var(--red)'; }
+
+          return `
+            <tr>
+              <td><span class="seed ${seedClass(seed)}">${seed}</span></td>
+              <td style="font-weight:500">${t.abbr || t.team}</td>
+              <td>${t.wins}-${t.losses}</td>
+              <td>${t.pct}</td>
+              <td>${t.gb}</td>
+              <td>${t.ppg}</td>
+              <td>${t.oppg}</td>
+              <td style="${diffCls}">${diffStr}</td>
+              <td class="${statusCls}" style="font-size:9px">${status}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+init();
+</script>
+</body>
+</html>
