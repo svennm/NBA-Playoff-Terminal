@@ -2,7 +2,23 @@
 // Uses Upstash Redis when UPSTASH_REDIS_REST_URL is set (Vercel/production)
 // Falls back to JSON files for local dev
 
-import { randomUUID } from 'crypto';
+import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from 'crypto';
+
+function hashPassword(password) {
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  const [salt, hash] = stored.split(':');
+  const test = scryptSync(password, salt, 64);
+  return timingSafeEqual(Buffer.from(hash, 'hex'), test);
+}
+
+function generateToken() {
+  return randomBytes(32).toString('hex');
+}
 
 // --- Storage backend ---
 let backend;
@@ -111,36 +127,79 @@ await initBackend();
 
 // --- Users ---
 
-export async function createUser(username) {
+export async function createUser(username, password) {
   const name = username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
   if (!name || name.length < 2 || name.length > 20) {
     return { error: 'Username must be 2-20 chars, letters/numbers/dashes only' };
   }
+  if (!password || password.length < 4) {
+    return { error: 'Password must be at least 4 characters' };
+  }
   const existing = await backend.hget('users', name);
   if (existing) {
-    return { error: 'Username taken', existing: true };
+    return { error: 'Username taken' };
   }
+  const token = generateToken();
   const user = {
     name,
     displayName: username.trim(),
+    passwordHash: hashPassword(password),
     createdAt: new Date().toISOString(),
     record: { wins: 0, losses: 0, pushes: 0 },
-    bankroll: 1000
+    bankroll: 1000,
+    token
   };
   await backend.hset('users', name, user);
-  return { user };
+  return { user: sanitizeUser(user), token };
 }
 
 export async function getUser(username) {
   const name = username.trim().toLowerCase();
+  const user = await backend.hget('users', name);
+  return user ? sanitizeUser(user) : null;
+}
+
+export async function getUserFull(username) {
+  const name = username.trim().toLowerCase();
   return await backend.hget('users', name);
 }
 
-export async function loginUser(username) {
+export async function loginUser(username, password) {
   const name = username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
   const existing = await backend.hget('users', name);
-  if (existing) return { user: existing };
-  return createUser(username);
+  if (!existing) {
+    return { error: 'User not found. Sign up first.' };
+  }
+  // Legacy users without password (auto-migrate)
+  if (!existing.passwordHash) {
+    if (!password || password.length < 4) return { error: 'Set a password (4+ chars) to claim this account' };
+    existing.passwordHash = hashPassword(password);
+    existing.token = generateToken();
+    await backend.hset('users', name, existing);
+    return { user: sanitizeUser(existing), token: existing.token };
+  }
+  if (!password || !verifyPassword(password, existing.passwordHash)) {
+    return { error: 'Wrong password' };
+  }
+  // Rotate token on login
+  existing.token = generateToken();
+  await backend.hset('users', name, existing);
+  return { user: sanitizeUser(existing), token: existing.token };
+}
+
+export async function verifyToken(token) {
+  if (!token) return null;
+  const all = await backend.hgetall('users');
+  for (const user of Object.values(all)) {
+    if (user.token === token) return sanitizeUser(user);
+  }
+  return null;
+}
+
+// Strip sensitive fields before sending to client
+function sanitizeUser(user) {
+  const { passwordHash, token, ...safe } = user;
+  return safe;
 }
 
 export async function getLeaderboard() {
@@ -275,6 +334,6 @@ export async function deleteSlip(id, userKey) {
 }
 
 export default {
-  createUser, getUser, loginUser, getLeaderboard,
+  createUser, getUser, getUserFull, loginUser, verifyToken, getLeaderboard,
   createSlip, getSlips, getSlip, gradeSlip, deleteSlip
 };

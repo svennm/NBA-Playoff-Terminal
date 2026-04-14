@@ -526,15 +526,40 @@ app.get('/api/status', (req, res) => {
 
 // === Betting Slips API ===
 
-// Login or create user
-app.post('/api/users', async (req, res) => {
-  const { username } = req.body;
+// Auth middleware — checks token from Authorization header
+async function authMiddleware(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  const user = await store.verifyToken(token);
+  if (!user) return res.status(401).json({ error: 'Not logged in' });
+  req.user = user;
+  next();
+}
+
+// Sign up
+app.post('/api/signup', async (req, res) => {
+  const { username, password } = req.body;
   if (!username) return res.status(400).json({ error: 'Username required' });
-  const result = await store.loginUser(username);
+  if (!password) return res.status(400).json({ error: 'Password required' });
+  const result = await store.createUser(username, password);
+  if (result.error) return res.status(400).json(result);
   res.json(result);
 });
 
-// Get user
+// Login
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username) return res.status(400).json({ error: 'Username required' });
+  const result = await store.loginUser(username, password);
+  if (result.error) return res.status(401).json(result);
+  res.json(result);
+});
+
+// Get current user from token
+app.get('/api/me', authMiddleware, (req, res) => {
+  res.json({ user: req.user });
+});
+
+// Get user (public profile)
 app.get('/api/users/:name', async (req, res) => {
   const user = await store.getUser(req.params.name);
   if (!user) return res.status(404).json({ error: 'User not found' });
@@ -546,10 +571,10 @@ app.get('/api/leaderboard', async (req, res) => {
   res.json(await store.getLeaderboard());
 });
 
-// Create slip
-app.post('/api/slips', async (req, res) => {
-  const { user, legs, wager, gameDate } = req.body;
-  const result = await store.createSlip({ user, legs, wager, gameDate });
+// Create slip (requires auth)
+app.post('/api/slips', authMiddleware, async (req, res) => {
+  const { legs, wager, gameDate } = req.body;
+  const result = await store.createSlip({ user: req.user.name, legs, wager, gameDate });
   if (result.error) return res.status(400).json(result);
   broadcast({ type: 'new_slip', slip: result.slip });
   res.json(result);

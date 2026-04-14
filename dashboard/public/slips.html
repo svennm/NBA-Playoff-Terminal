@@ -150,12 +150,17 @@
 <!-- Login Overlay -->
 <div class="login-overlay" id="login-overlay">
   <div class="login-box">
-    <h2>ENTER THE ARENA</h2>
-    <p>Pick a username to start making slips with your crew</p>
-    <input type="text" id="username-input" placeholder="username" maxlength="20" onkeydown="if(event.key==='Enter')doLogin()">
+    <h2 id="auth-title">ENTER THE ARENA</h2>
+    <p id="auth-subtitle">Sign up or log in to start making slips</p>
+    <input type="text" id="username-input" placeholder="username" maxlength="20">
+    <input type="password" id="password-input" placeholder="password" maxlength="50" onkeydown="if(event.key==='Enter')doAuth()">
     <br>
-    <button onclick="doLogin()">LOCK IN</button>
+    <div style="display:flex;gap:8px;justify-content:center;">
+      <button onclick="doAuth('signup')" id="signup-btn">SIGN UP</button>
+      <button onclick="doAuth('login')" id="login-btn" style="background:rgba(0,229,255,0.1);border-color:var(--cyan);color:var(--cyan);">LOG IN</button>
+    </div>
     <div class="login-error" id="login-error"></div>
+    <div style="margin-top:12px;font-size:9px;color:var(--dim);" id="auth-hint">New here? Pick a username and password to sign up.</div>
   </div>
 </div>
 
@@ -172,6 +177,7 @@
     <div class="user-badge" id="user-badge" style="display:none;">
       <span id="display-name"></span>
       <span class="bankroll">$<span id="user-bankroll">1000</span></span>
+      <span onclick="logout()" style="cursor:pointer;color:var(--dim);font-size:9px;border:1px solid var(--border);padding:2px 6px;border-radius:3px;margin-left:4px;">LOGOUT</span>
     </div>
   </div>
 </div>
@@ -253,49 +259,72 @@
 const $ = id => document.getElementById(id);
 
 let currentUser = null;
+let authToken = null;
 let currentLegs = [];
 let allGames = [];
 let feedTab = 'all';
 
-// === Auth ===
-function checkLogin() {
-  const saved = localStorage.getItem('nba_user');
-  if (saved) {
-    try {
-      currentUser = JSON.parse(saved);
-      showLoggedIn();
-      return true;
-    } catch {}
-  }
-  return false;
+// Auth headers helper
+function authHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (authToken) h['Authorization'] = `Bearer ${authToken}`;
+  return h;
 }
 
-async function doLogin() {
-  const name = $('username-input').value.trim();
-  if (!name) { $('login-error').textContent = 'Enter a username'; return; }
+// === Auth ===
+async function checkLogin() {
+  const saved = localStorage.getItem('nba_token');
+  if (!saved) return false;
+  authToken = saved;
+  try {
+    const res = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${authToken}` } });
+    if (!res.ok) throw new Error('Invalid token');
+    const data = await res.json();
+    currentUser = data.user;
+    showLoggedIn();
+    return true;
+  } catch {
+    localStorage.removeItem('nba_token');
+    authToken = null;
+    return false;
+  }
+}
 
-  const res = await fetch('/api/users', {
+async function doAuth(mode) {
+  const name = $('username-input').value.trim();
+  const pass = $('password-input').value;
+  $('login-error').textContent = '';
+
+  if (!name) { $('login-error').textContent = 'Enter a username'; return; }
+  if (!pass) { $('login-error').textContent = 'Enter a password'; return; }
+
+  const endpoint = mode === 'signup' ? '/api/signup' : '/api/login';
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: name })
+    body: JSON.stringify({ username: name, password: pass })
   });
   const data = await res.json();
 
-  if (data.error && !data.existing) {
+  if (data.error) {
     $('login-error').textContent = data.error;
     return;
   }
 
-  if (data.existing) {
-    // Login to existing
-    const uRes = await fetch(`/api/users/${name.toLowerCase()}`);
-    currentUser = await uRes.json();
-  } else {
-    currentUser = data.user;
-  }
-
-  localStorage.setItem('nba_user', JSON.stringify(currentUser));
+  currentUser = data.user;
+  authToken = data.token;
+  localStorage.setItem('nba_token', authToken);
   showLoggedIn();
+}
+
+function logout() {
+  currentUser = null;
+  authToken = null;
+  localStorage.removeItem('nba_token');
+  $('login-overlay').style.display = 'flex';
+  $('user-badge').style.display = 'none';
+  $('username-input').value = '';
+  $('password-input').value = '';
 }
 
 function showLoggedIn() {
@@ -538,9 +567,8 @@ async function submitSlip() {
 
   const res = await fetch('/api/slips', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: JSON.stringify({
-      user: currentUser.name,
       legs: currentLegs.map(l => ({ type: l.type, game: l.game, gameId: l.gameId, player: l.player, stat: l.stat, line: l.line, pick: l.pick, odds: l.odds })),
       wager,
       gameDate
@@ -643,13 +671,10 @@ async function loadLeaderboard() {
 
 // === Boot ===
 async function boot() {
-  if (checkLogin()) {
-    // Already logged in
-  }
+  await checkLogin();
   await loadGames();
   await loadFeed();
   await loadLeaderboard();
-  // Poll for updates (works on Vercel serverless)
   setInterval(() => { loadFeed(); loadLeaderboard(); }, 30000);
 }
 
