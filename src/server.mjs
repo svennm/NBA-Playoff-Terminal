@@ -308,6 +308,138 @@ app.get('/api/players/:id/playoffs', async (req, res) => {
   }
 });
 
+// API: Full edge analysis for a game — fetches all player gamelogs + Poisson vs book lines
+app.get('/api/analysis/game/:gameIndex', async (req, res) => {
+  const cacheKey = `analysis-game-${req.params.gameIndex}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const sweepData = getCache() || await runSweep();
+    const game = sweepData?.games?.[parseInt(req.params.gameIndex)];
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+
+    // Get both team rosters
+    const teams = sweepData?.teams || await espn.getTeams();
+    const homeTeam = teams.find(t => t.abbr === game.home.abbr);
+    const awayTeam = teams.find(t => t.abbr === game.away.abbr);
+
+    const fetchTeamAnalysis = async (teamId, teamAbbr) => {
+      if (!teamId) return [];
+      const roster = await espn.getPlayerStats(teamId);
+      const results = [];
+
+      // Fetch gamelogs in parallel (top 10 players)
+      const top = roster.slice(0, 10);
+      const gamelogs = await Promise.allSettled(
+        top.map(p => espn.getPlayerGamelog(p.id))
+      );
+      const overviews = await Promise.allSettled(
+        top.map(p => espn.getPlayerOverview(p.id))
+      );
+
+      for (let i = 0; i < top.length; i++) {
+        const player = top[i];
+        const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
+        const ov = overviews[i].status === 'fulfilled' ? overviews[i].value : null;
+        if (!gl?.games?.length) continue;
+
+        const season = ov?.season || {};
+        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+
+        for (const key of statKeys) {
+          const values = gl.games
+            .map(g => parseFloat(g.stats[`_${key}`] || '0'))
+            .filter(v => !isNaN(v));
+          if (values.length < 10) continue;
+
+          const n = values.length;
+          const mean = values.reduce((a, b) => a + b, 0) / n;
+          if (mean < 0.5) continue;
+          const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
+          const stdDev = Math.sqrt(variance);
+          const dispersion = mean > 0 ? variance / mean : 0;
+
+          // Poisson
+          const lambda = mean;
+          const poissonCdf = (k, lam) => {
+            let sum = 0;
+            for (let i = 0; i <= Math.floor(k); i++) {
+              let term = Math.exp(-lam);
+              for (let j = 1; j <= i; j++) term *= lam / j;
+              sum += term;
+            }
+            return Math.min(sum, 1);
+          };
+
+          // Fit quality
+          let fit = 'Poor';
+          if (Math.abs(dispersion - 1) < 0.5) fit = 'Excellent';
+          else if (Math.abs(dispersion - 1) < 1) fit = 'Good';
+          else if (Math.abs(dispersion - 1) < 2) fit = 'Fair';
+
+          // Generate lines at common half-points around the mean
+          const line = Math.round(mean * 2) / 2;
+          const overProb = +(1 - poissonCdf(line, lambda)).toFixed(4);
+          const underProb = +poissonCdf(line, lambda).toFixed(4);
+
+          const toAmerican = (prob) => prob >= 0.5
+            ? Math.round(-100 * prob / (1 - prob))
+            : Math.round(100 * (1 - prob) / prob);
+
+          // Actual hit rate
+          const actualOver = values.filter(v => v > line).length;
+
+          results.push({
+            player: player.name,
+            playerId: player.id,
+            team: teamAbbr,
+            headshot: player.headshot || '',
+            stat: key,
+            line,
+            mean: +mean.toFixed(1),
+            stdDev: +stdDev.toFixed(1),
+            games: n,
+            // Poisson model
+            modelOverProb: +(overProb * 100).toFixed(1),
+            modelUnderProb: +(underProb * 100).toFixed(1),
+            modelOverOdds: toAmerican(overProb),
+            modelUnderOdds: toAmerican(underProb),
+            // Actual
+            actualOverPct: +(actualOver / n * 100).toFixed(1),
+            // Quality
+            poissonFit: fit,
+            dispersion: +dispersion.toFixed(3),
+            consistency: stdDev / mean < 0.2 ? 'High' : stdDev / mean < 0.35 ? 'Medium' : 'Low'
+          });
+        }
+      }
+      return results;
+    };
+
+    const [homeAnalysis, awayAnalysis] = await Promise.all([
+      fetchTeamAnalysis(homeTeam?.id, game.home.abbr),
+      fetchTeamAnalysis(awayTeam?.id, game.away.abbr)
+    ]);
+
+    const allRows = [...awayAnalysis, ...homeAnalysis];
+
+    const result = {
+      game: { home: game.home, away: game.away, date: game.date, odds: game.odds },
+      rows: allRows,
+      summary: {
+        total: allRows.length,
+        withEdge: 0 // client computes edge based on book lines
+      }
+    };
+
+    cache.set(cacheKey, result, 5 * 60_000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Player gamelog + statistical analysis (cached 1hr)
 app.get('/api/players/:id/gamelog', async (req, res) => {
   const cacheKey = `gamelog-${req.params.id}`;
@@ -524,6 +656,110 @@ app.get('/api/polymarket/events', async (req, res) => {
   cache.set('poly-events', data, 10 * 60_000);
   res.json(data);
 });
+
+// === In-House Bookmaker ===
+// Custom lines created by users — others can bet against them
+
+app.post('/api/book/lines', authMiddleware, async (req, res) => {
+  const { player, stat, line, overOdds, underOdds, game, gameDate, maxWager } = req.body;
+  if (!player || !stat || line == null) return res.status(400).json({ error: 'player, stat, line required' });
+  const entry = {
+    id: (await import('crypto')).randomUUID().slice(0, 8),
+    maker: req.user.name,
+    makerDisplay: req.user.displayName,
+    player, stat, line: parseFloat(line),
+    overOdds: parseInt(overOdds) || -110,
+    underOdds: parseInt(underOdds) || -110,
+    game: game || '',
+    gameDate: gameDate || null,
+    maxWager: parseFloat(maxWager) || 500,
+    createdAt: new Date().toISOString(),
+    bets: [],
+    status: 'open'
+  };
+  await backend_lpush_book(entry);
+  broadcast({ type: 'new_line', line: entry });
+  res.json({ line: entry });
+});
+
+app.get('/api/book/lines', async (req, res) => {
+  const lines = await backend_lrange_book();
+  const open = lines.filter(l => l.status === 'open');
+  res.json(open);
+});
+
+app.post('/api/book/bet', authMiddleware, async (req, res) => {
+  const { lineId, side, wager } = req.body;
+  if (!lineId || !side || !wager) return res.status(400).json({ error: 'lineId, side (over/under), wager required' });
+
+  const lines = await backend_lrange_book();
+  const idx = lines.findIndex(l => l.id === lineId);
+  if (idx === -1) return res.status(404).json({ error: 'Line not found' });
+  const line = lines[idx];
+  if (line.status !== 'open') return res.status(400).json({ error: 'Line is closed' });
+  if (line.maker === req.user.name) return res.status(400).json({ error: 'Cannot bet your own line' });
+
+  const totalBet = line.bets.reduce((a, b) => a + b.wager, 0);
+  if (totalBet + parseFloat(wager) > line.maxWager) return res.status(400).json({ error: `Max wager exceeded (${line.maxWager - totalBet} remaining)` });
+
+  const odds = side === 'over' ? line.overOdds : line.underOdds;
+  const dec = odds > 0 ? (odds / 100) + 1 : (100 / Math.abs(odds)) + 1;
+
+  line.bets.push({
+    user: req.user.name,
+    userDisplay: req.user.displayName,
+    side,
+    wager: parseFloat(wager),
+    odds,
+    payout: +(parseFloat(wager) * dec).toFixed(2),
+    createdAt: new Date().toISOString()
+  });
+
+  await backend_lset_book(idx, line);
+  broadcast({ type: 'new_bet', lineId, bet: line.bets[line.bets.length - 1] });
+  res.json({ line });
+});
+
+// Simple book storage helpers (uses same backend pattern)
+async function backend_lpush_book(entry) {
+  const all = await backend_lrange_book();
+  all.unshift(entry);
+  await save_book(all);
+}
+async function backend_lrange_book() {
+  try {
+    const raw = cache.get('book-lines-store');
+    if (raw) return raw;
+    // Try to load from file on local
+    const { readFileSync, existsSync } = await import('fs');
+    const { join, dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const f = join(process.env.DATA_DIR || join(__dirname, '..', 'data'), 'book.json');
+    if (existsSync(f)) {
+      const data = JSON.parse(readFileSync(f, 'utf-8'));
+      cache.set('book-lines-store', data, 24 * 60 * 60_000);
+      return data;
+    }
+  } catch {}
+  return [];
+}
+async function backend_lset_book(idx, entry) {
+  const all = await backend_lrange_book();
+  all[idx] = entry;
+  await save_book(all);
+}
+async function save_book(all) {
+  cache.set('book-lines-store', all, 24 * 60 * 60_000);
+  try {
+    const { writeFileSync } = await import('fs');
+    const { join, dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const f = join(process.env.DATA_DIR || join(__dirname, '..', 'data'), 'book.json');
+    writeFileSync(f, JSON.stringify(all, null, 2));
+  } catch {}
+}
 
 // API: Cache stats
 app.get('/api/cache', (req, res) => {
