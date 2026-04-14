@@ -903,6 +903,11 @@
   </div>
 </div>
 
+<div style="display:flex;justify-content:center;padding:8px;gap:0;background:var(--panel);border-bottom:1px solid var(--border);">
+  <button onclick="switchSport('nba')" id="sport-btn-nba" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:4px 0 0 4px;background:rgba(255,179,0,0.1);color:var(--amber);">NBA</button>
+  <button onclick="switchSport('soccer')" id="sport-btn-soccer" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">UCL</button>
+</div>
+
 <div class="selector-bar">
   <div class="team-selector">
     <select id="team-a-select" onchange="loadTeam('a')">
@@ -1050,6 +1055,11 @@
 <script>
 const $ = id => document.getElementById(id);
 
+// Sport mode — detected from URL param ?sport=soccer
+const urlParams = new URLSearchParams(window.location.search);
+let currentSport = urlParams.get('sport') || 'nba';
+const SOCCER_LEAGUE = 'uefa.champions';
+
 // State
 const state = {
   teams: [],
@@ -1059,18 +1069,18 @@ const state = {
 
 // Init
 async function init() {
-  const res = await fetch('/api/teams');
+  const endpoint = currentSport === 'soccer' ? `/api/soccer/${SOCCER_LEAGUE}/teams` : '/api/teams';
+  const res = await fetch(endpoint);
   state.teams = await res.json();
-
-  // Sort alphabetically
   state.teams.sort((a, b) => a.name.localeCompare(b.name));
 
+  const label = currentSport === 'soccer' ? 'UCL Team' : 'Team';
   const optionsHtml = state.teams.map(t =>
     `<option value="${t.id}">${t.name} ${t.record ? '(' + t.record + ')' : ''}</option>`
   ).join('');
 
-  $('team-a-select').innerHTML = '<option value="">-- Select Team A --</option>' + optionsHtml;
-  $('team-b-select').innerHTML = '<option value="">-- Select Team B --</option>' + optionsHtml;
+  $('team-a-select').innerHTML = `<option value="">-- Select ${label} A --</option>` + optionsHtml;
+  $('team-b-select').innerHTML = `<option value="">-- Select ${label} B --</option>` + optionsHtml;
 }
 
 async function loadTeam(side) {
@@ -1083,16 +1093,28 @@ async function loadTeam(side) {
   rosterEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
 
   try {
-    // Fetch team detail + game log in parallel
-    const [teamRes, gamesRes] = await Promise.all([
-      fetch(`/api/teams/${teamId}`),
-      fetch(`/api/teams/${teamId}/games`)
-    ]);
-    const data = await teamRes.json();
-    const gamesData = await gamesRes.json();
+    let data, gamesData;
+
+    if (currentSport === 'soccer') {
+      // Soccer team detail + roster
+      const teamRes = await fetch(`/api/soccer/${SOCCER_LEAGUE}/teams/${teamId}`);
+      data = await teamRes.json();
+      // Normalize to match NBA shape
+      data.stats = {};
+      data.injuries = [];
+      gamesData = null;
+    } else {
+      // NBA team detail + game log
+      const [teamRes, gamesRes] = await Promise.all([
+        fetch(`/api/teams/${teamId}`),
+        fetch(`/api/teams/${teamId}/games`)
+      ]);
+      data = await teamRes.json();
+      gamesData = await gamesRes.json();
+    }
 
     state[side].detail = data.detail;
-    state[side].stats = data.stats;
+    state[side].stats = data.stats || {};
     state[side].roster = data.roster || [];
     state[side].injuries = data.injuries || [];
     state[side].gameData = gamesData;
@@ -1103,7 +1125,7 @@ async function loadTeam(side) {
         <img src="${data.detail.logo}" alt="" style="width:36px;height:36px;object-fit:contain;">
         <div class="team-info">
           <div class="team-name-lg" style="color:var(--team-${side})">${data.detail.abbr}</div>
-          <div class="team-rec">${data.detail.record?.summary || ''} | ${data.detail.standingSummary || ''}</div>
+          <div class="team-rec">${data.detail.record || data.detail.record?.summary || ''} | ${data.detail.standingSummary || ''}</div>
         </div>`;
     }
 
@@ -1111,19 +1133,24 @@ async function loadTeam(side) {
     $(`roster-${side}-title`).textContent = data.detail?.name || `Team ${side.toUpperCase()}`;
     $(`roster-${side}-count`).textContent = state[side].roster.length + ' players';
 
-    // Load player stats for all roster members
-    await loadRosterStats(side);
-
-    // Render roster
-    renderRoster(side);
+    if (currentSport === 'soccer') {
+      // Soccer roster — load player overviews for stats
+      await loadSoccerRosterStats(side);
+      renderSoccerRoster(side);
+    } else {
+      await loadRosterStats(side);
+      renderRoster(side);
+    }
 
     // Render injuries
     renderInjuries(side);
 
     // If both teams loaded, show comparison
     if (state.a.detail && state.b.detail) {
-      $('team-slider-bar').style.display = 'flex';
-      currentTeamWindow = 'full';
+      if (currentSport !== 'soccer') {
+        $('team-slider-bar').style.display = 'flex';
+        currentTeamWindow = 'full';
+      }
       renderTeamComparison();
       renderOdds();
       showPlayerPanel();
@@ -1146,6 +1173,98 @@ async function loadRosterStats(side) {
       state[side].players[toLoad[i].id] = r.value;
     }
   });
+}
+
+async function loadSoccerRosterStats(side) {
+  const roster = state[side].roster;
+  const top = roster.filter(p => p.position !== 'G').slice(0, 18);
+  const results = await Promise.allSettled(
+    top.map(p => fetch(`/api/soccer/${SOCCER_LEAGUE}/teams/${$(`team-${side}-select`).value}`).then(() =>
+      fetch(`https://site.api.espn.com/apis/common/v3/sports/soccer/${SOCCER_LEAGUE}/athletes/${p.id}/overview`).then(r => r.json())
+    ).catch(() => null))
+  );
+  // Use the server endpoint instead
+  const teamId = $(`team-${side}-select`).value;
+  for (const p of top) {
+    try {
+      const res = await fetch(`https://site.api.espn.com/apis/common/v3/sports/soccer/${SOCCER_LEAGUE}/athletes/${p.id}/overview`);
+      const data = await res.json();
+      if (data?.statistics?.splits) {
+        const clSplit = data.statistics.splits.find(s => s.displayName?.includes('Champions'));
+        const leagueSplit = data.statistics.splits.find(s => !s.displayName?.includes('Champions') && !s.displayName?.includes('Friendly') && !s.displayName?.includes('Copa'));
+        const s = clSplit || leagueSplit;
+        if (s) {
+          const labels = data.statistics.labels || [];
+          const stats = {};
+          labels.forEach((l, i) => { stats[l] = s.stats?.[i] || '0'; });
+          state[side].players[p.id] = { stats, splitName: s.displayName };
+        }
+      }
+    } catch {}
+  }
+}
+
+function renderSoccerRoster(side) {
+  const el = $(`roster-${side}`);
+  const roster = state[side].roster;
+  const players = state[side].players;
+
+  if (!roster.length) {
+    el.innerHTML = '<div class="empty-state">No roster data</div>';
+    return;
+  }
+
+  // Sort: F, M, D, G — and within position by goals
+  const posOrder = { F: 0, M: 1, D: 2, G: 3 };
+  const sorted = [...roster].sort((a, b) => {
+    const pa = posOrder[a.position] ?? 4;
+    const pb = posOrder[b.position] ?? 4;
+    if (pa !== pb) return pa - pb;
+    const ga = parseInt(players[a.id]?.stats?.G || '0');
+    const gb = parseInt(players[b.id]?.stats?.G || '0');
+    return gb - ga;
+  });
+
+  el.innerHTML = `
+    <table class="roster-table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>G</th>
+          <th>A</th>
+          <th>SH</th>
+          <th>ST</th>
+          <th>FC</th>
+          <th>YC</th>
+          <th>STRT</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map(p => {
+          const s = players[p.id]?.stats || {};
+          const hasStats = s.G !== undefined;
+          return `
+            <tr onclick="selectPlayer('${side}','${p.id}')" id="row-${side}-${p.id}">
+              <td>
+                <div class="player-cell">
+                  ${p.headshot ? `<img class="player-headshot" src="${p.headshot}" alt="" onerror="this.style.display='none'">` : ''}
+                  <div>
+                    <div class="player-name">#${p.jersey} ${p.name}</div>
+                    <div class="player-pos">${p.position} | ${p.nationality || ''}</div>
+                  </div>
+                </div>
+              </td>
+              <td style="color:var(--green);font-weight:700;">${hasStats ? s.G : '-'}</td>
+              <td style="color:var(--cyan);">${hasStats ? s.A : '-'}</td>
+              <td>${hasStats ? s.SH : '-'}</td>
+              <td>${hasStats ? s.ST : '-'}</td>
+              <td>${hasStats ? s.FC : '-'}</td>
+              <td style="color:var(--amber);">${hasStats ? s.YC : '-'}</td>
+              <td style="color:var(--dim);">${hasStats ? s.STRT : '-'}</td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
 }
 
 function renderRoster(side) {
@@ -2050,7 +2169,35 @@ selectPlayer = function(side, playerId) {
 };
 
 // Boot — check URL params for pre-selected teams (from bracket page)
+function switchSport(sport) {
+  currentSport = sport;
+  $('sport-btn-nba').style.background = sport === 'nba' ? 'rgba(255,179,0,0.1)' : 'var(--panel)';
+  $('sport-btn-nba').style.color = sport === 'nba' ? 'var(--amber)' : 'var(--dim)';
+  $('sport-btn-soccer').style.background = sport === 'soccer' ? 'rgba(26,115,232,0.1)' : 'var(--panel)';
+  $('sport-btn-soccer').style.color = sport === 'soccer' ? '#1a73e8' : 'var(--dim)';
+  // Reset state
+  state.a = { detail: null, stats: null, roster: [], injuries: [], players: {}, gameData: null };
+  state.b = { detail: null, stats: null, roster: [], injuries: [], players: {}, gameData: null };
+  $('badge-a').innerHTML = '';
+  $('badge-b').innerHTML = '';
+  $('roster-a').innerHTML = '<div class="empty-state">Select a team</div>';
+  $('roster-b').innerHTML = '<div class="empty-state">Select a team</div>';
+  $('comp-panel').style.display = 'none';
+  $('player-panel').style.display = 'none';
+  $('deep-dive-panel').style.display = 'none';
+  $('team-slider-bar').style.display = 'none';
+  init();
+}
+
 async function boot() {
+  // Set sport from URL param
+  if (currentSport === 'soccer') {
+    $('sport-btn-nba').style.background = 'var(--panel)';
+    $('sport-btn-nba').style.color = 'var(--dim)';
+    $('sport-btn-soccer').style.background = 'rgba(26,115,232,0.1)';
+    $('sport-btn-soccer').style.color = '#1a73e8';
+  }
+
   await Promise.all([init(), loadSweepData()]);
 
   const params = new URLSearchParams(window.location.search);
