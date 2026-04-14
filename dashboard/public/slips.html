@@ -179,6 +179,7 @@
       <span id="display-name"></span>
       <span class="bankroll">$<span id="user-bankroll">1000</span></span>
       <span onclick="logout()" style="cursor:pointer;color:var(--dim);font-size:9px;border:1px solid var(--border);padding:2px 6px;border-radius:3px;margin-left:4px;">LOGOUT</span>
+      <span onclick="toggleOddsFormat()" id="odds-fmt-btn" style="cursor:pointer;color:var(--cyan);font-size:9px;border:1px solid var(--border-glow);padding:2px 6px;border-radius:3px;margin-left:4px;">AM</span>
     </div>
   </div>
 </div>
@@ -207,6 +208,7 @@
         <div class="slip-summary">
           <div class="slip-row"><span class="label">Legs</span><span class="value" id="slip-leg-count">0</span></div>
           <div class="slip-row"><span class="label">Total Odds</span><span class="value" id="slip-total-odds">--</span></div>
+          <div class="slip-row"><span class="label">Implied Prob</span><span class="value" id="slip-implied" style="color:var(--purple);">--</span></div>
           <div class="wager-input">
             <span style="color:var(--dim);font-size:10px;">WAGER $</span>
             <input type="number" id="wager-input" value="100" min="1" max="10000" oninput="updateSlipSummary()">
@@ -220,6 +222,9 @@
           </div>
           <div class="slip-row"><span class="label">To Win</span><span class="value payout" id="slip-payout">$0</span></div>
         </div>
+        <!-- Parlay Distribution -->
+        <div id="parlay-dist" style="margin-top:8px;display:none;"></div>
+
         <button class="submit-btn" id="submit-btn" onclick="submitSlip()" disabled>LOCK IT IN</button>
       </div>
     </div>
@@ -264,6 +269,38 @@ let authToken = null;
 let currentLegs = [];
 let allGames = [];
 let feedTab = 'all';
+let oddsFormat = localStorage.getItem('oddsFormat') || 'american';
+
+// Odds conversion helpers
+function americanToDecimal(am) {
+  return am > 0 ? (am / 100) + 1 : (100 / Math.abs(am)) + 1;
+}
+
+function americanToImplied(am) {
+  return am < 0
+    ? (Math.abs(am) / (Math.abs(am) + 100) * 100)
+    : (100 / (am + 100) * 100);
+}
+
+function fmtOdds(am) {
+  if (oddsFormat === 'decimal') return americanToDecimal(am).toFixed(2);
+  return (am > 0 ? '+' : '') + am;
+}
+
+function fmtImpl(am) {
+  return americanToImplied(am).toFixed(1) + '%';
+}
+
+function toggleOddsFormat() {
+  oddsFormat = oddsFormat === 'american' ? 'decimal' : 'american';
+  localStorage.setItem('oddsFormat', oddsFormat);
+  $('odds-fmt-btn').textContent = oddsFormat === 'american' ? 'AM' : 'DEC';
+  // Re-render everything
+  renderSlipBuilder();
+  loadFeed();
+  const idx = $('game-select').value;
+  if (idx !== '') loadGameProps();
+}
 
 // Auth headers helper
 function authHeaders() {
@@ -461,19 +498,23 @@ async function loadGameProps() {
             const uOdds = l.underOdds || -115;
             const bookName = l.book && l.book !== 'Model' ? `<span style="font-size:7px;color:var(--green)">${l.book}</span>` : '';
 
+            const oImpl = americanToImplied(oOdds).toFixed(0);
+            const uImpl = americanToImplied(uOdds).toFixed(0);
             return `
               <div class="prop-btn" onclick="toggleLeg(this,{type:'prop',game:'${gameName}',gameId:'${game.id}',player:'${p.name.replace(/'/g,"\\'")}',stat:'${l.stat}',line:${l.line},pick:'Over ${l.line}',odds:${oOdds}})" data-leg-id="${pi}-${l.stat}-o">
                 <span class="stat">${l.stat}</span>
                 <span class="line">O ${l.line}</span>
                 <span class="pick">Over</span>
-                <span class="odds">${oOdds > 0 ? '+' : ''}${oOdds}</span>
+                <span class="odds">${fmtOdds(oOdds)}</span>
+                <span style="font-size:7px;color:var(--purple);">${oImpl}%</span>
                 ${bookName}
               </div>
               <div class="prop-btn" onclick="toggleLeg(this,{type:'prop',game:'${gameName}',gameId:'${game.id}',player:'${p.name.replace(/'/g,"\\'")}',stat:'${l.stat}',line:${l.line},pick:'Under ${l.line}',odds:${uOdds}})" data-leg-id="${pi}-${l.stat}-u">
                 <span class="stat">${l.stat}</span>
                 <span class="line">U ${l.line}</span>
                 <span class="pick">Under</span>
-                <span class="odds">${uOdds > 0 ? '+' : ''}${uOdds}</span>
+                <span class="odds">${fmtOdds(uOdds)}</span>
+                <span style="font-size:7px;color:var(--purple);">${uImpl}%</span>
                 ${bookName}
               </div>`;
           }).join('')}
@@ -510,15 +551,21 @@ function renderSlipBuilder() {
   if (!currentLegs.length) { builder.style.display = 'none'; return; }
   builder.style.display = '';
 
-  $('slip-legs').innerHTML = currentLegs.map((l, i) => `
-    <div class="slip-leg">
-      <div class="leg-info">
-        <div class="leg-player">${l.player}</div>
-        <div class="leg-detail">${l.stat} ${l.pick} | ${l.game}</div>
-      </div>
-      <div class="leg-odds">${l.odds > 0 ? '+' : ''}${l.odds}</div>
-      <span class="remove" onclick="removeLeg(${i})">&times;</span>
-    </div>`).join('');
+  $('slip-legs').innerHTML = currentLegs.map((l, i) => {
+    const impl = americanToImplied(l.odds);
+    return `
+      <div class="slip-leg">
+        <div class="leg-info">
+          <div class="leg-player">${l.player}</div>
+          <div class="leg-detail">${l.stat} ${l.pick} | ${l.game}</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="leg-odds">${fmtOdds(l.odds)}</div>
+          <div style="font-size:9px;color:var(--purple);">${impl.toFixed(1)}% impl.</div>
+        </div>
+        <span class="remove" onclick="removeLeg(${i})">&times;</span>
+      </div>`;
+  }).join('');
 
   updateSlipSummary();
 }
@@ -537,20 +584,80 @@ function updateSlipSummary() {
   $('slip-leg-count').textContent = n;
 
   let dec = 1;
+  let impliedProb = 1;
   for (const leg of currentLegs) {
     const am = leg.odds;
-    dec *= am > 0 ? (am / 100) + 1 : (100 / Math.abs(am)) + 1;
+    dec *= americanToDecimal(am);
+    impliedProb *= americanToImplied(am) / 100;
   }
 
   const american = dec >= 2 ? `+${Math.round((dec - 1) * 100)}` : `-${Math.round(100 / (dec - 1))}`;
-  $('slip-total-odds').textContent = n > 0 ? american : '--';
-  $('slip-total-odds').style.color = american.startsWith('+') ? 'var(--green)' : 'var(--amber)';
+  const displayOdds = oddsFormat === 'decimal' ? dec.toFixed(2) : american;
+  $('slip-total-odds').textContent = n > 0 ? displayOdds : '--';
+  $('slip-total-odds').style.color = (oddsFormat === 'decimal' || american.startsWith('+')) ? 'var(--green)' : 'var(--amber)';
+
+  // Implied probability of the full parlay hitting
+  const parlayPct = (impliedProb * 100).toFixed(1);
+  $('slip-implied').textContent = n > 0 ? `${parlayPct}%` : '--';
+  $('slip-implied').style.color = impliedProb > 0.3 ? 'var(--green)' : impliedProb > 0.1 ? 'var(--amber)' : 'var(--red)';
 
   const wager = parseFloat($('wager-input').value) || 0;
   const payout = (wager * dec).toFixed(2);
   $('slip-payout').textContent = n > 0 ? `$${payout}` : '$0';
 
   $('submit-btn').disabled = n < 1 || wager < 1;
+
+  // Parlay distribution — probability of exactly k legs hitting
+  const distEl = $('parlay-dist');
+  if (n >= 2) {
+    distEl.style.display = '';
+    const probs = currentLegs.map(l => americanToImplied(l.odds) / 100);
+
+    // Compute P(exactly k legs hit) using dynamic programming
+    // dp[i][j] = probability that exactly j of the first i legs hit
+    const dp = Array(n + 1).fill(null).map(() => Array(n + 1).fill(0));
+    dp[0][0] = 1;
+    for (let i = 1; i <= n; i++) {
+      const p = probs[i - 1];
+      for (let j = 0; j <= i; j++) {
+        dp[i][j] = dp[i-1][j] * (1 - p);
+        if (j > 0) dp[i][j] += dp[i-1][j-1] * p;
+      }
+    }
+
+    const dist = [];
+    for (let k = 0; k <= n; k++) {
+      dist.push({ k, prob: +(dp[n][k] * 100).toFixed(1) });
+    }
+    const maxProb = Math.max(...dist.map(d => d.prob), 1);
+
+    distEl.innerHTML = `
+      <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Parlay Hit Distribution</div>
+      <div style="display:flex;align-items:flex-end;gap:3px;height:60px;margin-bottom:4px;">
+        ${dist.map(d => {
+          const h = Math.max((d.prob / maxProb) * 100, 2);
+          const isAll = d.k === n;
+          const color = isAll ? 'var(--green)' : d.k === 0 ? 'var(--red)' : 'var(--cyan)';
+          return `
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">
+              <span style="font-size:8px;color:${color};font-weight:${isAll?700:400};">${d.prob}%</span>
+              <div style="width:100%;height:${h}%;background:${color};border-radius:2px 2px 0 0;min-height:2px;opacity:${isAll?1:0.6};"></div>
+            </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:3px;">
+        ${dist.map(d => `
+          <div style="flex:1;text-align:center;font-size:8px;color:${d.k===n?'var(--green)':d.k===0?'var(--red)':'var(--dim)'};">${d.k}/${n}</div>
+        `).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;">
+        <span style="color:var(--red);">Miss all: ${dist[0].prob}%</span>
+        <span style="color:var(--cyan);">Hit 1+: ${(100 - dist[0].prob).toFixed(1)}%</span>
+        <span style="color:var(--green);font-weight:700;">Hit all: ${dist[n].prob}%</span>
+      </div>`;
+  } else {
+    distEl.style.display = 'none';
+  }
 }
 
 function setWager(amt) {
@@ -611,6 +718,17 @@ async function loadFeed() {
     const oddsClass = s.totalOdds.startsWith('+') ? 'plus' : 'minus';
     const time = new Date(s.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
 
+    // Compute parlay implied probability
+    let parlayImpl = 1;
+    for (const l of s.legs) {
+      parlayImpl *= americanToImplied(l.odds) / 100;
+    }
+    const parlayPct = (parlayImpl * 100).toFixed(1);
+    const implColor = parlayImpl > 0.3 ? 'var(--green)' : parlayImpl > 0.1 ? 'var(--amber)' : 'var(--red)';
+
+    // Display odds in chosen format
+    const displayTotal = oddsFormat === 'decimal' ? s.decimalOdds?.toFixed(2) || s.totalOdds : s.totalOdds;
+
     return `
       <div class="slip-card ${s.status}">
         <div class="slip-card-header">
@@ -620,18 +738,25 @@ async function loadFeed() {
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
             <span class="slip-status ${s.status}">${s.status}</span>
-            <span class="slip-card-odds ${oddsClass}">${s.totalOdds}</span>
+            <span class="slip-card-odds ${oddsClass}">${displayTotal}</span>
           </div>
         </div>
-        ${s.legs.map(l => `
-          <div class="slip-card-leg">
-            <div class="leg-result ${l.result || 'pending'}"></div>
-            <span style="font-weight:500">${l.player}</span>
-            <span style="color:var(--dim)">${l.stat} ${l.pick}</span>
-            <span style="margin-left:auto;color:var(--amber);font-size:9px">${l.odds > 0 ? '+' : ''}${l.odds}</span>
-          </div>`).join('')}
+        ${s.legs.map(l => {
+          const legImpl = americanToImplied(l.odds).toFixed(0);
+          return `
+            <div class="slip-card-leg">
+              <div class="leg-result ${l.result || 'pending'}"></div>
+              <span style="font-weight:500">${l.player}</span>
+              <span style="color:var(--dim)">${l.stat} ${l.pick}</span>
+              <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+                <span style="color:var(--purple);font-size:8px;">${legImpl}%</span>
+                <span style="color:var(--amber);font-size:9px">${fmtOdds(l.odds)}</span>
+              </span>
+            </div>`;
+        }).join('')}
         <div class="slip-card-footer">
           <span class="wager">$${s.wager} wager</span>
+          <span style="color:var(--purple);font-size:9px;">${parlayPct}% implied</span>
           <span class="payout">To win $${s.payout}</span>
         </div>
       </div>`;
