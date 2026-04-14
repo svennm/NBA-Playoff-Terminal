@@ -1250,9 +1250,9 @@ function renderSoccerRoster(side) {
           <th>Player</th>
           <th>G</th>
           <th>A</th>
-          <th>SH</th>
+          <th>SHA</th>
           <th>ST</th>
-          <th>FC</th>
+          <th>FLS</th>
           <th>YC</th>
           <th>STRT</th>
         </tr>
@@ -1457,9 +1457,9 @@ function renderSoccerComparison() {
   html += makeCompRow('Standing', detA.standingSummary || '-', detB.standingSummary || '-', 1, 1, 1);
   html += makeCompRow('Goals', a.goals, b.goals, a.goals, b.goals, Math.max(a.goals, b.goals, 1));
   html += makeCompRow('Assists', a.assists, b.assists, a.assists, b.assists, Math.max(a.assists, b.assists, 1));
-  html += makeCompRow('Shots', a.shots, b.shots, a.shots, b.shots, Math.max(a.shots, b.shots, 1));
+  html += makeCompRow('Shots Attempted', a.shots, b.shots, a.shots, b.shots, Math.max(a.shots, b.shots, 1));
   html += makeCompRow('Shots on Target', a.sot, b.sot, a.sot, b.sot, Math.max(a.sot, b.sot, 1));
-  html += makeCompRow('Fouls', a.fouls, b.fouls, b.fouls, a.fouls, Math.max(a.fouls, b.fouls, 1));
+  html += makeCompRow('Fouls Committed', a.fouls, b.fouls, b.fouls, a.fouls, Math.max(a.fouls, b.fouls, 1));
   html += makeCompRow('Yellow Cards', a.yc, b.yc, b.yc, a.yc, Math.max(a.yc, b.yc, 1));
   html += makeCompRow('Red Cards', a.rc, b.rc, b.rc, a.rc, Math.max(a.rc, b.rc, 1));
 
@@ -1748,10 +1748,10 @@ function renderSoccerPlayerCompare(body, pa, pb, rosterA, rosterB) {
   const soccerFields = [
     { key: 'G', label: 'Goals', higher: true },
     { key: 'A', label: 'Assists', higher: true },
-    { key: 'SH', label: 'Shots', higher: true },
-    { key: 'ST', label: 'SOT', higher: true },
-    { key: 'FC', label: 'Fouls', higher: false },
-    { key: 'YC', label: 'Cards', higher: false },
+    { key: 'SH', label: 'Shots Attempted', higher: true },
+    { key: 'ST', label: 'Shots on Target', higher: true },
+    { key: 'FC', label: 'Fouls Committed', higher: false },
+    { key: 'YC', label: 'Yellow Cards', higher: false },
     { key: 'STRT', label: 'Starts', higher: true },
   ];
 
@@ -1767,9 +1767,9 @@ function renderSoccerPlayerCompare(body, pa, pb, rosterA, rosterB) {
         <div class="p-stat-grid">
           <div class="p-stat-box"><div class="p-stat-val">${stats.G || '0'}</div><div class="p-stat-label">Goals</div></div>
           <div class="p-stat-box"><div class="p-stat-val">${stats.A || '0'}</div><div class="p-stat-label">Assists</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${stats.SH || '0'}</div><div class="p-stat-label">Shots</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.SH || '0'}</div><div class="p-stat-label">SHA</div></div>
           <div class="p-stat-box"><div class="p-stat-val">${stats.ST || '0'}</div><div class="p-stat-label">SOT</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${stats.YC || '0'}</div><div class="p-stat-label">Cards</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.YC || '0'}</div><div class="p-stat-label">YC</div></div>
           <div class="p-stat-box"><div class="p-stat-val">${gp}</div><div class="p-stat-label">Starts</div></div>
         </div>
       </div>`;
@@ -1781,9 +1781,9 @@ function renderSoccerPlayerCompare(body, pa, pb, rosterA, rosterB) {
     centerHtml = [
       { label: 'G/G', va: (parseInt(sa.G||0)/gpA), vb: (parseInt(sb.G||0)/gpB), higher: true },
       { label: 'A/G', va: (parseInt(sa.A||0)/gpA), vb: (parseInt(sb.A||0)/gpB), higher: true },
-      { label: 'SH/G', va: (parseInt(sa.SH||0)/gpA), vb: (parseInt(sb.SH||0)/gpB), higher: true },
+      { label: 'SHA/G', va: (parseInt(sa.SH||0)/gpA), vb: (parseInt(sb.SH||0)/gpB), higher: true },
       { label: 'SOT/G', va: (parseInt(sa.ST||0)/gpA), vb: (parseInt(sb.ST||0)/gpB), higher: true },
-      { label: 'FC/G', va: (parseInt(sa.FC||0)/gpA), vb: (parseInt(sb.FC||0)/gpB), higher: false },
+      { label: 'Fouls/G', va: (parseInt(sa.FC||0)/gpA), vb: (parseInt(sb.FC||0)/gpB), higher: false },
       ...soccerFields.map(f => ({ label: f.label, va: parseInt(sa[f.key]||0), vb: parseInt(sb[f.key]||0), higher: f.higher }))
     ].map(f => {
       const max = Math.max(f.va, f.vb, 0.1);
@@ -2539,10 +2539,10 @@ async function openSoccerDeepDive(side, playerId) {
       const metrics = [
         ['Goals', parseFloat(s.totalGoals || s._G || '0')],
         ['Assists', parseFloat(s.goalAssists || s._A || '0')],
-        ['Shots', parseFloat(s.totalShots || s._SH || '0')],
-        ['SOT', parseFloat(s.shotsOnTarget || s._ST || '0')],
-        ['Fouls', parseFloat(s.foulsCommitted || s._FC || '0')],
-        ['Cards', parseFloat(s.yellowCards || s._YC || '0')],
+        ['Shots Attempted', parseFloat(s.totalShots || s._SH || '0')],
+        ['Shots on Target', parseFloat(s.shotsOnTarget || s._ST || '0')],
+        ['Fouls Committed', parseFloat(s.foulsCommitted || s._FC || '0')],
+        ['Yellow Cards', parseFloat(s.yellowCards || s._YC || '0')],
       ];
       for (const [name, total] of metrics) {
         const d = buildSoccerDistribution(total, gp, name);

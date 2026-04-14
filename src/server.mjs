@@ -897,7 +897,7 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
 
           // Player props
           if (matched) {
-            const propMarkets = 'player_goal_scorer_anytime,player_shots,player_assists';
+            const propMarkets = 'player_goal_scorer_anytime,player_shots,player_shots_on_target,player_assists';
             const ppUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${matched.id}/odds?apiKey=${key}&regions=us&markets=${propMarkets}&oddsFormat=american`;
             const ppRes = await fetch(ppUrl, { signal: AbortSignal.timeout(8000) });
             if (ppRes.ok) {
@@ -905,7 +905,12 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
               const playerMap = {};
               for (const bk of ppData.bookmakers || []) {
                 for (const mkt of bk.markets || []) {
-                  const statMap = { player_goal_scorer_anytime: 'Goals', player_shots: 'Shots', player_assists: 'Assists' };
+                  const statMap = {
+                    player_goal_scorer_anytime: 'Anytime Goal',
+                    player_shots: 'Shots Attempted',
+                    player_shots_on_target: 'Shots on Target',
+                    player_assists: 'Assists'
+                  };
                   const stat = statMap[mkt.key] || mkt.key;
                   for (const o of mkt.outcomes || []) {
                     const name = o.description || o.name;

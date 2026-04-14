@@ -272,15 +272,15 @@ export async function getTeamProps(league, teamId) {
       };
     };
 
-    if (goals >= 1) lines.push(makeLine('Goals', gpg, goals, gp));
+    if (goals >= 1) lines.push(makeLine('Anytime Goal', gpg, goals, gp));
     if (assists >= 1) lines.push(makeLine('Assists', apg, assists, gp));
-    if (shots >= 3) lines.push(makeLine('Shots', shpg, shots, gp));
-    if (sot >= 2) lines.push(makeLine('SOT', sotpg, sot, gp));
-    if (goals + assists >= 1) lines.push(makeLine('G+A', gpg + apg, goals + assists, gp));
+    if (shots >= 3) lines.push(makeLine('Shots Attempted', shpg, shots, gp));
+    if (sot >= 2) lines.push(makeLine('Shots on Target', sotpg, sot, gp));
+    if (goals + assists >= 1) lines.push(makeLine('Goals + Assists', gpg + apg, goals + assists, gp));
     // Fouls and cards — popular soccer markets
-    if (fouls >= 3) lines.push(makeLine('Fouls', fouls / gp, fouls, gp));
+    if (fouls >= 3) lines.push(makeLine('Fouls Committed', fouls / gp, fouls, gp));
     const yc = parseFloat(s.yellowCards || s._YC || '0');
-    if (yc >= 1) lines.push(makeLine('Cards', yc / gp, yc, gp));
+    if (yc >= 1) lines.push(makeLine('Yellow Cards', yc / gp, yc, gp));
 
     // Goalkeeper props — saves, fouls suffered (proxy for activity)
     if (player.position === 'G' && gp >= 1) {
@@ -300,7 +300,7 @@ export async function getTeamProps(league, teamId) {
         });
       }
       // Yellow card prop for GK
-      if (fouls >= 1) lines.push(makeLine('Fouls', fouls / gp, fouls, gp));
+      if (fouls >= 1) lines.push(makeLine('Fouls Committed', fouls / gp, fouls, gp));
     }
 
     if (lines.length) {
