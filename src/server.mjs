@@ -839,6 +839,43 @@ app.get('/api/soccer/odds/:sport', async (req, res) => {
   }
 });
 
+// Soccer props for a game — generates lines from player stats
+app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
+  const ck = `soccer-props-${req.params.league}-${req.params.gameIndex}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const scores = await soccer.getScoreboard(req.params.league);
+    const game = scores[parseInt(req.params.gameIndex)];
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+
+    const teams = await soccer.getTeams(req.params.league);
+    const homeTeam = teams.find(t => t.abbr === game.home.abbr);
+    const awayTeam = teams.find(t => t.abbr === game.away.abbr);
+
+    const [homeProps, awayProps] = await Promise.all([
+      homeTeam ? soccer.getTeamProps(req.params.league, homeTeam.id) : [],
+      awayTeam ? soccer.getTeamProps(req.params.league, awayTeam.id) : []
+    ]);
+
+    const result = {
+      game: { home: game.home, away: game.away, date: game.date },
+      source: 'model',
+      gameLines: game.odds ? { source: 'espn', ...game.odds } : null,
+      playerProps: [
+        ...awayProps.map(p => ({ ...p, team: game.away.abbr })),
+        ...homeProps.map(p => ({ ...p, team: game.home.abbr }))
+      ]
+    };
+
+    cache.set(ck, result, 5 * 60_000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Polymarket CL
 app.get('/api/polymarket/ucl', async (req, res) => {
   const ck = 'poly-ucl';

@@ -162,5 +162,105 @@ export async function getTeamDetail(league, teamId) {
   };
 }
 
+export async function getPlayerOverview(league, playerId) {
+  const data = await safeFetch(
+    `https://site.api.espn.com/apis/common/v3/sports/soccer/${league}/athletes/${playerId}/overview`,
+    `player-${league}-${playerId}`
+  );
+  if (!data) return null;
+
+  const stats = data.statistics || {};
+  const labels = stats.labels || [];
+  const names = stats.names || [];
+  const splits = stats.splits || [];
+
+  const parseSplit = (split) => {
+    if (!split) return {};
+    const obj = {};
+    names.forEach((n, i) => { obj[n] = split.stats?.[i] || '0'; });
+    labels.forEach((l, i) => { obj[`_${l}`] = split.stats?.[i] || '0'; });
+    return obj;
+  };
+
+  // Get the CL or league split
+  const clSplit = splits.find(s => s.displayName?.includes('Champions League'));
+  const leagueSplit = splits.find(s => s.displayName?.includes('LALIGA') || s.displayName?.includes('Premier') || s.displayName?.includes('Serie') || s.displayName?.includes('Bundesliga') || s.displayName?.includes('Ligue'));
+
+  // Last 5 gamelog
+  const gl = data.gameLog?.statistics?.[0] || {};
+  const glLabels = gl.labels || [];
+  const glEvents = (gl.events || []).map(e => {
+    const obj = {};
+    glLabels.forEach((l, i) => { obj[l] = e.stats?.[i] || '0'; });
+    return obj;
+  });
+
+  return {
+    clStats: clSplit ? parseSplit(clSplit) : null,
+    leagueStats: leagueSplit ? parseSplit(leagueSplit) : null,
+    clSplitName: clSplit?.displayName || null,
+    leagueSplitName: leagueSplit?.displayName || null,
+    allSplits: splits.map(s => ({ name: s.displayName, stats: parseSplit(s) })),
+    last5: glEvents,
+    last5Labels: glLabels,
+    news: data.news,
+    nextGame: data.nextGame
+  };
+}
+
+export async function getTeamProps(league, teamId) {
+  const roster = await getTeamRoster(league, teamId);
+  if (!roster.length) return [];
+
+  // Get stats for top players
+  const top = roster.filter(p => p.position !== 'G').slice(0, 12);
+  const overviews = await Promise.allSettled(
+    top.map(p => getPlayerOverview(league, p.id))
+  );
+
+  const props = [];
+  top.forEach((player, i) => {
+    const ov = overviews[i]?.status === 'fulfilled' ? overviews[i].value : null;
+    if (!ov) return;
+
+    // Use CL stats first, then league stats
+    const s = ov.clStats || ov.leagueStats;
+    if (!s) return;
+
+    const gp = parseInt(s.starts || s._STRT || '0') || 1;
+    const goals = parseFloat(s.totalGoals || s._G || '0');
+    const assists = parseFloat(s.goalAssists || s._A || '0');
+    const shots = parseFloat(s.totalShots || s._SH || '0');
+    const sot = parseFloat(s.shotsOnTarget || s._ST || '0');
+    const fouls = parseFloat(s.foulsCommitted || s._FC || '0');
+
+    const lines = [];
+    const gpg = goals / gp;
+    const apg = assists / gp;
+    const shpg = shots / gp;
+    const sotpg = sot / gp;
+
+    if (gpg >= 0.2) lines.push({ stat: 'Goals', line: Math.round(gpg * 2) / 2 || 0.5, avg: +gpg.toFixed(2), total: goals, gp });
+    if (apg >= 0.1) lines.push({ stat: 'Assists', line: Math.round(apg * 2) / 2 || 0.5, avg: +apg.toFixed(2), total: assists, gp });
+    if (shpg >= 1) lines.push({ stat: 'Shots', line: Math.round(shpg * 2) / 2, avg: +shpg.toFixed(1), total: shots, gp });
+    if (sotpg >= 0.5) lines.push({ stat: 'SOT', line: Math.round(sotpg * 2) / 2, avg: +sotpg.toFixed(1), total: sot, gp });
+    lines.push({ stat: 'G+A', line: Math.round((gpg + apg) * 2) / 2 || 0.5, avg: +(gpg + apg).toFixed(2), total: goals + assists, gp });
+
+    if (lines.length) {
+      props.push({
+        id: player.id,
+        name: player.name,
+        position: player.position,
+        jersey: player.jersey,
+        headshot: player.headshot,
+        source: ov.clStats ? 'UCL' : 'League',
+        lines
+      });
+    }
+  });
+
+  return props;
+}
+
 export { LEAGUES };
-export default { getScoreboard, getStandings, getTeams, getNews, getTeamRoster, getTeamDetail, LEAGUES };
+export default { getScoreboard, getStandings, getTeams, getNews, getTeamRoster, getTeamDetail, getPlayerOverview, getTeamProps, LEAGUES };

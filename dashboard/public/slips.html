@@ -9,7 +9,7 @@
   :root {
     --bg: #030508; --panel: #0a0e14; --panel2: #0d1219;
     --border: #1a2a3a; --border-glow: #0f4f6f;
-    --cyan: #00e5ff; --green: #00ff88; --amber: #ffb300;
+    --cyan: #00e5ff;--gold:#d4a825;--gold2:#f5d442; --green: #00ff88; --amber: #ffb300;
     --red: #ff3d3d; --magenta: #ff00ff; --text: #c8d6e5;
     --dim: #4a5568; --blue: #3498db; --purple: #9b59b6;
   }
@@ -166,8 +166,7 @@
 
 <div class="header">
   <div>
-    <div class="logo">PLAYOFF SLIPS</div>
-    <div class="logo-sub">Build Parlays // Track Your Crew</div>
+    <img src="/img/logo.png" alt="HxM" style="height:32px;filter:drop-shadow(0 0 10px rgba(212,168,37,0.3));" onerror="this.outerHTML='<div style=\"font-family:Orbitron,sans-serif;font-size:16px;font-weight:900;letter-spacing:3px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;\">HxM</div>'"><div class="logo-sub" style="color:#4a5568;">HunterxMafia</div>
   </div>
   <div class="nav-links">
     <a href="/terminal.html">Terminal</a>
@@ -191,6 +190,10 @@
     <div class="panel-header">Build Your Slip</div>
     <div class="panel-body">
       <div style="margin-bottom:8px;">
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <button class="filter-btn active" id="sport-nba" onclick="setSport('nba',this)" style="background:rgba(255,179,0,0.1);border:1px solid var(--border);color:var(--amber);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">NBA</button>
+          <button class="filter-btn" id="sport-ucl" onclick="setSport('ucl',this)" style="background:var(--panel);border:1px solid var(--border);color:var(--dim);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">UCL</button>
+        </div>
         <label style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Select a Game</label>
         <select id="game-select" onchange="loadGameProps()" style="margin-top:4px;">
           <option value="">-- Pick a game --</option>
@@ -270,6 +273,8 @@ let currentLegs = [];
 let allGames = [];
 let feedTab = 'all';
 let oddsFormat = localStorage.getItem('oddsFormat') || 'american';
+let currentSport = 'nba';
+let soccerGames = [];
 
 // Odds conversion helpers
 function americanToDecimal(am) {
@@ -373,36 +378,70 @@ function showLoggedIn() {
 }
 
 // === Games ===
+function setSport(sport, btn) {
+  currentSport = sport;
+  document.querySelectorAll('#sport-nba,#sport-ucl').forEach(b => { b.style.background = 'var(--panel)'; b.style.color = 'var(--dim)'; b.classList.remove('active'); });
+  btn.style.background = sport === 'nba' ? 'rgba(255,179,0,0.1)' : 'rgba(26,115,232,0.1)';
+  btn.style.color = sport === 'nba' ? 'var(--amber)' : '#1a73e8';
+  btn.classList.add('active');
+  $('props-area').innerHTML = '<div class="empty">Loading games...</div>';
+  loadGames();
+}
+
 async function loadGames() {
-  const res = await fetch('/api/sweep');
-  const data = await res.json();
-  allGames = data.games || [];
-
   const sel = $('game-select');
-  // Also show upcoming games from standings/schedule
-  if (!allGames.length) {
-    sel.innerHTML = '<option value="">No games today — check back on game days</option>';
-    return;
-  }
 
-  sel.innerHTML = '<option value="">-- Pick a game --</option>' +
-    allGames.map((g, i) => {
-      const time = new Date(g.date).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-      const odds = g.odds ? ` | ${g.odds.spread} O/U ${g.odds.overUnder}` : '';
-      return `<option value="${i}">${g.away.abbr} @ ${g.home.abbr} — ${time}${odds}</option>`;
-    }).join('');
+  if (currentSport === 'nba') {
+    const res = await fetch('/api/sweep');
+    const data = await res.json();
+    allGames = data.games || [];
+    soccerGames = [];
+
+    if (!allGames.length) {
+      sel.innerHTML = '<option value="">No NBA games today</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">-- Pick an NBA game --</option>' +
+      allGames.map((g, i) => {
+        const time = new Date(g.date).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+        const odds = g.odds ? ` | ${g.odds.spread} O/U ${g.odds.overUnder}` : '';
+        return `<option value="nba-${i}">${g.away.abbr} @ ${g.home.abbr} — ${time}${odds}</option>`;
+      }).join('');
+  } else {
+    const res = await fetch('/api/soccer/uefa.champions/scoreboard');
+    soccerGames = await res.json();
+    allGames = [];
+
+    if (!soccerGames.length) {
+      sel.innerHTML = '<option value="">No UCL matches today</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">-- Pick a UCL match --</option>' +
+      soccerGames.map((g, i) => {
+        const time = new Date(g.date).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+        return `<option value="ucl-${i}">${g.away.name} vs ${g.home.name} — ${time}</option>`;
+      }).join('');
+  }
 }
 
 async function loadGameProps() {
-  const idx = $('game-select').value;
+  const rawIdx = $('game-select').value;
   const area = $('props-area');
-  if (idx === '') { area.innerHTML = '<div class="empty">Select a game to see player props</div>'; return; }
+  if (!rawIdx) { area.innerHTML = '<div class="empty">Select a game to see player props</div>'; return; }
 
-  const game = allGames[idx];
   area.innerHTML = '<div class="empty"><div class="spinner" style="display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;"></div><br>Loading lines...</div>';
 
-  // Use merged props endpoint
-  const res = await fetch(`/api/props/game/${idx}`);
+  // Parse sport-index
+  const [sport, idxStr] = rawIdx.split('-');
+  const idx = parseInt(idxStr);
+
+  // Fetch props based on sport
+  let res;
+  if (sport === 'ucl') {
+    res = await fetch(`/api/soccer/uefa.champions/props/${idx}`);
+  } else {
+    res = await fetch(`/api/props/game/${idx}`);
+  }
   const data = await res.json();
 
   if (data.error) {
@@ -410,7 +449,8 @@ async function loadGameProps() {
     return;
   }
 
-  const gameName = `${game.away.abbr} @ ${game.home.abbr}`;
+  const game = data.game || (sport === 'ucl' ? soccerGames[idx] : allGames[idx]) || {};
+  const gameName = `${game.away?.abbr || game.away?.name || '?'} vs ${game.home?.abbr || game.home?.name || '?'}`;
   const sourceTag = data.source === 'odds-api'
     ? '<span style="color:var(--green);font-size:9px;background:rgba(0,255,136,0.1);padding:2px 6px;border-radius:2px;">LIVE ODDS</span>'
     : '<span style="color:var(--amber);font-size:9px;background:rgba(255,179,0,0.1);padding:2px 6px;border-radius:2px;">MODEL LINES</span>';
