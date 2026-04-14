@@ -753,11 +753,17 @@ function setOffline() {
 // Fetch initial data
 async function fetchSweep() {
   try {
-    const res = await fetch('/api/sweep');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    const res = await fetch('/api/sweep', { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(res.status);
     const data = await res.json();
     renderAll(data);
   } catch (e) {
     console.error('Sweep fetch failed:', e);
+    $('games-panel').innerHTML = '<div style="color:var(--amber);text-align:center;padding:20px;">API loading — first request may take a few seconds on serverless.<br><span style="font-size:10px;color:var(--dim);">Auto-retrying...</span></div>';
+    setOffline();
   }
 }
 

@@ -54,6 +54,22 @@ async function initBackend() {
       },
       type: 'redis'
     };
+  } else if (process.env.VERCEL) {
+    // Vercel serverless — in-memory only (no filesystem writes)
+    // Data won't persist across cold starts without Redis
+    console.log('[STORE] Using in-memory store (Vercel without Redis — set UPSTASH vars for persistence)');
+    let usersData = {};
+    let slipsData = [];
+    backend = {
+      async hget(key, field) { return usersData[field] || null; },
+      async hset(key, field, val) { usersData[field] = val; },
+      async hgetall(key) { return usersData; },
+      async lpush(key, val) { slipsData.unshift(val); },
+      async lrange(key, start, end) { return slipsData.slice(start, end === -1 ? undefined : end + 1); },
+      async llen(key) { return slipsData.length; },
+      async lset(key, index, val) { slipsData[index] = val; },
+      type: 'memory'
+    };
   } else {
     // Local JSON file fallback
     const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import('fs');
@@ -61,7 +77,7 @@ async function initBackend() {
     const { fileURLToPath } = await import('url');
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', '..', 'data');
-    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+    try { if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true }); } catch {}
 
     const USERS_FILE = join(DATA_DIR, 'users.json');
     const SLIPS_FILE = join(DATA_DIR, 'slips.json');
