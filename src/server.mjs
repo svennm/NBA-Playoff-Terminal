@@ -451,61 +451,60 @@ app.get('/api/status', (req, res) => {
 // === Betting Slips API ===
 
 // Login or create user
-app.post('/api/users', (req, res) => {
+app.post('/api/users', async (req, res) => {
   const { username } = req.body;
   if (!username) return res.status(400).json({ error: 'Username required' });
-  const result = store.loginUser(username);
+  const result = await store.loginUser(username);
   res.json(result);
 });
 
 // Get user
-app.get('/api/users/:name', (req, res) => {
-  const user = store.getUser(req.params.name);
+app.get('/api/users/:name', async (req, res) => {
+  const user = await store.getUser(req.params.name);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json(user);
 });
 
 // Leaderboard
-app.get('/api/leaderboard', (req, res) => {
-  res.json(store.getLeaderboard());
+app.get('/api/leaderboard', async (req, res) => {
+  res.json(await store.getLeaderboard());
 });
 
 // Create slip
-app.post('/api/slips', (req, res) => {
+app.post('/api/slips', async (req, res) => {
   const { user, legs, wager, gameDate } = req.body;
-  const result = store.createSlip({ user, legs, wager, gameDate });
+  const result = await store.createSlip({ user, legs, wager, gameDate });
   if (result.error) return res.status(400).json(result);
-  // Broadcast new slip to all SSE clients
   broadcast({ type: 'new_slip', slip: result.slip });
   res.json(result);
 });
 
 // Get all slips
-app.get('/api/slips', (req, res) => {
+app.get('/api/slips', async (req, res) => {
   const { status, user, limit } = req.query;
-  res.json(store.getSlips({ status, user, limit: limit ? parseInt(limit) : 50 }));
+  res.json(await store.getSlips({ status, user, limit: limit ? parseInt(limit) : 50 }));
 });
 
 // Get single slip
-app.get('/api/slips/:id', (req, res) => {
-  const slip = store.getSlip(req.params.id);
+app.get('/api/slips/:id', async (req, res) => {
+  const slip = await store.getSlip(req.params.id);
   if (!slip) return res.status(404).json({ error: 'Not found' });
   res.json(slip);
 });
 
 // Grade a slip
-app.patch('/api/slips/:id/grade', (req, res) => {
+app.patch('/api/slips/:id/grade', async (req, res) => {
   const { results } = req.body;
-  const result = store.gradeSlip(req.params.id, results);
+  const result = await store.gradeSlip(req.params.id, results);
   if (result.error) return res.status(400).json(result);
   broadcast({ type: 'slip_graded', slip: result.slip });
   res.json(result);
 });
 
 // Delete slip
-app.delete('/api/slips/:id', (req, res) => {
+app.delete('/api/slips/:id', async (req, res) => {
   const { user } = req.body;
-  const result = store.deleteSlip(req.params.id, user);
+  const result = await store.deleteSlip(req.params.id, user);
   if (result.error) return res.status(400).json(result);
   res.json(result);
 });

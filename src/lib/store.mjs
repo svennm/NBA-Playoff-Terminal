@@ -1,71 +1,135 @@
-// JSON file-based persistent storage for users and betting slips
-// Works on Railway with persistent volume at /data
+// Persistent storage for users and betting slips
+// Uses Upstash Redis when UPSTASH_REDIS_REST_URL is set (Vercel/production)
+// Falls back to JSON files for local dev
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', '..', 'data');
+// --- Storage backend ---
+let backend;
 
-if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+async function initBackend() {
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    const { Redis } = await import('@upstash/redis');
+    const redis = new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN
+    });
+    console.log('[STORE] Using Upstash Redis');
+    backend = {
+      async get(key) {
+        const val = await redis.get(key);
+        return val;
+      },
+      async set(key, val) {
+        await redis.set(key, JSON.stringify(val));
+      },
+      async lpush(key, val) {
+        await redis.lpush(key, JSON.stringify(val));
+      },
+      async lrange(key, start, end) {
+        const items = await redis.lrange(key, start, end);
+        return items.map(i => typeof i === 'string' ? JSON.parse(i) : i);
+      },
+      async llen(key) {
+        return await redis.llen(key);
+      },
+      async lset(key, index, val) {
+        await redis.lset(key, index, JSON.stringify(val));
+      },
+      async hget(key, field) {
+        const val = await redis.hget(key, field);
+        return val ? (typeof val === 'string' ? JSON.parse(val) : val) : null;
+      },
+      async hset(key, field, val) {
+        await redis.hset(key, { [field]: JSON.stringify(val) });
+      },
+      async hgetall(key) {
+        const all = await redis.hgetall(key);
+        if (!all) return {};
+        const out = {};
+        for (const [k, v] of Object.entries(all)) {
+          out[k] = typeof v === 'string' ? JSON.parse(v) : v;
+        }
+        return out;
+      },
+      type: 'redis'
+    };
+  } else {
+    // Local JSON file fallback
+    const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import('fs');
+    const { join, dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', '..', 'data');
+    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 
-const USERS_FILE = join(DATA_DIR, 'users.json');
-const SLIPS_FILE = join(DATA_DIR, 'slips.json');
+    const USERS_FILE = join(DATA_DIR, 'users.json');
+    const SLIPS_FILE = join(DATA_DIR, 'slips.json');
 
-function loadJSON(file, fallback) {
-  try {
-    if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf-8'));
-  } catch (e) {
-    console.error(`[STORE] Failed to load ${file}:`, e.message);
+    const loadJSON = (file, fb) => {
+      try { if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf-8')); } catch {}
+      return fb;
+    };
+
+    let usersData = loadJSON(USERS_FILE, {});
+    let slipsData = loadJSON(SLIPS_FILE, []);
+
+    console.log('[STORE] Using local JSON files');
+    backend = {
+      async hget(key, field) { return usersData[field] || null; },
+      async hset(key, field, val) { usersData[field] = val; writeFileSync(USERS_FILE, JSON.stringify(usersData, null, 2)); },
+      async hgetall(key) { return usersData; },
+      async lpush(key, val) { slipsData.unshift(val); writeFileSync(SLIPS_FILE, JSON.stringify(slipsData, null, 2)); },
+      async lrange(key, start, end) { return slipsData.slice(start, end === -1 ? undefined : end + 1); },
+      async llen(key) { return slipsData.length; },
+      async lset(key, index, val) { slipsData[index] = val; writeFileSync(SLIPS_FILE, JSON.stringify(slipsData, null, 2)); },
+      // Expose for grading
+      _getSlips: () => slipsData,
+      _saveSlips: () => writeFileSync(SLIPS_FILE, JSON.stringify(slipsData, null, 2)),
+      type: 'json'
+    };
   }
-  return fallback;
 }
 
-function saveJSON(file, data) {
-  try {
-    writeFileSync(file, JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error(`[STORE] Failed to save ${file}:`, e.message);
-  }
-}
+await initBackend();
 
-// Users
-let users = loadJSON(USERS_FILE, {});
+// --- Users ---
 
-export function createUser(username) {
+export async function createUser(username) {
   const name = username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
   if (!name || name.length < 2 || name.length > 20) {
     return { error: 'Username must be 2-20 chars, letters/numbers/dashes only' };
   }
-  if (users[name]) {
+  const existing = await backend.hget('users', name);
+  if (existing) {
     return { error: 'Username taken', existing: true };
   }
-  users[name] = {
+  const user = {
     name,
     displayName: username.trim(),
     createdAt: new Date().toISOString(),
     record: { wins: 0, losses: 0, pushes: 0 },
     bankroll: 1000
   };
-  saveJSON(USERS_FILE, users);
-  return { user: users[name] };
+  await backend.hset('users', name, user);
+  return { user };
 }
 
-export function getUser(username) {
+export async function getUser(username) {
   const name = username.trim().toLowerCase();
-  return users[name] || null;
+  return await backend.hget('users', name);
 }
 
-export function loginUser(username) {
+export async function loginUser(username) {
   const name = username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  if (users[name]) return { user: users[name] };
+  const existing = await backend.hget('users', name);
+  if (existing) return { user: existing };
   return createUser(username);
 }
 
-export function getLeaderboard() {
-  return Object.values(users)
+export async function getLeaderboard() {
+  const all = await backend.hgetall('users');
+  return Object.values(all)
     .map(u => ({
       name: u.displayName,
       wins: u.record.wins,
@@ -80,16 +144,14 @@ export function getLeaderboard() {
     .sort((a, b) => b.bankroll - a.bankroll);
 }
 
-// Slips
-let slips = loadJSON(SLIPS_FILE, []);
+// --- Slips ---
 
-export function createSlip({ user, legs, wager, gameDate }) {
-  const u = getUser(user);
+export async function createSlip({ user, legs, wager, gameDate }) {
+  const u = await getUser(user);
   if (!u) return { error: 'User not found' };
   if (!legs?.length) return { error: 'Need at least one leg' };
   if (wager < 1 || wager > 10000) return { error: 'Wager must be $1-$10,000' };
 
-  // Calculate parlay odds
   let decimalOdds = 1;
   for (const leg of legs) {
     const american = leg.odds || -110;
@@ -128,28 +190,30 @@ export function createSlip({ user, legs, wager, gameDate }) {
     result: null
   };
 
-  slips.unshift(slip);
-  saveJSON(SLIPS_FILE, slips);
+  await backend.lpush('slips', slip);
   return { slip };
 }
 
-export function getSlips({ status, user, limit = 50 } = {}) {
-  let filtered = slips;
+export async function getSlips({ status, user, limit = 50 } = {}) {
+  const all = await backend.lrange('slips', 0, 200);
+  let filtered = all;
   if (status) filtered = filtered.filter(s => s.status === status);
   if (user) filtered = filtered.filter(s => s.userKey === user.toLowerCase());
   return filtered.slice(0, limit);
 }
 
-export function getSlip(id) {
-  return slips.find(s => s.id === id) || null;
+export async function getSlip(id) {
+  const all = await backend.lrange('slips', 0, 200);
+  return all.find(s => s.id === id) || null;
 }
 
-export function gradeSlip(id, results) {
-  const slip = slips.find(s => s.id === id);
-  if (!slip) return { error: 'Slip not found' };
+export async function gradeSlip(id, results) {
+  const all = await backend.lrange('slips', 0, 200);
+  const idx = all.findIndex(s => s.id === id);
+  if (idx === -1) return { error: 'Slip not found' };
+  const slip = all[idx];
   if (slip.status !== 'active') return { error: 'Slip already graded' };
 
-  // results is an array of 'won'|'lost'|'push' for each leg
   let allWon = true;
   let anyLost = false;
   slip.legs.forEach((leg, i) => {
@@ -164,38 +228,33 @@ export function gradeSlip(id, results) {
   } else if (allWon) {
     slip.status = 'won';
     slip.result = 'won';
-    // Credit the user
-    const u = users[slip.userKey];
-    if (u) {
+  }
+
+  // Update user record
+  const u = await getUser(slip.userKey);
+  if (u) {
+    if (slip.status === 'won') {
       u.bankroll += slip.payout - slip.wager;
       u.record.wins++;
-      saveJSON(USERS_FILE, users);
-    }
-  } else {
-    // Has pushes but no losses
-    slip.status = 'won';
-    slip.result = 'won';
-  }
-
-  if (slip.status === 'lost') {
-    const u = users[slip.userKey];
-    if (u) {
+    } else if (slip.status === 'lost') {
       u.bankroll -= slip.wager;
       u.record.losses++;
-      saveJSON(USERS_FILE, users);
     }
+    await backend.hset('users', u.name, u);
   }
 
-  saveJSON(SLIPS_FILE, slips);
+  await backend.lset('slips', idx, slip);
   return { slip };
 }
 
-export function deleteSlip(id, userKey) {
-  const idx = slips.findIndex(s => s.id === id && s.userKey === userKey);
+export async function deleteSlip(id, userKey) {
+  const all = await backend.lrange('slips', 0, 200);
+  const idx = all.findIndex(s => s.id === id && s.userKey === userKey);
   if (idx === -1) return { error: 'Not found or not yours' };
-  if (slips[idx].status !== 'active') return { error: 'Can only delete active slips' };
-  slips.splice(idx, 1);
-  saveJSON(SLIPS_FILE, slips);
+  if (all[idx].status !== 'active') return { error: 'Can only delete active slips' };
+  // Redis doesn't have lremove by index easily — mark as deleted
+  all[idx].status = 'deleted';
+  await backend.lset('slips', idx, all[idx]);
   return { ok: true };
 }
 
