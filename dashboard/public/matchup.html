@@ -2251,16 +2251,182 @@ async function loadPlayoffStats(playerId, playerName) {
   }
 }
 
+async function openSoccerDeepDive(side, playerId) {
+  const panel = $('deep-dive-panel');
+  const body = $('deep-dive-body');
+  const sliderBar = $('slider-bar');
+  panel.style.display = '';
+  sliderBar.style.display = 'none';
+  body.innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading player stats...</div>';
+
+  const roster = state[side].roster.find(p => p.id === playerId);
+  $('deep-dive-title').textContent = `Player Analysis: ${roster?.name || 'Player'}`;
+
+  try {
+    const res = await fetch(`/api/soccer/${SOCCER_LEAGUE}/players/${playerId}`);
+    const data = await res.json();
+
+    if (!data || data.error) {
+      body.innerHTML = '<div style="color:var(--dim);text-align:center;padding:20px;">No stats available</div>';
+      return;
+    }
+
+    const allSplits = data.allSplits || [];
+    const last5 = data.last5 || [];
+    const last5Labels = data.last5Labels || [];
+
+    // Competition splits
+    const splitsHtml = allSplits.length ? allSplits.map(sp => {
+      const s = sp.stats;
+      const g = s.totalGoals || s._G || '0';
+      const a = s.goalAssists || s._A || '0';
+      const sh = s.totalShots || s._SH || '0';
+      const st = s.shotsOnTarget || s._ST || '0';
+      const fc = s.foulsCommitted || s._FC || '0';
+      const yc = s.yellowCards || s._YC || '0';
+      const rc = s.redCards || s._RC || '0';
+      const starts = s.starts || s._STRT || '0';
+      const isCL = sp.name?.includes('Champions');
+
+      return `
+        <div style="background:rgba(0,0,0,0.3);border:1px solid ${isCL ? 'var(--cyan)' : 'var(--border)'};border-radius:6px;padding:10px;">
+          <div style="font-size:10px;font-weight:700;color:${isCL ? 'var(--cyan)' : 'var(--text)'};margin-bottom:8px;">${sp.name}</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(55px,1fr));gap:4px;">
+            ${[['G',g,'var(--green)'],['A',a,'var(--cyan)'],['SH',sh,''],['ST',st,''],['FC',fc,''],['YC',yc,'var(--amber)'],['RC',rc,'var(--red)'],['STRT',starts,'var(--dim)']].map(([label,val,color]) => `
+              <div style="text-align:center;padding:4px;background:rgba(0,0,0,0.2);border-radius:3px;">
+                <div style="font-size:14px;font-weight:700;${color ? 'color:'+color : ''}">${val}</div>
+                <div style="font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">${label}</div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }).join('') : '<div style="color:var(--dim);">No competition splits available</div>';
+
+    // Last 5 games
+    const last5Html = last5.length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <thead><tr>
+          ${last5Labels.map(l => `<th style="padding:4px 6px;color:var(--dim);font-size:9px;text-transform:uppercase;border-bottom:1px solid var(--border);">${l}</th>`).join('')}
+        </tr></thead>
+        <tbody>
+          ${last5.map(g => `<tr>
+            ${last5Labels.map(l => {
+              const v = g[l] || '0';
+              const isGoal = l === 'G' && parseInt(v) > 0;
+              const isAssist = l === 'A' && parseInt(v) > 0;
+              return `<td style="padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);${isGoal ? 'color:var(--green);font-weight:700;' : isAssist ? 'color:var(--cyan);font-weight:600;' : ''}">${v}</td>`;
+            }).join('')}
+          </tr>`).join('')}
+        </tbody>
+      </table>` : '<div style="color:var(--dim);">No recent games</div>';
+
+    // Per-game averages from CL split
+    const clSplit = allSplits.find(s => s.name?.includes('Champions'));
+    const leagueSplit = allSplits.find(s => s.name && !s.name.includes('Champions') && !s.name.includes('Friendly') && !s.name.includes('Copa') && !s.name.includes('International'));
+    const mainSplit = clSplit || leagueSplit;
+
+    let avgHtml = '';
+    if (mainSplit) {
+      const s = mainSplit.stats;
+      const gp = parseInt(s.starts || s._STRT || '1') || 1;
+      const g = parseFloat(s.totalGoals || s._G || '0');
+      const a = parseFloat(s.goalAssists || s._A || '0');
+      const sh = parseFloat(s.totalShots || s._SH || '0');
+      const st = parseFloat(s.shotsOnTarget || s._ST || '0');
+
+      avgHtml = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;">
+          ${[
+            ['Goals/Game', (g/gp).toFixed(2), 'var(--green)'],
+            ['Assists/Game', (a/gp).toFixed(2), 'var(--cyan)'],
+            ['Shots/Game', (sh/gp).toFixed(1), ''],
+            ['SOT/Game', (st/gp).toFixed(1), ''],
+            ['G+A/Game', ((g+a)/gp).toFixed(2), 'var(--amber)'],
+            ['Games', gp, 'var(--dim)'],
+          ].map(([label, val, color]) => `
+            <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center;">
+              <div style="font-size:18px;font-weight:700;${color ? 'color:'+color : ''}">${val}</div>
+              <div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">${label}</div>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    // Compare CL vs League performance
+    let compHtml = '';
+    if (clSplit && leagueSplit) {
+      const cl = clSplit.stats;
+      const lg = leagueSplit.stats;
+      const clGP = parseInt(cl.starts || cl._STRT || '1') || 1;
+      const lgGP = parseInt(lg.starts || lg._STRT || '1') || 1;
+      const rows = [
+        ['Goals/G', (parseFloat(cl.totalGoals||0)/clGP).toFixed(2), (parseFloat(lg.totalGoals||0)/lgGP).toFixed(2)],
+        ['Assists/G', (parseFloat(cl.goalAssists||0)/clGP).toFixed(2), (parseFloat(lg.goalAssists||0)/lgGP).toFixed(2)],
+        ['Shots/G', (parseFloat(cl.totalShots||0)/clGP).toFixed(2), (parseFloat(lg.totalShots||0)/lgGP).toFixed(2)],
+        ['SOT/G', (parseFloat(cl.shotsOnTarget||0)/clGP).toFixed(2), (parseFloat(lg.shotsOnTarget||0)/lgGP).toFixed(2)],
+        ['Fouls/G', (parseFloat(cl.foulsCommitted||0)/clGP).toFixed(2), (parseFloat(lg.foulsCommitted||0)/lgGP).toFixed(2)],
+      ];
+      compHtml = `
+        <div style="font-size:9px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Champions League vs League</div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+          <thead><tr>
+            <th style="text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">Stat</th>
+            <th style="padding:4px 6px;color:var(--cyan);font-size:9px;border-bottom:1px solid var(--border);">UCL (${clGP}G)</th>
+            <th style="padding:4px 6px;color:var(--amber);font-size:9px;border-bottom:1px solid var(--border);">${leagueSplit.name?.replace('2025-26 ','') || 'League'} (${lgGP}G)</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map(([label, clVal, lgVal]) => {
+              const clF = parseFloat(clVal);
+              const lgF = parseFloat(lgVal);
+              const better = clF > lgF ? 'var(--cyan)' : lgF > clF ? 'var(--amber)' : '';
+              return `<tr>
+                <td style="padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);">${label}</td>
+                <td style="padding:4px 6px;text-align:center;font-weight:${clF>=lgF?700:400};color:${clF>lgF?'var(--cyan)':'var(--dim)'};border-bottom:1px solid rgba(255,255,255,0.03);">${clVal}</td>
+                <td style="padding:4px 6px;text-align:center;font-weight:${lgF>=clF?700:400};color:${lgF>clF?'var(--amber)':'var(--dim)'};border-bottom:1px solid rgba(255,255,255,0.03);">${lgVal}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    body.innerHTML = `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:9px;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Per-Game Averages (${mainSplit?.name || 'Season'})</div>
+        ${avgHtml || '<div style="color:var(--dim);">No averages</div>'}
+      </div>
+
+      ${compHtml ? `<div style="margin-bottom:12px;">${compHtml}</div>` : ''}
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Competition Splits</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;">
+          ${splitsHtml}
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Last 5 Matches</div>
+        ${last5Html}
+      </div>
+    `;
+
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    body.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px;">Error: ${e.message}</div>`;
+  }
+}
+
 function closeDeepDive() {
   $('deep-dive-panel').style.display = 'none';
 }
 
-// Override selectPlayer to also add deep-dive button
+// Override selectPlayer to also trigger deep dive
 const _origSelectPlayer = selectPlayer;
 selectPlayer = function(side, playerId) {
   _origSelectPlayer(side, playerId);
-  // Also trigger deep dive
-  openDeepDive(side, playerId);
+  if (currentSport === 'soccer') {
+    openSoccerDeepDive(side, playerId);
+  } else {
+    openDeepDive(side, playerId);
+  }
 };
 
 // Boot — check URL params for pre-selected teams (from bracket page)
