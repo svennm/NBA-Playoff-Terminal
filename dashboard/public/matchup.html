@@ -2304,6 +2304,13 @@ async function loadPlayoffStats(playerId, playerName) {
                 <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">PPG</th>
                 <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">RPG</th>
                 <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">APG</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">FGM</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">FGA</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">FG%</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">3PM</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">3PA</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">3P%</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">FT%</th>
                 <th style="text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">Rounds</th>
               </tr>
             </thead>
@@ -2315,6 +2322,13 @@ async function loadPlayoffStats(playerId, playerName) {
                   <td style="padding:4px 6px;text-align:center;color:var(--amber);font-weight:600;">${s.ppg}</td>
                   <td style="padding:4px 6px;text-align:center;">${s.rpg}</td>
                   <td style="padding:4px 6px;text-align:center;">${s.apg}</td>
+                  <td style="padding:4px 6px;text-align:center;color:var(--cyan);">${s.fgm || '-'}</td>
+                  <td style="padding:4px 6px;text-align:center;">${s.fga || '-'}</td>
+                  <td style="padding:4px 6px;text-align:center;">${s.fgPct ? s.fgPct + '%' : '-'}</td>
+                  <td style="padding:4px 6px;text-align:center;color:var(--green);">${s.tpm || '-'}</td>
+                  <td style="padding:4px 6px;text-align:center;">${s.tpa || '-'}</td>
+                  <td style="padding:4px 6px;text-align:center;">${s.tpPct ? s.tpPct + '%' : '-'}</td>
+                  <td style="padding:4px 6px;text-align:center;">${s.ftPct ? s.ftPct + '%' : '-'}</td>
                   <td style="padding:4px 6px;font-size:9px;color:var(--dim);">${s.rounds.join(', ')}</td>
                 </tr>
               `).join('')}
@@ -2330,12 +2344,18 @@ async function loadPlayoffStats(playerId, playerName) {
               ${Object.entries(data.playoffSplits).filter(([k]) => ['Home','Road','Wins','Losses'].includes(k)).map(([name, s]) => `
                 <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:4px;padding:8px;">
                   <div style="font-size:9px;color:var(--cyan);font-weight:600;margin-bottom:4px;">${name}</div>
-                  <div style="display:flex;gap:12px;font-size:10px;">
+                  <div style="display:flex;gap:8px;font-size:10px;flex-wrap:wrap;">
                     <span>${s.GP || '?'}G</span>
                     <span style="color:var(--amber);font-weight:600;">${s.PTS || '?'} PTS</span>
                     <span>${s.REB || '?'} REB</span>
                     <span>${s.AST || '?'} AST</span>
-                    <span style="color:var(--dim);">${s['FG%'] || '?'}% FG</span>
+                  </div>
+                  <div style="display:flex;gap:8px;font-size:9px;margin-top:3px;color:var(--dim);">
+                    <span>${s.FG || '?'} FGM/A</span>
+                    <span style="color:var(--cyan);">${s['FG%'] || '?'}% FG</span>
+                    <span>${s['3PT'] || '?'} 3PM/A</span>
+                    <span style="color:var(--green);">${s['3P%'] || '?'}% 3P</span>
+                    <span>${s['FT%'] || '?'}% FT</span>
                   </div>
                 </div>
               `).join('')}

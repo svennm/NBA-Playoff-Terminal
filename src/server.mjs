@@ -283,7 +283,7 @@ app.get('/api/players/:id/playoffs', async (req, res) => {
         ftPct: fta > 0 ? +(ftm/fta*100).toFixed(1) : 0
       };
 
-      // Per-season playoff averages
+      // Per-season playoff averages with full shooting splits
       const bySeason = {};
       for (const g of data.games) {
         if (!bySeason[g.season]) bySeason[g.season] = [];
@@ -292,11 +292,22 @@ app.get('/api/players/:id/playoffs', async (req, res) => {
       data.bySeason = {};
       for (const [yr, games] of Object.entries(bySeason)) {
         const sn = games.length;
-        let sp=0, sr=0, sa=0;
-        for (const g of games) { sp += parse(g.stats,'_PTS'); sr += parse(g.stats,'_REB'); sa += parse(g.stats,'_AST'); }
+        let sp=0, sr=0, sa=0, sfgm=0, sfga=0, stpm=0, stpa=0, sftm=0, sfta=0;
+        for (const g of games) {
+          sp += parse(g.stats,'_PTS'); sr += parse(g.stats,'_REB'); sa += parse(g.stats,'_AST');
+          const fg = parseMade(g.stats, '_FG');
+          sfgm += fg.made; sfga += fg.att;
+          const tp = parseMade(g.stats, '_3PT');
+          stpm += tp.made; stpa += tp.att;
+          const ft = parseMade(g.stats, '_FT');
+          sftm += ft.made; sfta += ft.att;
+        }
         data.bySeason[yr] = {
           gp: sn,
           ppg: +(sp/sn).toFixed(1), rpg: +(sr/sn).toFixed(1), apg: +(sa/sn).toFixed(1),
+          fgm: +(sfgm/sn).toFixed(1), fga: +(sfga/sn).toFixed(1), fgPct: sfga > 0 ? +(sfgm/sfga*100).toFixed(1) : 0,
+          tpm: +(stpm/sn).toFixed(1), tpa: +(stpa/sn).toFixed(1), tpPct: stpa > 0 ? +(stpm/stpa*100).toFixed(1) : 0,
+          ftm: +(sftm/sn).toFixed(1), fta: +(sfta/sn).toFixed(1), ftPct: sfta > 0 ? +(sftm/sfta*100).toFixed(1) : 0,
           rounds: [...new Set(games.map(g => g.round).filter(Boolean))]
         };
       }
