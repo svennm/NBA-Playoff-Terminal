@@ -641,20 +641,6 @@ async function loadLeaderboard() {
     </table>`;
 }
 
-// === SSE for live slip updates ===
-function connectSSE() {
-  const sse = new EventSource('/api/stream');
-  sse.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      if (data.type === 'new_slip' || data.type === 'slip_graded') {
-        loadFeed();
-        loadLeaderboard();
-      }
-    } catch {}
-  };
-}
-
 // === Boot ===
 async function boot() {
   if (checkLogin()) {
@@ -663,9 +649,8 @@ async function boot() {
   await loadGames();
   await loadFeed();
   await loadLeaderboard();
-  connectSSE();
-  // Refresh feed every 30s
-  setInterval(loadFeed, 30000);
+  // Poll for updates (works on Vercel serverless)
+  setInterval(() => { loadFeed(); loadLeaderboard(); }, 30000);
 }
 
 boot();

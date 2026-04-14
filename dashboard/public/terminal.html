@@ -738,29 +738,16 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// SSE Connection
-let sse = null;
-function connectSSE() {
-  sse = new EventSource('/api/stream');
-  sse.onopen = () => {
-    $('status-dot').className = 'status-dot';
-    $('status-text').textContent = 'LIVE';
-    $('status-text').style.color = 'var(--green)';
-  };
-  sse.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      if (data.type === 'sweep') {
-        renderGames(data.games || []);
-      }
-    } catch {}
-  };
-  sse.onerror = () => {
-    $('status-dot').className = 'status-dot offline';
-    $('status-text').textContent = 'OFFLINE';
-    $('status-text').style.color = 'var(--red)';
-    setTimeout(connectSSE, 5000);
-  };
+// Status indicator — polling based (works on Vercel serverless)
+function setOnline() {
+  $('status-dot').className = 'status-dot';
+  $('status-text').textContent = 'LIVE';
+  $('status-text').style.color = 'var(--green)';
+}
+function setOffline() {
+  $('status-dot').className = 'status-dot offline';
+  $('status-text').textContent = 'OFFLINE';
+  $('status-text').style.color = 'var(--red)';
 }
 
 // Fetch initial data
@@ -1093,11 +1080,10 @@ function renderGauges(data) {
 }
 
 // Init
-connectSSE();
-fetchSweep();
+fetchSweep().then(setOnline).catch(setOffline);
 
 // Auto-refresh every 60s
-setInterval(fetchSweep, 60000);
+setInterval(() => fetchSweep().then(setOnline).catch(setOffline), 60000);
 </script>
 </body>
 </html>

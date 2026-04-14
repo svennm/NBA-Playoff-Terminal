@@ -747,18 +747,23 @@ async function sweepLoop() {
   }
 }
 
-// Initial sweep + start loop
-app.listen(PORT, async () => {
-  console.log(`\n  NBA PLAYOFF INTELLIGENCE TERMINAL`);
-  console.log(`  ══════════════════════════════════`);
-  console.log(`  Dashboard: http://localhost:${PORT}`);
-  console.log(`  API:       http://localhost:${PORT}/api/sweep`);
-  console.log(`  Stream:    http://localhost:${PORT}/api/stream`);
-  console.log(`  ──────────────────────────────────`);
-  console.log(`  Sources: ESPN (free) | NBA.com (free)`);
-  console.log(`  Optional: ODDS_API_KEY, BDL_API_KEY`);
-  console.log(`  ══════════════════════════════════\n`);
+// Export for Vercel serverless
+export default app;
 
-  await sweepLoop();
-  setInterval(sweepLoop, 60_000);
-});
+// Only start listener when running locally (not on Vercel)
+if (!process.env.VERCEL) {
+  app.listen(PORT, async () => {
+    console.log(`\n  NBA PLAYOFF INTELLIGENCE TERMINAL`);
+    console.log(`  ══════════════════════════════════`);
+    console.log(`  Dashboard: http://localhost:${PORT}`);
+    console.log(`  API:       http://localhost:${PORT}/api/sweep`);
+    console.log(`  Stream:    http://localhost:${PORT}/api/stream`);
+    console.log(`  ──────────────────────────────────`);
+    console.log(`  Sources: ESPN (free) | NBA.com (free)`);
+    console.log(`  Optional: ODDS_API_KEY, BDL_API_KEY`);
+    console.log(`  ══════════════════════════════════\n`);
+
+    await sweepLoop();
+    setInterval(sweepLoop, 60_000);
+  });
+}

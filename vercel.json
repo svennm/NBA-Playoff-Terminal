@@ -1,17 +1,13 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "src/server.mjs",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "dashboard/public/**",
-      "use": "@vercel/static"
+  "buildCommand": "npm install",
+  "outputDirectory": "dashboard/public",
+  "functions": {
+    "api/index.mjs": {
+      "maxDuration": 30
     }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/src/server.mjs" },
-    { "src": "/(.*)", "dest": "/dashboard/public/$1" }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index.mjs" }
   ]
 }
