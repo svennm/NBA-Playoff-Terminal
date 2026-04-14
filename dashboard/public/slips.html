@@ -264,6 +264,17 @@
     </div>
   </div>
 
+  <!-- My Betting History -->
+  <div class="panel full-width" id="history-panel" style="display:none;">
+    <div class="panel-header">
+      My Betting History
+      <span class="count" id="history-count">0</span>
+    </div>
+    <div class="panel-body" id="history-body" style="max-height:500px;">
+      <div class="empty">Log in to see your history</div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -410,34 +421,38 @@ async function loadGames() {
   const sel = $('game-select');
 
   if (currentSport === 'nba') {
-    const res = await fetch('/api/sweep');
-    const data = await res.json();
-    allGames = data.games || [];
+    // Load upcoming schedule (7 days) instead of just today
+    const res = await fetch('/api/schedule');
+    allGames = await res.json();
     soccerGames = [];
 
     if (!allGames.length) {
-      sel.innerHTML = '<option value="">No NBA games today</option>';
+      sel.innerHTML = '<option value="">No upcoming NBA games</option>';
       return;
     }
     sel.innerHTML = '<option value="">-- Pick an NBA game --</option>' +
       allGames.map((g, i) => {
-        const time = new Date(g.date).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+        const time = new Date(g.date).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
         const odds = g.odds ? ` | ${g.odds.spread} O/U ${g.odds.overUnder}` : '';
-        return `<option value="nba-${i}">${g.away.abbr} @ ${g.home.abbr} — ${time}${odds}</option>`;
+        const note = g.note ? ` [${g.note}]` : '';
+        const isTBD = g.away.abbr === 'TBD' || g.home.abbr === 'TBD';
+        return `<option value="nba-${i}" ${isTBD ? 'disabled' : ''}>${g.away.abbr} @ ${g.home.abbr} — ${time}${odds}${note}</option>`;
       }).join('');
   } else {
-    const res = await fetch('/api/soccer/uefa.champions/scoreboard');
+    // Load upcoming UCL schedule (14 days)
+    const res = await fetch('/api/soccer/uefa.champions/schedule');
     soccerGames = await res.json();
     allGames = [];
 
     if (!soccerGames.length) {
-      sel.innerHTML = '<option value="">No UCL matches today</option>';
+      sel.innerHTML = '<option value="">No upcoming UCL matches</option>';
       return;
     }
     sel.innerHTML = '<option value="">-- Pick a UCL match --</option>' +
       soccerGames.map((g, i) => {
-        const time = new Date(g.date).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-        return `<option value="ucl-${i}">${g.away.name} vs ${g.home.name} — ${time}</option>`;
+        const time = new Date(g.date).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+        const agg = g.aggregate ? ` [${g.aggregate}]` : '';
+        return `<option value="ucl-${i}">${g.away.abbr || g.away.name} vs ${g.home.abbr || g.home.name} — ${time}${agg}</option>`;
       }).join('');
   }
 }
@@ -752,6 +767,7 @@ async function submitSlip() {
     renderSlipBuilder();
     loadFeed();
     loadLeaderboard();
+    loadHistory();
   }
 
   $('submit-btn').disabled = false;
@@ -855,11 +871,80 @@ async function loadLeaderboard() {
 }
 
 // === Boot ===
+async function loadHistory() {
+  if (!currentUser) { $('history-panel').style.display = 'none'; return; }
+  $('history-panel').style.display = '';
+
+  const res = await fetch(`/api/slips?user=${currentUser.name}&limit=100`);
+  const slips = await res.json();
+  $('history-count').textContent = slips.length;
+
+  if (!slips.length) {
+    $('history-body').innerHTML = '<div class="empty">No bets yet. Make your first slip!</div>';
+    return;
+  }
+
+  // Stats summary
+  const won = slips.filter(s => s.status === 'won').length;
+  const lost = slips.filter(s => s.status === 'lost').length;
+  const active = slips.filter(s => s.status === 'active').length;
+  const totalWagered = slips.reduce((a, s) => a + (s.wager || 0), 0);
+  const totalWon = slips.filter(s => s.status === 'won').reduce((a, s) => a + (s.payout || 0), 0);
+  const totalLost = slips.filter(s => s.status === 'lost').reduce((a, s) => a + (s.wager || 0), 0);
+  const profit = totalWon - totalWagered;
+  const roi = totalWagered > 0 ? (profit / totalWagered * 100).toFixed(1) : '0';
+
+  $('history-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px;margin-bottom:12px;">
+      <div style="background:rgba(0,0,0,0.3);border-radius:4px;padding:8px;text-align:center;">
+        <div style="font-size:16px;font-weight:700;color:var(--green);">${won}</div>
+        <div style="font-size:8px;color:var(--dim);text-transform:uppercase;">Won</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.3);border-radius:4px;padding:8px;text-align:center;">
+        <div style="font-size:16px;font-weight:700;color:var(--red);">${lost}</div>
+        <div style="font-size:8px;color:var(--dim);text-transform:uppercase;">Lost</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.3);border-radius:4px;padding:8px;text-align:center;">
+        <div style="font-size:16px;font-weight:700;color:var(--amber);">${active}</div>
+        <div style="font-size:8px;color:var(--dim);text-transform:uppercase;">Active</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.3);border-radius:4px;padding:8px;text-align:center;">
+        <div style="font-size:16px;font-weight:700;">$${totalWagered}</div>
+        <div style="font-size:8px;color:var(--dim);text-transform:uppercase;">Wagered</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.3);border-radius:4px;padding:8px;text-align:center;">
+        <div style="font-size:16px;font-weight:700;color:${profit >= 0 ? 'var(--green)' : 'var(--red)'};">${profit >= 0 ? '+' : ''}$${profit.toFixed(0)}</div>
+        <div style="font-size:8px;color:var(--dim);text-transform:uppercase;">P&L</div>
+      </div>
+      <div style="background:rgba(0,0,0,0.3);border-radius:4px;padding:8px;text-align:center;">
+        <div style="font-size:16px;font-weight:700;color:${parseFloat(roi) >= 0 ? 'var(--green)' : 'var(--red)'};">${roi}%</div>
+        <div style="font-size:8px;color:var(--dim);text-transform:uppercase;">ROI</div>
+      </div>
+    </div>
+    ${slips.map(s => {
+      const time = new Date(s.createdAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+      const statusCls = s.status === 'won' ? 'won' : s.status === 'lost' ? 'lost' : 'active';
+      return `
+        <div class="slip-card ${statusCls}" style="margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;">
+            <span>${time}</span>
+            <span class="slip-status ${statusCls}">${s.status}</span>
+            <span style="font-weight:700;">${s.totalOdds}</span>
+            <span>$${s.wager} → $${s.payout}</span>
+          </div>
+          <div style="font-size:9px;color:var(--dim);margin-top:3px;">
+            ${s.legs.map(l => `${l.player} ${l.stat} ${l.pick} (${l.odds > 0 ? '+' : ''}${l.odds})`).join(' | ')}
+          </div>
+        </div>`;
+    }).join('')}`;
+}
+
 async function boot() {
   await checkLogin();
   await loadGames();
   await loadFeed();
   await loadLeaderboard();
+  if (currentUser) loadHistory();
   setInterval(() => { loadFeed(); loadLeaderboard(); }, 30000);
 }
 

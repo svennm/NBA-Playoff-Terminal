@@ -101,6 +101,85 @@ app.get('/api/teams/:id', async (req, res) => {
   }
 });
 
+// API: Upcoming NBA schedule (next 7 days)
+app.get('/api/schedule', async (req, res) => {
+  const ck = 'nba-schedule';
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const today = new Date();
+    const end = new Date(today);
+    end.setDate(end.getDate() + 7);
+    const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 10000);
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: controller.signal });
+    const data = await r.json();
+
+    const games = (data.events || []).map(ev => {
+      const comp = ev.competitions?.[0];
+      const teams = comp?.competitors || [];
+      const home = teams.find(t => t.homeAway === 'home');
+      const away = teams.find(t => t.homeAway === 'away');
+      return {
+        id: ev.id, name: ev.shortName || ev.name, date: ev.date,
+        status: comp?.status?.type?.description || 'Scheduled',
+        home: { name: home?.team?.displayName || 'TBD', abbr: home?.team?.abbreviation || 'TBD', logo: home?.team?.logo || '' },
+        away: { name: away?.team?.displayName || 'TBD', abbr: away?.team?.abbreviation || 'TBD', logo: away?.team?.logo || '' },
+        odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0, provider: comp.odds[0].provider?.name || '' } : null,
+        broadcast: comp?.broadcasts?.[0]?.names?.join(', ') || '',
+        note: comp?.notes?.[0]?.headline || ''
+      };
+    });
+
+    cache.set(ck, games, 10 * 60_000);
+    res.json(games);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Upcoming UCL schedule
+app.get('/api/soccer/:league/schedule', async (req, res) => {
+  const ck = `soccer-schedule-${req.params.league}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const today = new Date();
+    const end = new Date(today);
+    end.setDate(end.getDate() + 14);
+    const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${req.params.league}/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 10000);
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: controller.signal });
+    const data = await r.json();
+
+    const games = (data.events || []).map(ev => {
+      const comp = ev.competitions?.[0];
+      const teams = comp?.competitors || [];
+      const home = teams.find(t => t.homeAway === 'home');
+      const away = teams.find(t => t.homeAway === 'away');
+      return {
+        id: ev.id, name: ev.shortName || ev.name, date: ev.date,
+        status: comp?.status?.type?.description || 'Scheduled',
+        home: { name: home?.team?.displayName || 'TBD', abbr: home?.team?.abbreviation || 'TBD', logo: home?.team?.logo || '' },
+        away: { name: away?.team?.displayName || 'TBD', abbr: away?.team?.abbreviation || 'TBD', logo: away?.team?.logo || '' },
+        odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0, provider: comp.odds[0].provider?.name || '' } : null,
+        aggregate: comp?.notes?.[0]?.headline || ''
+      };
+    });
+
+    cache.set(ck, games, 10 * 60_000);
+    res.json(games);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Player overview with season stats + shooting splits from gamelog (cached 30min)
 app.get('/api/players/:id', async (req, res) => {
   const cacheKey = `player-${req.params.id}`;
