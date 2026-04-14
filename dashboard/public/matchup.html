@@ -1690,20 +1690,123 @@ async function loadPlayerCompare() {
     return;
   }
 
-  // Ensure we have stats
-  if (idA && !state.a.players[idA]) {
-    const res = await fetch(`/api/players/${idA}`);
-    state.a.players[idA] = await res.json();
-  }
-  if (idB && !state.b.players[idB]) {
-    const res = await fetch(`/api/players/${idB}`);
-    state.b.players[idB] = await res.json();
+  // Ensure we have stats — fetch if missing
+  if (currentSport === 'soccer') {
+    if (idA && !state.a.players[idA]) {
+      try { const r = await fetch(`/api/soccer/${SOCCER_LEAGUE}/players/${idA}`); const d = await r.json(); state.a.players[idA] = parseSoccerPlayerForCompare(d); } catch {}
+    }
+    if (idB && !state.b.players[idB]) {
+      try { const r = await fetch(`/api/soccer/${SOCCER_LEAGUE}/players/${idB}`); const d = await r.json(); state.b.players[idB] = parseSoccerPlayerForCompare(d); } catch {}
+    }
+  } else {
+    if (idA && !state.a.players[idA]) {
+      const res = await fetch(`/api/players/${idA}`);
+      state.a.players[idA] = await res.json();
+    }
+    if (idB && !state.b.players[idB]) {
+      const res = await fetch(`/api/players/${idB}`);
+      state.b.players[idB] = await res.json();
+    }
   }
 
   const pa = idA ? state.a.players[idA] : null;
   const pb = idB ? state.b.players[idB] : null;
   const rosterA = state.a.roster.find(p => p.id === idA);
   const rosterB = state.b.roster.find(p => p.id === idB);
+
+  if (currentSport === 'soccer') {
+    renderSoccerPlayerCompare(body, pa, pb, rosterA, rosterB);
+  } else {
+    renderNbaPlayerCompare(body, pa, pb, rosterA, rosterB);
+  }
+}
+
+function parseSoccerPlayerForCompare(data) {
+  const allSplits = data.allSplits || [];
+  const clSplit = allSplits.find(s => s.name?.includes('Champions'));
+  const lgSplit = allSplits.find(s => s.name && !s.name.includes('Champions') && !s.name.includes('Friendly') && !s.name.includes('Copa') && !s.name.includes('International'));
+  const s = clSplit?.stats || lgSplit?.stats || data.clStats || data.leagueStats || {};
+  const gp = parseInt(s.starts || s._STRT || '1') || 1;
+  return {
+    stats: {
+      G: s.totalGoals || s._G || '0', A: s.goalAssists || s._A || '0',
+      SH: s.totalShots || s._SH || '0', ST: s.shotsOnTarget || s._ST || '0',
+      FC: s.foulsCommitted || s._FC || '0', YC: s.yellowCards || s._YC || '0',
+      STRT: String(gp)
+    },
+    splitName: clSplit?.name || lgSplit?.name || 'Season'
+  };
+}
+
+function renderSoccerPlayerCompare(body, pa, pb, rosterA, rosterB) {
+  const getStats = (p) => p?.stats || {};
+  const sa = getStats(pa);
+  const sb = getStats(pb);
+  const gpA = parseInt(sa.STRT || '1') || 1;
+  const gpB = parseInt(sb.STRT || '1') || 1;
+
+  const soccerFields = [
+    { key: 'G', label: 'Goals', higher: true },
+    { key: 'A', label: 'Assists', higher: true },
+    { key: 'SH', label: 'Shots', higher: true },
+    { key: 'ST', label: 'SOT', higher: true },
+    { key: 'FC', label: 'Fouls', higher: false },
+    { key: 'YC', label: 'Cards', higher: false },
+    { key: 'STRT', label: 'Starts', higher: true },
+  ];
+
+  const makeCard = (roster, stats, gp, side) => {
+    if (!roster) return `<div class="player-card ${side}"><div class="empty-state">Select player</div></div>`;
+    const g = parseInt(stats.G || 0);
+    const a = parseInt(stats.A || 0);
+    return `
+      <div class="player-card ${side}">
+        ${roster.headshot ? `<img class="headshot-lg" src="${roster.headshot}" alt="" onerror="this.style.display='none'">` : '<div class="headshot-lg"></div>'}
+        <div class="p-name">${roster.name}</div>
+        <div class="p-meta">#${roster.jersey} ${roster.position} | ${roster.nationality || ''} | Age ${roster.age}</div>
+        <div class="p-stat-grid">
+          <div class="p-stat-box"><div class="p-stat-val">${stats.G || '0'}</div><div class="p-stat-label">Goals</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.A || '0'}</div><div class="p-stat-label">Assists</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.SH || '0'}</div><div class="p-stat-label">Shots</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.ST || '0'}</div><div class="p-stat-label">SOT</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.YC || '0'}</div><div class="p-stat-label">Cards</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${gp}</div><div class="p-stat-label">Starts</div></div>
+        </div>
+      </div>`;
+  };
+
+  let centerHtml = '';
+  if (pa && pb) {
+    // Per-game comparison
+    centerHtml = [
+      { label: 'G/G', va: (parseInt(sa.G||0)/gpA), vb: (parseInt(sb.G||0)/gpB), higher: true },
+      { label: 'A/G', va: (parseInt(sa.A||0)/gpA), vb: (parseInt(sb.A||0)/gpB), higher: true },
+      { label: 'SH/G', va: (parseInt(sa.SH||0)/gpA), vb: (parseInt(sb.SH||0)/gpB), higher: true },
+      { label: 'SOT/G', va: (parseInt(sa.ST||0)/gpA), vb: (parseInt(sb.ST||0)/gpB), higher: true },
+      { label: 'FC/G', va: (parseInt(sa.FC||0)/gpA), vb: (parseInt(sb.FC||0)/gpB), higher: false },
+      ...soccerFields.map(f => ({ label: f.label, va: parseInt(sa[f.key]||0), vb: parseInt(sb[f.key]||0), higher: f.higher }))
+    ].map(f => {
+      const max = Math.max(f.va, f.vb, 0.1);
+      const winA = f.higher ? f.va > f.vb : f.va < f.vb;
+      const winB = f.higher ? f.vb > f.va : f.vb < f.va;
+      const dispA = typeof f.va === 'number' && f.va < 10 ? f.va.toFixed(2) : f.va;
+      const dispB = typeof f.vb === 'number' && f.vb < 10 ? f.vb.toFixed(2) : f.vb;
+      return `<div class="pc-row">
+        <span class="pc-val a" style="${winA?'font-weight:700':'opacity:0.5'}">${dispA}</span>
+        <span class="pc-label">${f.label}</span>
+        <span class="pc-val b" style="${winB?'font-weight:700':'opacity:0.5'}">${dispB}</span>
+      </div>`;
+    }).join('');
+  }
+
+  body.innerHTML = `<div class="player-compare">
+    ${makeCard(rosterA, sa, gpA, 'a')}
+    <div class="player-compare-center">${centerHtml || '<div class="empty-state" style="padding:40px 8px;">Select both<br>players</div>'}</div>
+    ${makeCard(rosterB, sb, gpB, 'b')}
+  </div>`;
+}
+
+function renderNbaPlayerCompare(body, pa, pb, rosterA, rosterB) {
   const sa = pa?.season || {};
   const sb = pb?.season || {};
 
@@ -1740,35 +1843,29 @@ async function loadPlayerCompare() {
       </div>`;
   };
 
-  // Center comparison bars
   let centerHtml = '';
   if (pa && pb) {
     centerHtml = statFields.map(f => {
       const va = parseFloat(sa[f.key] || 0);
       const vb = parseFloat(sb[f.key] || 0);
       const max = Math.max(va, vb, 0.1);
-      const pctA = (va / max * 100).toFixed(0);
-      const pctB = (vb / max * 100).toFixed(0);
       const winA = f.key === 'avgTurnovers' ? va < vb : va > vb;
       const winB = f.key === 'avgTurnovers' ? vb < va : vb > va;
-
-      return `
-        <div class="pc-row">
-          <span class="pc-val a" style="${winA ? 'font-weight:700' : 'opacity:0.5'}">${sa[f.key] || '-'}</span>
-          <div class="pc-bar a" style="width:${pctA * 0.4}px"></div>
-          <span class="pc-label">${f.label}</span>
-          <div class="pc-bar b" style="width:${pctB * 0.4}px"></div>
-          <span class="pc-val b" style="${winB ? 'font-weight:700' : 'opacity:0.5'}">${sb[f.key] || '-'}</span>
-        </div>`;
+      return `<div class="pc-row">
+        <span class="pc-val a" style="${winA ? 'font-weight:700' : 'opacity:0.5'}">${sa[f.key] || '-'}</span>
+        <div class="pc-bar a" style="width:${(va/max*100*0.4).toFixed(0)}px"></div>
+        <span class="pc-label">${f.label}</span>
+        <div class="pc-bar b" style="width:${(vb/max*100*0.4).toFixed(0)}px"></div>
+        <span class="pc-val b" style="${winB ? 'font-weight:700' : 'opacity:0.5'}">${sb[f.key] || '-'}</span>
+      </div>`;
     }).join('');
   }
 
-  body.innerHTML = `
-    <div class="player-compare">
-      ${makeCard(rosterA, sa, 'a')}
-      <div class="player-compare-center">${centerHtml || '<div class="empty-state" style="padding:40px 8px;">Select both<br>players</div>'}</div>
-      ${makeCard(rosterB, sb, 'b')}
-    </div>`;
+  body.innerHTML = `<div class="player-compare">
+    ${makeCard(rosterA, sa, 'a')}
+    <div class="player-compare-center">${centerHtml || '<div class="empty-state" style="padding:40px 8px;">Select both<br>players</div>'}</div>
+    ${makeCard(rosterB, sb, 'b')}
+  </div>`;
 }
 
 // Load sweep data for odds
@@ -2251,6 +2348,53 @@ async function loadPlayoffStats(playerId, playerName) {
   }
 }
 
+// Poisson PMF/CDF for soccer distributions
+function poissonPmf(k, lam) { let p = Math.exp(-lam); for (let i = 1; i <= k; i++) p *= lam / i; return p; }
+function poissonCdf(k, lam) { let s = 0; for (let i = 0; i <= Math.floor(k); i++) s += poissonPmf(i, lam); return Math.min(s, 1); }
+
+function buildSoccerDistribution(total, gp, statName) {
+  const lambda = gp > 0 ? total / gp : 0;
+  if (lambda <= 0 || gp < 3) return null;
+
+  const line = Math.round(lambda * 2) / 2 || 0.5;
+  const overProb = 1 - poissonCdf(line, lambda);
+  const underProb = poissonCdf(line, lambda);
+  const toAmerican = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
+
+  // Build Poisson PMF histogram (P(X=0), P(X=1), ...)
+  const maxK = Math.min(Math.ceil(lambda + 4 * Math.sqrt(lambda)), 15);
+  const pmfBins = [];
+  for (let k = 0; k <= maxK; k++) pmfBins.push({ k, prob: +(poissonPmf(k, lambda) * 100).toFixed(1) });
+
+  // Over/under at multiple lines
+  const ouLines = [];
+  for (let l = 0.5; l <= lambda + 2; l += 0.5) {
+    const op = 1 - poissonCdf(l, lambda);
+    ouLines.push({
+      line: l,
+      overProb: +(op * 100).toFixed(1),
+      overOdds: toAmerican(op),
+      underProb: +((1 - op) * 100).toFixed(1)
+    });
+  }
+
+  // Variance for Poisson = lambda, StdDev = sqrt(lambda)
+  const stdDev = Math.sqrt(lambda);
+  const cv = lambda > 0 ? (stdDev / lambda * 100) : 0;
+
+  return {
+    stat: statName, lambda: +lambda.toFixed(3), total, gp,
+    mean: +lambda.toFixed(2), stdDev: +stdDev.toFixed(2),
+    variance: +lambda.toFixed(2), // Poisson: var = mean
+    line, overProb: +(overProb * 100).toFixed(1), underProb: +(underProb * 100).toFixed(1),
+    overOdds: toAmerican(overProb), underOdds: toAmerican(underProb),
+    cv: +cv.toFixed(1),
+    consistency: cv < 80 ? 'High' : cv < 120 ? 'Medium' : 'Low',
+    pmf: pmfBins, ouLines,
+    dispersion: 1.0 // Poisson assumption: var/mean = 1
+  };
+}
+
 async function openSoccerDeepDive(side, playerId) {
   const panel = $('deep-dive-panel');
   const body = $('deep-dive-body');
@@ -2387,7 +2531,68 @@ async function openSoccerDeepDive(side, playerId) {
         </table>`;
     }
 
+    // Build Poisson distributions for soccer metrics
+    const dists = [];
+    if (mainSplit) {
+      const s = mainSplit.stats;
+      const gp = parseInt(s.starts || s._STRT || '1') || 1;
+      const metrics = [
+        ['Goals', parseFloat(s.totalGoals || s._G || '0')],
+        ['Assists', parseFloat(s.goalAssists || s._A || '0')],
+        ['Shots', parseFloat(s.totalShots || s._SH || '0')],
+        ['SOT', parseFloat(s.shotsOnTarget || s._ST || '0')],
+        ['Fouls', parseFloat(s.foulsCommitted || s._FC || '0')],
+        ['Cards', parseFloat(s.yellowCards || s._YC || '0')],
+      ];
+      for (const [name, total] of metrics) {
+        const d = buildSoccerDistribution(total, gp, name);
+        if (d) dists.push(d);
+      }
+    }
+
+    const distHtml = dists.length ? `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:9px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Poisson Distributions (${mainSplit?.name || 'Season'})</div>
+        <div class="dist-grid">
+          ${dists.map(d => {
+            const maxProb = Math.max(...d.pmf.map(b => b.prob), 1);
+            return `
+              <div class="dist-card">
+                <div class="dist-card-header">
+                  <span class="dist-stat-name">${d.stat}</span>
+                  <span style="font-size:9px;color:var(--dim);">\u03BB=${d.lambda}</span>
+                </div>
+                <div class="dist-stats-row">
+                  <div class="dist-stat-item"><div class="val">${d.mean}</div><div class="lbl">Mean/G</div></div>
+                  <div class="dist-stat-item"><div class="val">${d.stdDev}</div><div class="lbl">Std Dev</div></div>
+                  <div class="dist-stat-item"><div class="val">${d.total}</div><div class="lbl">Total</div></div>
+                  <div class="dist-stat-item"><div class="val">${d.gp}G</div><div class="lbl">Starts</div></div>
+                </div>
+                <div style="font-size:8px;color:var(--dim);margin-bottom:2px;">P(X=k) Distribution</div>
+                <div class="histogram">
+                  ${d.pmf.map(b => `<div class="hist-bar" style="height:${(b.prob/maxProb*100).toFixed(0)}%" title="P(X=${b.k})=${b.prob}%"></div>`).join('')}
+                </div>
+                <div class="hist-labels">
+                  <span>0</span><span>${Math.floor(d.pmf.length/2)}</span><span>${d.pmf.length-1}</span>
+                </div>
+                <div style="font-size:8px;color:var(--purple);margin-top:6px;margin-bottom:4px;">Over/Under Probabilities</div>
+                ${d.ouLines.map(ou => {
+                  const color = ou.overProb > 55 ? 'var(--green)' : ou.overProb < 45 ? 'var(--red)' : 'var(--amber)';
+                  return `<div class="ou-row">
+                    <span class="ou-line">O ${ou.line}</span>
+                    <div class="ou-bar-wrap"><div class="ou-bar-fill" style="width:${ou.overProb}%;background:${color}"></div></div>
+                    <span class="ou-pct" style="color:${color}">${ou.overProb}%</span>
+                    <span style="color:var(--purple);font-size:9px;">${ou.overOdds > 0 ? '+' : ''}${ou.overOdds}</span>
+                  </div>`;
+                }).join('')}
+              </div>`;
+          }).join('')}
+        </div>
+      </div>` : '';
+
     body.innerHTML = `
+      ${distHtml}
+
       <div style="margin-bottom:12px;">
         <div style="font-size:9px;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Per-Game Averages (${mainSplit?.name || 'Season'})</div>
         ${avgHtml || '<div style="color:var(--dim);">No averages</div>'}
