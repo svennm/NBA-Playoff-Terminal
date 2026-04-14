@@ -344,6 +344,67 @@ export async function getPlayerGamelog(playerId, season = '2026') {
   return { labels, names, displayNames, games };
 }
 
+export async function getPlayerPlayoffStats(playerId) {
+  // Get career playoff splits (current season type 3 = postseason)
+  // Try multiple recent seasons to build playoff history
+  const years = [2026, 2025, 2024, 2023, 2022];
+  const allGames = [];
+  const labels = ['MIN','FG','FG%','3PT','3P%','FT','FT%','REB','AST','BLK','STL','PF','TO','PTS'];
+  const names = ['minutes','fieldGoalsMade-fieldGoalsAttempted','fieldGoalPct',
+    'threePointFieldGoalsMade-threePointFieldGoalsAttempted','threePointPct',
+    'freeThrowsMade-freeThrowsAttempted','freeThrowPct',
+    'totalRebounds','assists','blocks','steals','fouls','turnovers','points'];
+
+  for (const year of years) {
+    const data = await safeFetch(
+      `https://site.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${playerId}/gamelog?season=${year}&seasontype=3`,
+      `playoff-gamelog-${playerId}-${year}`,
+      8000
+    );
+    if (!data?.seasonTypes) continue;
+    for (const st of data.seasonTypes) {
+      if (!st.displayName?.includes('Postseason')) continue;
+      for (const cat of st.categories || []) {
+        const round = cat.displayName || '';
+        for (const ev of cat.events || []) {
+          const stats = {};
+          (ev.stats || []).forEach((val, i) => {
+            if (labels[i]) stats[`_${labels[i]}`] = val;
+            if (names[i]) stats[names[i]] = val;
+          });
+          allGames.push({ season: year, round, eventId: ev.eventId, stats });
+        }
+      }
+    }
+  }
+
+  // Also get career playoff splits for this season
+  const splits = await safeFetch(
+    `https://site.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${playerId}/splits?season=2025&seasontype=3`,
+    `playoff-splits-${playerId}`,
+    8000
+  );
+
+  let careerPlayoffAvg = null;
+  let playoffSplits = {};
+  if (splits?.splitCategories) {
+    const splitLabels = splits.labels || [];
+    const splitNames = splits.names || [];
+    for (const sc of splits.splitCategories) {
+      for (const sp of sc.splits || []) {
+        const obj = {};
+        (sp.stats || []).forEach((val, i) => {
+          if (splitLabels[i]) obj[splitLabels[i]] = val;
+        });
+        if (sp.displayName === 'All Splits') careerPlayoffAvg = obj;
+        else playoffSplits[sp.displayName] = obj;
+      }
+    }
+  }
+
+  return { games: allGames, careerPlayoffAvg, playoffSplits, totalGames: allGames.length };
+}
+
 export async function getTeamSchedule(teamId, season = '2026') {
   const data = await safeFetch(
     `${BASE}/teams/${teamId}/schedule?season=${season}&seasontype=2`,
@@ -385,5 +446,6 @@ export default {
   getTeamStats,
   getPlayerOverview,
   getPlayerGamelog,
+  getPlayerPlayoffStats,
   getTeamSchedule
 };

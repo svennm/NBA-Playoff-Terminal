@@ -1625,6 +1625,10 @@ async function openDeepDive(side, playerId) {
 
     // Render with full data
     renderDistributions(allDist);
+
+    // Load playoff stats in background
+    loadPlayoffStats(playerId, roster?.name);
+
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     body.innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
@@ -1923,6 +1927,114 @@ function renderDistCard(key, d) {
       </div>
       ` : ''}
     </div>`;
+}
+
+async function loadPlayoffStats(playerId, playerName) {
+  // Add a playoff section below distributions
+  const body = $('deep-dive-body');
+  const existingGrid = body.querySelector('.dist-grid');
+
+  // Create playoff container
+  let playoffEl = body.querySelector('.playoff-section');
+  if (!playoffEl) {
+    playoffEl = document.createElement('div');
+    playoffEl.className = 'playoff-section';
+    playoffEl.style.marginTop = '16px';
+    body.appendChild(playoffEl);
+  }
+  playoffEl.innerHTML = '<div style="color:var(--dim);font-size:10px;padding:8px;">Loading playoff history...</div>';
+
+  try {
+    const res = await fetch(`/api/players/${playerId}/playoffs`);
+    const data = await res.json();
+
+    if (!data.totalGames) {
+      playoffEl.innerHTML = '<div style="color:var(--dim);font-size:10px;padding:8px;">No playoff history</div>';
+      return;
+    }
+
+    const c = data.careerPlayoffComputed;
+    const seasons = data.bySeason || {};
+
+    playoffEl.innerHTML = `
+      <div style="border-top:2px solid var(--amber);padding-top:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;color:var(--amber);letter-spacing:2px;">PLAYOFF HISTORY</span>
+          <span style="font-size:10px;color:var(--dim);">${data.totalGames} career playoff games</span>
+        </div>
+
+        <!-- Career Playoff Averages -->
+        <div style="background:rgba(255,179,0,0.05);border:1px solid rgba(255,179,0,0.2);border-radius:6px;padding:12px;margin-bottom:12px;">
+          <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Career Playoff Averages</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:6px;">
+            ${[
+              ['PTS', c.ppg], ['REB', c.rpg], ['AST', c.apg],
+              ['FGM', c.fgm], ['FGA', c.fga], ['FG%', c.fgPct + '%'],
+              ['3PM', c.tpm], ['3PA', c.tpa], ['3P%', c.tpPct + '%'],
+              ['FTM', c.ftm], ['FTA', c.fta], ['FT%', c.ftPct + '%'],
+              ['STL', c.spg], ['BLK', c.bpg], ['TO', c.topg], ['MIN', c.mpg]
+            ].map(([label, val]) => `
+              <div style="background:rgba(0,0,0,0.3);padding:4px;border-radius:3px;text-align:center;">
+                <div style="font-size:14px;font-weight:700;color:var(--amber);">${val}</div>
+                <div style="font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">${label}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Season-by-Season Playoffs -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Season-by-Season Playoffs</div>
+          <table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">Season</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">GP</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">PPG</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">RPG</th>
+                <th style="padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">APG</th>
+                <th style="text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;border-bottom:1px solid var(--border);">Rounds</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Object.entries(seasons).sort((a,b) => b[0] - a[0]).map(([yr, s]) => `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+                  <td style="padding:4px 6px;font-weight:500;">${yr-1}-${String(yr).slice(2)}</td>
+                  <td style="padding:4px 6px;text-align:center;">${s.gp}</td>
+                  <td style="padding:4px 6px;text-align:center;color:var(--amber);font-weight:600;">${s.ppg}</td>
+                  <td style="padding:4px 6px;text-align:center;">${s.rpg}</td>
+                  <td style="padding:4px 6px;text-align:center;">${s.apg}</td>
+                  <td style="padding:4px 6px;font-size:9px;color:var(--dim);">${s.rounds.join(', ')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Playoff Splits -->
+        ${data.playoffSplits && Object.keys(data.playoffSplits).length ? `
+          <div>
+            <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Playoff Splits</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;">
+              ${Object.entries(data.playoffSplits).filter(([k]) => ['Home','Road','Wins','Losses'].includes(k)).map(([name, s]) => `
+                <div style="background:rgba(0,0,0,0.2);border:1px solid var(--border);border-radius:4px;padding:8px;">
+                  <div style="font-size:9px;color:var(--cyan);font-weight:600;margin-bottom:4px;">${name}</div>
+                  <div style="display:flex;gap:12px;font-size:10px;">
+                    <span>${s.GP || '?'}G</span>
+                    <span style="color:var(--amber);font-weight:600;">${s.PTS || '?'} PTS</span>
+                    <span>${s.REB || '?'} REB</span>
+                    <span>${s.AST || '?'} AST</span>
+                    <span style="color:var(--dim);">${s['FG%'] || '?'}% FG</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+      </div>`;
+  } catch (e) {
+    playoffEl.innerHTML = `<div style="color:var(--red);font-size:10px;padding:8px;">Failed to load playoff stats</div>`;
+  }
 }
 
 function closeDeepDive() {

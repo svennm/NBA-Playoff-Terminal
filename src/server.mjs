@@ -231,6 +231,82 @@ app.get('/api/teams/:id/games', async (req, res) => {
   }
 });
 
+// API: Player historical playoff stats (cached 1hr)
+app.get('/api/players/:id/playoffs', async (req, res) => {
+  const cacheKey = `playoffs-${req.params.id}`;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const data = await espn.getPlayerPlayoffStats(req.params.id);
+
+    // Compute averages from playoff games
+    if (data.games.length) {
+      const parse = (s, key) => parseFloat(s[key] || '0');
+      const parseMade = (s, key) => {
+        const val = s[key] || '0-0';
+        const parts = val.split('-');
+        return { made: parseFloat(parts[0]) || 0, att: parseFloat(parts[1]) || 0 };
+      };
+
+      const n = data.games.length;
+      let pts=0, reb=0, ast=0, stl=0, blk=0, to=0, min=0, fgm=0, fga=0, tpm=0, tpa=0, ftm=0, fta=0;
+      for (const g of data.games) {
+        const s = g.stats;
+        pts += parse(s, '_PTS');
+        reb += parse(s, '_REB');
+        ast += parse(s, '_AST');
+        stl += parse(s, '_STL');
+        blk += parse(s, '_BLK');
+        to += parse(s, '_TO');
+        min += parse(s, '_MIN');
+        const fg = parseMade(s, '_FG');
+        fgm += fg.made; fga += fg.att;
+        const tp = parseMade(s, '_3PT');
+        tpm += tp.made; tpa += tp.att;
+        const ft = parseMade(s, '_FT');
+        ftm += ft.made; fta += ft.att;
+      }
+
+      data.careerPlayoffComputed = {
+        gp: n,
+        ppg: +(pts/n).toFixed(1), rpg: +(reb/n).toFixed(1), apg: +(ast/n).toFixed(1),
+        spg: +(stl/n).toFixed(1), bpg: +(blk/n).toFixed(1), topg: +(to/n).toFixed(1),
+        mpg: +(min/n).toFixed(1),
+        fgm: +(fgm/n).toFixed(1), fga: +(fga/n).toFixed(1),
+        fgPct: fga > 0 ? +(fgm/fga*100).toFixed(1) : 0,
+        tpm: +(tpm/n).toFixed(1), tpa: +(tpa/n).toFixed(1),
+        tpPct: tpa > 0 ? +(tpm/tpa*100).toFixed(1) : 0,
+        ftm: +(ftm/n).toFixed(1), fta: +(fta/n).toFixed(1),
+        ftPct: fta > 0 ? +(ftm/fta*100).toFixed(1) : 0
+      };
+
+      // Per-season playoff averages
+      const bySeason = {};
+      for (const g of data.games) {
+        if (!bySeason[g.season]) bySeason[g.season] = [];
+        bySeason[g.season].push(g);
+      }
+      data.bySeason = {};
+      for (const [yr, games] of Object.entries(bySeason)) {
+        const sn = games.length;
+        let sp=0, sr=0, sa=0;
+        for (const g of games) { sp += parse(g.stats,'_PTS'); sr += parse(g.stats,'_REB'); sa += parse(g.stats,'_AST'); }
+        data.bySeason[yr] = {
+          gp: sn,
+          ppg: +(sp/sn).toFixed(1), rpg: +(sr/sn).toFixed(1), apg: +(sa/sn).toFixed(1),
+          rounds: [...new Set(games.map(g => g.round).filter(Boolean))]
+        };
+      }
+    }
+
+    cache.set(cacheKey, data, TTL.PLAYER_GAMELOG);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Player gamelog + statistical analysis (cached 1hr)
 app.get('/api/players/:id/gamelog', async (req, res) => {
   const cacheKey = `gamelog-${req.params.id}`;
