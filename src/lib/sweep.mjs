@@ -1,14 +1,23 @@
 // Sweep orchestrator - runs all sources in parallel, caches results
-// Modeled after Crucix's briefing.mjs
+// Lightweight on Vercel serverless — skips slow/blocked sources
 
 import espn from '../sources/espn.mjs';
 import odds from '../sources/odds.mjs';
 import bdl from '../sources/balldontlie.mjs';
-import nba from '../sources/nbastats.mjs';
+
+const IS_VERCEL = !!process.env.VERCEL;
 
 let cache = null;
 let lastSweep = 0;
-const SWEEP_INTERVAL = 60_000; // 60 seconds
+const SWEEP_INTERVAL = IS_VERCEL ? 30_000 : 60_000;
+
+// Wrap a promise with a timeout
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms))
+  ]);
+}
 
 export async function runSweep(force = false) {
   const now = Date.now();
@@ -16,20 +25,18 @@ export async function runSweep(force = false) {
     return cache;
   }
 
-  console.log(`[SWEEP] Running full sweep at ${new Date().toISOString()}`);
+  console.log(`[SWEEP] Running sweep at ${new Date().toISOString()} (${IS_VERCEL ? 'serverless' : 'local'})`);
   const start = performance.now();
+  const TIMEOUT = IS_VERCEL ? 8000 : 15000;
 
+  // Core ESPN sources — these are fast and reliable
   const results = await Promise.allSettled([
-    espn.getScoreboard(),
-    espn.getStandings(),
-    espn.getNews(),
-    espn.getInjuries(),
-    espn.getTeams(),
-    odds.getOdds(),
-    nba.getTodayScoreboard(),
-    nba.getLeagueLeaders(),
-    nba.getTeamStats(),
-    nba.getPlayoffBracket()
+    withTimeout(espn.getScoreboard(), TIMEOUT, 'scoreboard'),
+    withTimeout(espn.getStandings(), TIMEOUT, 'standings'),
+    withTimeout(espn.getNews(), TIMEOUT, 'news'),
+    withTimeout(espn.getInjuries(), TIMEOUT, 'injuries'),
+    withTimeout(espn.getTeams(), TIMEOUT, 'teams'),
+    withTimeout(odds.getOdds(), TIMEOUT, 'odds'),
   ]);
 
   const extract = (i) => results[i].status === 'fulfilled' ? results[i].value : null;
@@ -40,32 +47,21 @@ export async function runSweep(force = false) {
   const injuries = extract(3) || [];
   const teams = extract(4) || [];
   const oddsData = extract(5) || { data: [] };
-  const nbaScoreboard = extract(6);
-  const leaders = extract(7) || [];
-  const teamStats = extract(8) || [];
-  const playoffBracket = extract(9);
+
+  // Log any failures
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') console.log(`[SWEEP] Source ${i} failed: ${r.reason?.message}`);
+  });
 
   // Merge ESPN odds into scoreboard games
   const gamesWithOdds = scoreboard.map(game => {
-    // Try to match with odds data
     const matchedOdds = oddsData.data?.find(o => {
       const home = game.home.name.toLowerCase();
-      const away = game.away.name.toLowerCase();
       return o.homeTeam?.toLowerCase().includes(home.split(' ').pop()) ||
              home.includes(o.homeTeam?.toLowerCase().split(' ').pop());
     });
     return { ...game, externalOdds: matchedOdds || null };
   });
-
-  // Build top performers
-  const topScorers = leaders.slice(0, 10).map(p => ({
-    name: p.PLAYER || p.PLAYER_NAME || '',
-    team: p.TEAM || p.TEAM_ABBREVIATION || '',
-    ppg: p.PTS || 0,
-    rpg: p.REB || 0,
-    apg: p.AST || 0,
-    gp: p.GP || 0
-  }));
 
   // Key injuries for playoff teams
   const keyInjuries = injuries.filter(inj =>
@@ -73,16 +69,21 @@ export async function runSweep(force = false) {
   ).slice(0, 20);
 
   const elapsed = (performance.now() - start).toFixed(0);
-  console.log(`[SWEEP] Complete in ${elapsed}ms | ${scoreboard.length} games | ${injuries.length} injuries | ${news.length} articles`);
+  console.log(`[SWEEP] Complete in ${elapsed}ms | ${scoreboard.length} games | ${injuries.length} injuries`);
 
   cache = {
     timestamp: new Date().toISOString(),
     sweepMs: Number(elapsed),
     sources: {
-      espn: { scoreboard: true, standings: true, news: true, injuries: true },
+      espn: {
+        scoreboard: !!extract(0),
+        standings: !!extract(1),
+        news: !!extract(2),
+        injuries: !!extract(3)
+      },
       odds: { active: !oddsData.error, error: oddsData.error || null },
       balldontlie: { active: bdl.isConfigured() },
-      nbastats: { scoreboard: !!nbaScoreboard, leaders: leaders.length > 0 }
+      nbastats: { scoreboard: false, leaders: false }
     },
     games: gamesWithOdds,
     standings,
@@ -90,10 +91,10 @@ export async function runSweep(force = false) {
     injuries: keyInjuries,
     allInjuries: injuries,
     teams,
-    topScorers,
-    teamStats: teamStats.slice(0, 30),
-    playoffBracket,
-    nbaLive: nbaScoreboard
+    topScorers: [],
+    teamStats: [],
+    playoffBracket: null,
+    nbaLive: null
   };
 
   lastSweep = now;

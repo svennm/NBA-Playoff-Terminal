@@ -4,11 +4,15 @@
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 const STATS_BASE = 'https://site.web.api.espn.com/apis/v2/sports/basketball/nba';
 
-async function safeFetch(url, label) {
+async function safeFetch(url, label, timeoutMs = 10000) {
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' },
+      signal: controller.signal
     });
+    clearTimeout(timer);
     if (!res.ok) throw new Error(`${res.status}`);
     return await res.json();
   } catch (e) {
