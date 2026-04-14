@@ -441,6 +441,143 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
   }
 });
 
+// API: Soccer edge analysis for a game
+app.get('/api/soccer/:league/analysis/:gameIndex', async (req, res) => {
+  const ck = `soccer-analysis-${req.params.league}-${req.params.gameIndex}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const scores = await soccer.getScoreboard(req.params.league);
+    const game = scores[parseInt(req.params.gameIndex)];
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+
+    const teams = await soccer.getTeams(req.params.league);
+    const homeTeam = teams.find(t => t.abbr === game.home.abbr);
+    const awayTeam = teams.find(t => t.abbr === game.away.abbr);
+
+    const analyzeTeam = async (teamId, teamAbbr) => {
+      if (!teamId) return [];
+      const props = await soccer.getTeamProps(req.params.league, teamId);
+      return props.map(p => {
+        return p.lines.map(l => ({
+          player: p.name, playerId: p.id, team: teamAbbr, position: p.position,
+          headshot: p.headshot || '', stat: l.stat, line: l.line,
+          mean: l.avg, total: l.total, games: l.gp,
+          modelOverProb: l.overProb, modelUnderProb: l.underProb,
+          modelOverOdds: l.overOdds, modelUnderOdds: l.underOdds,
+          poissonFit: Math.abs((l.avg > 0 ? l.avg : 1) - 1) < 0.5 ? 'Excellent' : Math.abs((l.avg > 0 ? l.avg : 1) - 1) < 1 ? 'Good' : 'Fair',
+          dispersion: 1.0, // Poisson assumption
+          consistency: l.avg > 0 ? (Math.sqrt(l.avg) / l.avg * 100 < 80 ? 'High' : 'Medium') : 'Low',
+          stdDev: +(Math.sqrt(l.avg || 0)).toFixed(2)
+        }));
+      }).flat();
+    };
+
+    const [homeRows, awayRows] = await Promise.all([
+      analyzeTeam(homeTeam?.id, game.home.abbr),
+      analyzeTeam(awayTeam?.id, game.away.abbr)
+    ]);
+
+    const result = {
+      game: { home: game.home, away: game.away, date: game.date, odds: game.odds },
+      sport: 'soccer',
+      rows: [...awayRows, ...homeRows],
+      summary: { total: awayRows.length + homeRows.length }
+    };
+
+    cache.set(ck, result, 5 * 60_000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Auto-generate bookmaker lines with 3 models (NBA)
+// Uses L10, L20, and full season windows
+app.get('/api/book/auto-lines/:gameIndex', async (req, res) => {
+  const ck = `auto-lines-${req.params.gameIndex}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const sweepData = getCache() || await runSweep();
+    const game = sweepData?.games?.[parseInt(req.params.gameIndex)];
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+
+    const allTeams = sweepData?.teams || await espn.getTeams();
+    const homeTeam = allTeams.find(t => t.abbr === game.home.abbr);
+    const awayTeam = allTeams.find(t => t.abbr === game.away.abbr);
+
+    const buildLines = async (teamId, teamAbbr) => {
+      if (!teamId) return [];
+      const roster = await espn.getPlayerStats(teamId);
+      const results = [];
+
+      for (const player of roster.slice(0, 12)) {
+        const gl = await espn.getPlayerGamelog(player.id);
+        if (!gl?.games?.length || gl.games.length < 10) continue;
+
+        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+        for (const key of statKeys) {
+          const allVals = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+          if (allVals.length < 10) continue;
+
+          const compute = (vals) => {
+            const n = vals.length;
+            const mean = vals.reduce((a, b) => a + b, 0) / n;
+            if (mean < 1 && key !== 'BLK' && key !== 'STL') return null;
+            const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
+            const line = Math.round(mean * 2) / 2;
+            const poissonOver = 1 - poissonCdfCalc(line, mean);
+            const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
+            return { mean: +mean.toFixed(1), stdDev: +Math.sqrt(variance).toFixed(1), line, games: n, overProb: +(poissonOver * 100).toFixed(1), overOdds: toAm(poissonOver), underOdds: toAm(1 - poissonOver) };
+          };
+
+          const full = compute(allVals);
+          const l20 = allVals.length >= 20 ? compute(allVals.slice(-20)) : null;
+          const l10 = allVals.length >= 10 ? compute(allVals.slice(-10)) : null;
+
+          if (full) {
+            results.push({
+              player: player.name, playerId: player.id, team: teamAbbr,
+              position: player.position, headshot: player.headshot, stat: key,
+              models: { season: full, ...(l20 ? { L20: l20 } : {}), ...(l10 ? { L10: l10 } : {}) }
+            });
+          }
+        }
+      }
+      return results;
+    };
+
+    const [homeLines, awayLines] = await Promise.all([
+      buildLines(homeTeam?.id, game.home.abbr),
+      buildLines(awayTeam?.id, game.away.abbr)
+    ]);
+
+    const result = {
+      game: { home: game.home, away: game.away },
+      lines: [...awayLines, ...homeLines]
+    };
+
+    cache.set(ck, result, 5 * 60_000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Poisson CDF helper for auto-lines
+function poissonCdfCalc(k, lam) {
+  let sum = 0;
+  for (let i = 0; i <= Math.floor(k); i++) {
+    let term = Math.exp(-lam);
+    for (let j = 1; j <= i; j++) term *= lam / j;
+    sum += term;
+  }
+  return Math.min(sum, 1);
+}
+
 // API: Player gamelog + statistical analysis (cached 1hr)
 app.get('/api/players/:id/gamelog', async (req, res) => {
   const cacheKey = `gamelog-${req.params.id}`;

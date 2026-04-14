@@ -99,9 +99,16 @@
 </div>
 
 <div class="main">
+  <!-- Sport toggle -->
+  <div style="display:flex;gap:0;margin-bottom:12px;">
+    <button onclick="setSport('nba')" id="sp-nba" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:4px 0 0 4px;background:rgba(255,179,0,0.1);color:var(--amber);">NBA</button>
+    <button onclick="setSport('ucl')" id="sp-ucl" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">UCL</button>
+  </div>
+
   <div class="tab-row">
     <div class="tab active" onclick="setTab('analysis',this)">Edge Finder</div>
     <div class="tab" onclick="setTab('book',this)">In-House Book</div>
+    <div class="tab" onclick="setTab('autobook',this)">Auto Book (3 Models)</div>
   </div>
 
   <!-- ANALYSIS TAB -->
@@ -168,6 +175,18 @@
       </div>
     </div>
   </div>
+
+  <!-- AUTO BOOK TAB -->
+  <div id="tab-autobook" style="display:none;">
+    <div style="margin:12px 0;">
+      <select id="autobook-game" onchange="loadAutoBook()">
+        <option value="">-- Pick a game for auto-lines --</option>
+      </select>
+    </div>
+    <div id="autobook-body">
+      <div class="panel"><div class="panel-body" style="text-align:center;color:var(--dim);padding:30px;">Select a game to generate lines from 3 Poisson models: Last 10 games, Last 20 games, Full Season</div></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -179,22 +198,46 @@ let allRows = [];
 let statFilter = 'all';
 let edgeOnly = false;
 let sortEdge = false;
+let currentSport = 'nba';
+
+function setSport(sport) {
+  currentSport = sport;
+  $('sp-nba').style.background = sport === 'nba' ? 'rgba(255,179,0,0.1)' : 'var(--panel)';
+  $('sp-nba').style.color = sport === 'nba' ? 'var(--amber)' : 'var(--dim)';
+  $('sp-ucl').style.background = sport === 'ucl' ? 'rgba(26,115,232,0.1)' : 'var(--panel)';
+  $('sp-ucl').style.color = sport === 'ucl' ? '#1a73e8' : 'var(--dim)';
+  allRows = [];
+  $('results').innerHTML = '';
+  $('summary').style.display = 'none';
+  $('filters').style.display = 'none';
+  init();
+}
 
 function setTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   $('tab-analysis').style.display = tab === 'analysis' ? '' : 'none';
   $('tab-book').style.display = tab === 'book' ? '' : 'none';
+  $('tab-autobook').style.display = tab === 'autobook' ? '' : 'none';
   if (tab === 'book') loadBook();
+  if (tab === 'autobook') initAutoBook();
 }
 
 // === EDGE FINDER ===
 async function init() {
-  const res = await fetch('/api/sweep');
-  const data = await res.json();
-  const games = data.games || [];
+  let games = [];
+  if (currentSport === 'ucl') {
+    const res = await fetch('/api/soccer/uefa.champions/scoreboard');
+    games = await res.json();
+  } else {
+    const res = await fetch('/api/sweep');
+    const data = await res.json();
+    games = data.games || [];
+  }
+
   const sel = $('game-select');
-  sel.innerHTML = '<option value="">-- Pick a game --</option>' +
+  const label = currentSport === 'ucl' ? 'UCL' : 'NBA';
+  sel.innerHTML = `<option value="">-- Pick a ${label} game --</option>` +
     games.map((g, i) => {
       const t = new Date(g.date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
       return `<option value="${i}">${g.away.abbr} @ ${g.home.abbr} — ${t}</option>`;
@@ -209,7 +252,8 @@ async function analyzeGame() {
   $('summary').style.display = 'none';
   $('filters').style.display = 'none';
 
-  const res = await fetch(`/api/analysis/game/${idx}`);
+  const endpoint = currentSport === 'ucl' ? `/api/soccer/uefa.champions/analysis/${idx}` : `/api/analysis/game/${idx}`;
+  const res = await fetch(endpoint);
   const data = await res.json();
 
   if (data.error) {
@@ -393,6 +437,128 @@ function betLine(lineId, side, el) {
     else loadBook();
     el.classList.remove('selected');
   });
+}
+
+// === AUTO BOOK (3 Models) ===
+async function initAutoBook() {
+  // Load same games as edge finder
+  let games = [];
+  if (currentSport === 'ucl') {
+    const res = await fetch('/api/soccer/uefa.champions/scoreboard');
+    games = await res.json();
+  } else {
+    const res = await fetch('/api/sweep');
+    const data = await res.json();
+    games = data.games || [];
+  }
+  const sel = $('autobook-game');
+  const label = currentSport === 'ucl' ? 'UCL' : 'NBA';
+  sel.innerHTML = `<option value="">-- Pick a ${label} game --</option>` +
+    games.map((g, i) => {
+      const away = g.away?.abbr || g.away?.name || '?';
+      const home = g.home?.abbr || g.home?.name || '?';
+      return `<option value="${i}">${away} @ ${home}</option>`;
+    }).join('');
+}
+
+async function loadAutoBook() {
+  const idx = $('autobook-game').value;
+  if (!idx) return;
+  const body = $('autobook-body');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div><br>Computing 3-model lines for all players...</div>';
+
+  let endpoint;
+  if (currentSport === 'ucl') {
+    // For soccer, use the props endpoint which already has Poisson lines
+    endpoint = `/api/soccer/uefa.champions/props/${idx}`;
+  } else {
+    endpoint = `/api/book/auto-lines/${idx}`;
+  }
+
+  const res = await fetch(endpoint);
+  const data = await res.json();
+
+  if (data.error) {
+    body.innerHTML = `<div style="color:var(--red);">${data.error}</div>`;
+    return;
+  }
+
+  if (currentSport === 'ucl') {
+    // Soccer: show model lines with single model (season stats)
+    const props = data.playerProps || [];
+    body.innerHTML = `
+      <div class="panel">
+        <div class="panel-header">Poisson Model Lines — Season Stats<span style="font-family:'JetBrains Mono',monospace;font-size:10px;">${props.length} players</span></div>
+        <div class="panel-body" style="overflow-x:auto;">
+          <table class="edge-table">
+            <thead><tr><th>Player</th><th>Stat</th><th>Line</th><th>Avg/G</th><th>Over %</th><th>Over Odds</th><th>Under Odds</th><th>Book</th></tr></thead>
+            <tbody>${props.flatMap(p => p.lines.map(l => `
+              <tr>
+                <td style="font-weight:500;">${p.name} <span style="color:var(--dim);font-size:9px;">${p.team || ''}</span></td>
+                <td><span class="stat-badge">${l.stat}</span></td>
+                <td style="font-weight:700;">${l.line}</td>
+                <td>${l.avg}</td>
+                <td style="color:var(--purple);">${l.overProb || '?'}%</td>
+                <td style="color:var(--green);">${l.overOdds > 0 ? '+' : ''}${l.overOdds}</td>
+                <td style="color:var(--red);">${l.underOdds > 0 ? '+' : ''}${l.underOdds}</td>
+                <td style="color:var(--dim);font-size:9px;">${l.book || 'Poisson'}</td>
+              </tr>`)).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // NBA: 3-model display
+  const lines = data.lines || [];
+  body.innerHTML = `
+    <div class="panel">
+      <div class="panel-header">3-Model Auto Book — L10 / L20 / Season<span style="font-family:'JetBrains Mono',monospace;font-size:10px;">${lines.length} props</span></div>
+      <div class="panel-body" style="overflow-x:auto;">
+        <table class="edge-table" style="min-width:1000px;">
+          <thead><tr>
+            <th>Player</th><th>Stat</th>
+            <th colspan="3" style="text-align:center;color:var(--green);">L10 (Recent)</th>
+            <th colspan="3" style="text-align:center;color:var(--cyan);">L20</th>
+            <th colspan="3" style="text-align:center;color:var(--amber);">Season</th>
+            <th>Spread</th>
+          </tr>
+          <tr style="font-size:8px;color:var(--dim);">
+            <th></th><th></th>
+            <th>Line</th><th>Mean</th><th>Over</th>
+            <th>Line</th><th>Mean</th><th>Over</th>
+            <th>Line</th><th>Mean</th><th>Over</th>
+            <th></th>
+          </tr></thead>
+          <tbody>${lines.map(r => {
+            const m = r.models;
+            const l10 = m.L10;
+            const l20 = m.L20;
+            const full = m.season;
+            // Spread = difference between L10 and Season line
+            const spread = l10 && full ? (l10.mean - full.mean).toFixed(1) : '-';
+            const spreadColor = parseFloat(spread) > 0.5 ? 'var(--green)' : parseFloat(spread) < -0.5 ? 'var(--red)' : 'var(--dim)';
+            const fmtModel = (m, color) => m ? `
+              <td style="font-weight:600;">${m.line}</td>
+              <td style="color:var(--dim);">${m.mean}</td>
+              <td style="color:${color};">${m.overProb}%</td>` : '<td>-</td><td>-</td><td>-</td>';
+
+            return `<tr>
+              <td style="font-weight:500;">${r.player} <span style="color:var(--dim);font-size:9px;">${r.team}</span></td>
+              <td><span class="stat-badge stat-${r.stat}">${r.stat}</span></td>
+              ${fmtModel(l10, 'var(--green)')}
+              ${fmtModel(l20, 'var(--cyan)')}
+              ${fmtModel(full, 'var(--amber)')}
+              <td style="color:${spreadColor};font-weight:700;">${spread > 0 ? '+' : ''}${spread}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+        <div style="margin-top:8px;font-size:9px;color:var(--dim);">
+          <strong>Spread</strong> = L10 mean - Season mean. Positive = player trending UP recently. Negative = trending DOWN.
+        </div>
+      </div>
+    </div>`;
 }
 
 init();
