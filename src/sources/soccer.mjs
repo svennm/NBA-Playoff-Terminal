@@ -213,7 +213,12 @@ export async function getTeamProps(league, teamId) {
   if (!roster.length) return [];
 
   // Get stats for top players
-  const top = roster.filter(p => p.position !== 'G').slice(0, 12);
+  // Sort: Forwards first, then Midfielders, then Defenders — so we get star players
+  const posOrder = { F: 0, M: 1, D: 2 };
+  const top = roster
+    .filter(p => p.position !== 'G')
+    .sort((a, b) => (posOrder[a.position] ?? 3) - (posOrder[b.position] ?? 3))
+    .slice(0, 18);
   const overviews = await Promise.allSettled(
     top.map(p => getPlayerOverview(league, p.id))
   );
@@ -240,11 +245,11 @@ export async function getTeamProps(league, teamId) {
     const shpg = shots / gp;
     const sotpg = sot / gp;
 
-    if (gpg >= 0.2) lines.push({ stat: 'Goals', line: Math.round(gpg * 2) / 2 || 0.5, avg: +gpg.toFixed(2), total: goals, gp });
-    if (apg >= 0.1) lines.push({ stat: 'Assists', line: Math.round(apg * 2) / 2 || 0.5, avg: +apg.toFixed(2), total: assists, gp });
-    if (shpg >= 1) lines.push({ stat: 'Shots', line: Math.round(shpg * 2) / 2, avg: +shpg.toFixed(1), total: shots, gp });
-    if (sotpg >= 0.5) lines.push({ stat: 'SOT', line: Math.round(sotpg * 2) / 2, avg: +sotpg.toFixed(1), total: sot, gp });
-    lines.push({ stat: 'G+A', line: Math.round((gpg + apg) * 2) / 2 || 0.5, avg: +(gpg + apg).toFixed(2), total: goals + assists, gp });
+    if (goals >= 1) lines.push({ stat: 'Goals', line: Math.round(gpg * 2) / 2 || 0.5, avg: +gpg.toFixed(2), total: goals, gp });
+    if (assists >= 1) lines.push({ stat: 'Assists', line: Math.round(apg * 2) / 2 || 0.5, avg: +apg.toFixed(2), total: assists, gp });
+    if (shots >= 3) lines.push({ stat: 'Shots', line: Math.round(shpg * 2) / 2 || 0.5, avg: +shpg.toFixed(1), total: shots, gp });
+    if (sot >= 2) lines.push({ stat: 'SOT', line: Math.round(sotpg * 2) / 2 || 0.5, avg: +sotpg.toFixed(1), total: sot, gp });
+    if (goals + assists >= 1) lines.push({ stat: 'G+A', line: Math.round((gpg + apg) * 2) / 2 || 0.5, avg: +(gpg + apg).toFixed(2), total: goals + assists, gp });
 
     if (lines.length) {
       props.push({
