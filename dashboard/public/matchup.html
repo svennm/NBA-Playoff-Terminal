@@ -2715,19 +2715,20 @@ async function boot() {
   const teamB = params.get('b');
 
   if (teamA && state.teams.length) {
-    const match = state.teams.find(t => t.abbr === teamA || t.name.toLowerCase().includes(teamA.toLowerCase()));
-    if (match) {
-      $('team-a-select').value = match.id;
-      await loadTeam('a');
+    const matchA = state.teams.find(t => t.abbr === teamA || t.name.toLowerCase().includes(teamA.toLowerCase()));
+    if (matchA) {
+      $('team-a-select').value = matchA.id;
     }
   }
   if (teamB && state.teams.length) {
-    const match = state.teams.find(t => t.abbr === teamB || t.name.toLowerCase().includes(teamB.toLowerCase()));
-    if (match) {
-      $('team-b-select').value = match.id;
-      await loadTeam('b');
+    const matchB = state.teams.find(t => t.abbr === teamB || t.name.toLowerCase().includes(teamB.toLowerCase()));
+    if (matchB) {
+      $('team-b-select').value = matchB.id;
     }
   }
+  // Load both teams in parallel
+  if ($('team-a-select').value) await loadTeam('a');
+  if ($('team-b-select').value) await loadTeam('b');
 }
 
 boot();
