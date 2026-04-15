@@ -451,13 +451,18 @@ async function loadGames() {
       sel.innerHTML = '<option value="">No upcoming NBA games</option>';
       return;
     }
+    // Filter: hide finished games, disable TBD
+    const upcoming = allGames.filter(g => g.status !== 'Final');
     sel.innerHTML = '<option value="">-- Pick an NBA game --</option>' +
-      allGames.map((g, i) => {
+      upcoming.map(g => {
+        const origIdx = allGames.indexOf(g);
         const time = new Date(g.date).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
         const odds = g.odds ? ` | ${g.odds.spread} O/U ${g.odds.overUnder}` : '';
         const note = g.note ? ` [${g.note}]` : '';
         const isTBD = g.away.abbr === 'TBD' || g.home.abbr === 'TBD';
-        return `<option value="nba-${i}" ${isTBD ? 'disabled' : ''}>${g.away.abbr} @ ${g.home.abbr} — ${time}${odds}${note}</option>`;
+        const isLive = g.status === 'In Progress';
+        const prefix = isLive ? 'LIVE ' : '';
+        return `<option value="nba-${origIdx}" ${isTBD ? 'disabled' : ''}>${prefix}${g.away.abbr} @ ${g.home.abbr} — ${time}${odds}${note}</option>`;
       }).join('');
   } else {
     // Load upcoming UCL schedule (14 days)
@@ -469,11 +474,15 @@ async function loadGames() {
       sel.innerHTML = '<option value="">No upcoming UCL matches</option>';
       return;
     }
+    const upcomingUCL = soccerGames.filter(g => g.status !== 'Final');
     sel.innerHTML = '<option value="">-- Pick a UCL match --</option>' +
-      soccerGames.map((g, i) => {
+      upcomingUCL.map(g => {
+        const origIdx = soccerGames.indexOf(g);
         const time = new Date(g.date).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
         const agg = g.aggregate ? ` [${g.aggregate}]` : '';
-        return `<option value="ucl-${i}">${g.away.abbr || g.away.name} vs ${g.home.abbr || g.home.name} — ${time}${agg}</option>`;
+        const isLive = g.status === 'In Progress' || g.status === 'Second Half' || g.status === 'First Half';
+        const prefix = isLive ? 'LIVE ' : '';
+        return `<option value="ucl-${origIdx}">${prefix}${g.away.abbr || g.away.name} vs ${g.home.abbr || g.home.name} — ${time}${agg}</option>`;
       }).join('');
   }
 }
