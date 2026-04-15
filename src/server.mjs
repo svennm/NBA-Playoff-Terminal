@@ -1197,13 +1197,18 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
       ];
 
       // Merge: for each player, combine real book lines + model lines for missing stats
+      // Also tag positions from model data onto book-only players
       const realByName = {};
       for (const p of realPlayerProps) realByName[p.name.toLowerCase()] = p;
 
-      // Add model lines to real players for stats the books don't cover
+      // Add model lines + position to real players
       for (const mp of modelProps) {
         const key = mp.name.toLowerCase();
         if (realByName[key]) {
+          // Tag position if missing
+          if (!realByName[key].position && mp.position) realByName[key].position = mp.position;
+          if (!realByName[key].team && mp.team) realByName[key].team = mp.team;
+          if (!realByName[key].headshot && mp.headshot) realByName[key].headshot = mp.headshot;
           const existingStats = new Set(realByName[key].lines.map(l => l.stat));
           for (const line of mp.lines || []) {
             if (!existingStats.has(line.stat)) {

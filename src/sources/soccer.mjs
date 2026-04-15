@@ -272,27 +272,82 @@ export async function getTeamProps(league, teamId) {
       };
     };
 
-    if (goals >= 1) lines.push(makeLine('Anytime Goal', gpg, goals, gp));
-    if (assists >= 1) lines.push(makeLine('Assists', apg, assists, gp));
-    if (shots >= 3) lines.push(makeLine('Shots Attempted', shpg, shots, gp));
-    if (sot >= 2) lines.push(makeLine('Shots on Target', sotpg, sot, gp));
-    if (goals + assists >= 1) lines.push(makeLine('Goals + Assists', gpg + apg, goals + assists, gp));
-    // Goal or Assist (binary: did they get at least 1 G or A?)
-    if (goals + assists >= 1) {
-      const gaRate = Math.min((goals + assists) / gp, 1);
-      const gaProb = 1 - Math.exp(-(gpg + apg)); // P(X>=1) from Poisson
-      const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
-      lines.push({
-        stat: 'Goal or Assist', line: 0.5, avg: +(gpg + apg).toFixed(2), total: goals + assists, gp,
-        overOdds: toAm(gaProb), underOdds: toAm(1 - gaProb),
-        overProb: +(gaProb * 100).toFixed(1), underProb: +((1 - gaProb) * 100).toFixed(1),
-        book: 'Poisson'
-      });
-    }
-    // Fouls and cards — popular soccer markets
-    if (fouls >= 3) lines.push(makeLine('Fouls Committed', fouls / gp, fouls, gp));
     const yc = parseFloat(s.yellowCards || s._YC || '0');
-    if (yc >= 1) lines.push(makeLine('Yellow Cards', yc / gp, yc, gp));
+    const fa = parseFloat(s.foulsSuffered || s._FA || '0');
+    const pos = player.position;
+
+    // Helper for binary (yes/no) props
+    const makeBinaryLine = (stat, prob, total, gp) => {
+      const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
+      return { stat, line: 0.5, avg: +(prob * 100).toFixed(1) + '%', total, gp,
+        overOdds: toAm(prob), underOdds: toAm(1 - prob),
+        overProb: +(prob * 100).toFixed(1), underProb: +((1 - prob) * 100).toFixed(1), book: 'Poisson' };
+    };
+
+    if (pos === 'F') {
+      // === FORWARDS: attacking stats ===
+      if (goals >= 1) lines.push(makeLine('Anytime Goal', gpg, goals, gp));
+      if (assists >= 1) lines.push(makeLine('Assists', apg, assists, gp));
+      if (shots >= 3) lines.push(makeLine('Shots Attempted', shpg, shots, gp));
+      if (sot >= 2) lines.push(makeLine('Shots on Target', sotpg, sot, gp));
+      if (goals + assists >= 1) lines.push(makeLine('Goals + Assists', gpg + apg, goals + assists, gp));
+      if (goals + assists >= 1) {
+        const gaProb = 1 - Math.exp(-(gpg + apg));
+        lines.push(makeBinaryLine('Goal or Assist', gaProb, goals + assists, gp));
+      }
+      if (fouls >= 3) lines.push(makeLine('Fouls Committed', fouls / gp, fouls, gp));
+      if (yc >= 1) lines.push(makeLine('Yellow Cards', yc / gp, yc, gp));
+
+    } else if (pos === 'M') {
+      // === MIDFIELDERS: mix of attacking + defensive ===
+      if (goals >= 1) lines.push(makeLine('Anytime Goal', gpg, goals, gp));
+      if (assists >= 1) lines.push(makeLine('Assists', apg, assists, gp));
+      if (shots >= 2) lines.push(makeLine('Shots Attempted', shpg, shots, gp));
+      if (sot >= 1) lines.push(makeLine('Shots on Target', sotpg, sot, gp));
+      if (goals + assists >= 1) {
+        const gaProb = 1 - Math.exp(-(gpg + apg));
+        lines.push(makeBinaryLine('Goal or Assist', gaProb, goals + assists, gp));
+      }
+      // Defensive/physical — key for midfielders
+      if (fouls >= 2) lines.push(makeLine('Fouls Committed', fouls / gp, fouls, gp));
+      if (fa >= 2) lines.push(makeLine('Fouls Drawn', fa / gp, fa, gp));
+      if (yc >= 1) lines.push(makeLine('Yellow Cards', yc / gp, yc, gp));
+      // Carded prop (binary)
+      if (yc >= 1) {
+        const cardProb = 1 - Math.exp(-(yc / gp));
+        lines.push(makeBinaryLine('To Be Carded', cardProb, yc, gp));
+      }
+
+    } else if (pos === 'D') {
+      // === DEFENDERS: disciplinary + physical stats ===
+      // Carded prop (binary) — the #1 defender bet
+      if (gp >= 2) {
+        const cardProb = 1 - Math.exp(-(yc / gp));
+        lines.push(makeBinaryLine('To Be Carded', cardProb, yc, gp));
+      }
+      // Fouls — lower threshold, defenders foul more
+      if (fouls >= 1) lines.push(makeLine('Fouls Committed', fouls / gp, fouls, gp));
+      // Fouls drawn — physical defenders get fouled
+      if (fa >= 1) lines.push(makeLine('Fouls Drawn', fa / gp, fa, gp));
+      // Yellow cards
+      if (yc >= 1) lines.push(makeLine('Yellow Cards', yc / gp, yc, gp));
+      // Defenders rarely score — binary only
+      if (goals >= 1) {
+        const goalProb = 1 - Math.exp(-gpg);
+        lines.push(makeBinaryLine('Anytime Goal', goalProb, goals, gp));
+      }
+      if (assists >= 1) lines.push(makeLine('Assists', apg, assists, gp));
+      // Shots (any amount for defenders)
+      if (shots >= 1) lines.push(makeLine('Shots Attempted', shpg, shots, gp));
+      if (sot >= 1) lines.push(makeLine('Shots on Target', sotpg, sot, gp));
+    } else {
+      // Fallback — all stats
+      if (goals >= 1) lines.push(makeLine('Anytime Goal', gpg, goals, gp));
+      if (assists >= 1) lines.push(makeLine('Assists', apg, assists, gp));
+      if (shots >= 3) lines.push(makeLine('Shots Attempted', shpg, shots, gp));
+      if (fouls >= 2) lines.push(makeLine('Fouls Committed', fouls / gp, fouls, gp));
+      if (yc >= 1) lines.push(makeLine('Yellow Cards', yc / gp, yc, gp));
+    }
 
     // Goalkeeper props — saves, fouls suffered (proxy for activity)
     if (player.position === 'G' && gp >= 1) {
