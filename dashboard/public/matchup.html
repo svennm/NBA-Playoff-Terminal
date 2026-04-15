@@ -2715,13 +2715,13 @@ async function boot() {
   const teamB = params.get('b');
 
   if (teamA && state.teams.length) {
-    const matchA = state.teams.find(t => t.abbr === teamA || t.name.toLowerCase().includes(teamA.toLowerCase()));
+    const matchA = state.teams.find(t => t.abbr === teamA) || state.teams.find(t => t.name.toLowerCase() === teamA.toLowerCase());
     if (matchA) {
       $('team-a-select').value = matchA.id;
     }
   }
   if (teamB && state.teams.length) {
-    const matchB = state.teams.find(t => t.abbr === teamB || t.name.toLowerCase().includes(teamB.toLowerCase()));
+    const matchB = state.teams.find(t => t.abbr === teamB) || state.teams.find(t => t.name.toLowerCase() === teamB.toLowerCase());
     if (matchB) {
       $('team-b-select').value = matchB.id;
     }
