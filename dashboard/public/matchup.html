@@ -2616,14 +2616,17 @@ async function openSoccerDeepDive(side, playerId) {
                 <div class="hist-labels">
                   <span>0</span><span>${Math.floor(d.pmf.length/2)}</span><span>${d.pmf.length-1}</span>
                 </div>
-                <div style="font-size:8px;color:var(--purple);margin-top:6px;margin-bottom:4px;">Over/Under Probabilities</div>
+                <div style="font-size:8px;color:var(--purple);margin-top:6px;margin-bottom:4px;">Over/Under — click + to add to slip</div>
                 ${d.ouLines.map(ou => {
                   const color = ou.overProb > 55 ? 'var(--green)' : ou.overProb < 45 ? 'var(--red)' : 'var(--amber)';
+                  const pName = (roster?.name || '').replace(/'/g, "\\'");
                   return `<div class="ou-row">
                     <span class="ou-line">O ${ou.line}</span>
                     <div class="ou-bar-wrap"><div class="ou-bar-fill" style="width:${ou.overProb}%;background:${color}"></div></div>
                     <span class="ou-pct" style="color:${color}">${ou.overProb}%</span>
                     <span style="color:var(--purple);font-size:9px;">${ou.overOdds > 0 ? '+' : ''}${ou.overOdds}</span>
+                    <span onclick="event.stopPropagation();addToSlip({player:'${pName}',stat:'${d.stat}',line:${ou.line},pick:'Over ${ou.line}',odds:${ou.overOdds},game:''})" style="cursor:pointer;color:var(--green);font-size:10px;padding:0 3px;" title="Add Over to slip">+O</span>
+                    <span onclick="event.stopPropagation();addToSlip({player:'${pName}',stat:'${d.stat}',line:${ou.line},pick:'Under ${ou.line}',odds:${ou.underProb > 50 ? Math.round(-100*ou.underProb/100/(1-ou.underProb/100)) : Math.round(100*(1-ou.underProb/100)/(ou.underProb/100))},game:''})" style="cursor:pointer;color:var(--red);font-size:10px;padding:0 3px;" title="Add Under to slip">+U</span>
                   </div>`;
                 }).join('')}
               </div>`;
@@ -2729,5 +2732,6 @@ async function boot() {
 
 boot();
 </script>
+<script src="/slip-widget.js"></script>
 </body>
 </html>
