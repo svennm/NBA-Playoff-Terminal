@@ -1272,6 +1272,146 @@ app.get('/api/polymarket/ucl', async (req, res) => {
   } catch { res.json([]); }
 });
 
+// === Slip Resolver — grades active slips from box scores ===
+app.post('/api/slips/resolve', authMiddleware, async (req, res) => {
+  try {
+    const activeSlips = await store.getSlips({ status: 'active', limit: 200 });
+    if (!activeSlips.length) return res.json({ resolved: 0, message: 'No active slips' });
+
+    // Get completed games from schedule
+    const scheduleRes = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + getDateRange(), {
+      headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
+    });
+    const schedData = await scheduleRes.json();
+    const finishedGames = (schedData.events || []).filter(e =>
+      e.competitions?.[0]?.status?.type?.description === 'Final'
+    );
+
+    // Fetch box scores for finished games
+    const boxScores = {};
+    for (const event of finishedGames) {
+      try {
+        const bsRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${event.id}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000)
+        });
+        const bsData = await bsRes.json();
+        const players = {};
+        for (const team of bsData.boxscore?.players || []) {
+          for (const sg of team.statistics || []) {
+            const labels = sg.labels || [];
+            for (const a of sg.athletes || []) {
+              const name = a.athlete?.displayName || '';
+              const stats = {};
+              labels.forEach((l, i) => { stats[l] = a.stats?.[i] || '0'; });
+              // Parse made-attempted fields
+              const parseFG = (v) => { const p = (v || '0-0').split('-'); return { made: parseInt(p[0]) || 0, att: parseInt(p[1]) || 0 }; };
+              stats._PTS = parseInt(stats.PTS || '0');
+              stats._REB = parseInt(stats.REB || '0');
+              stats._AST = parseInt(stats.AST || '0');
+              stats._TO = parseInt(stats.TO || '0');
+              stats._STL = parseInt(stats.STL || '0');
+              stats._BLK = parseInt(stats.BLK || '0');
+              stats._3PM = parseFG(stats['3PT']).made;
+              stats._FGM = parseFG(stats.FG).made;
+              stats._FGA = parseFG(stats.FG).att;
+              stats._FTM = parseFG(stats.FT).made;
+              stats._MIN = parseInt(stats.MIN || '0');
+              stats._PRA = stats._PTS + stats._REB + stats._AST;
+              // Double-double check
+              const ddCats = [stats._PTS, stats._REB, stats._AST, stats._STL, stats._BLK].filter(v => v >= 10).length;
+              stats._DD = ddCats >= 2;
+              stats._TD = ddCats >= 3;
+              players[name.toLowerCase()] = stats;
+            }
+          }
+        }
+        // Map game name to box score
+        const comp = event.competitions?.[0];
+        const teams = comp?.competitors || [];
+        const away = teams.find(t => t.homeAway === 'away')?.team?.abbreviation || '';
+        const home = teams.find(t => t.homeAway === 'home')?.team?.abbreviation || '';
+        boxScores[`${away} @ ${home}`.toLowerCase()] = players;
+        boxScores[`${away} vs ${home}`.toLowerCase()] = players;
+        boxScores[event.id] = players;
+      } catch {}
+    }
+
+    // Resolve each active slip
+    let resolved = 0;
+    const results = [];
+    for (const slip of activeSlips) {
+      // Find matching box score
+      let players = null;
+      for (const leg of slip.legs) {
+        const gameKey = (leg.game || '').toLowerCase();
+        if (boxScores[gameKey]) { players = boxScores[gameKey]; break; }
+        // Try by gameId
+        if (leg.gameId && boxScores[leg.gameId]) { players = boxScores[leg.gameId]; break; }
+      }
+      if (!players) continue; // game not finished yet
+
+      const legResults = [];
+      let allResolved = true;
+      for (const leg of slip.legs) {
+        const playerName = (leg.player || '').toLowerCase();
+        const pStats = players[playerName];
+        if (!pStats) { legResults.push('pending'); allResolved = false; continue; }
+
+        const statMap = { 'PTS': '_PTS', 'REB': '_REB', 'AST': '_AST', 'TO': '_TO', 'STL': '_STL', 'BLK': '_BLK',
+          '3PM': '_3PM', 'FGM': '_FGM', 'FGA': '_FGA', 'FTM': '_FTM', 'PRA': '_PRA', 'MIN': '_MIN' };
+
+        const pick = (leg.pick || '').toLowerCase();
+        let result = 'pending';
+
+        if (leg.stat === 'Double-Double') {
+          result = (pick.includes('over') || pick.includes('yes')) ? (pStats._DD ? 'won' : 'lost') : (!pStats._DD ? 'won' : 'lost');
+        } else if (leg.stat === 'Triple-Double') {
+          result = (pick.includes('over') || pick.includes('yes')) ? (pStats._TD ? 'won' : 'lost') : (!pStats._TD ? 'won' : 'lost');
+        } else {
+          const statKey = statMap[leg.stat];
+          const actual = statKey ? pStats[statKey] : null;
+          if (actual !== null && actual !== undefined) {
+            const line = parseFloat(leg.line) || 0;
+            if (pick.includes('over') || pick.includes('yes')) {
+              result = actual > line ? 'won' : actual === line ? 'push' : 'lost';
+            } else {
+              result = actual < line ? 'won' : actual === line ? 'push' : 'lost';
+            }
+          }
+        }
+        legResults.push(result);
+      }
+
+      if (allResolved || legResults.every(r => r !== 'pending')) {
+        const gradeResult = await store.gradeSlip(slip.id, legResults);
+        if (!gradeResult.error) {
+          resolved++;
+          results.push({ id: slip.id, user: slip.user, result: gradeResult.slip?.status, legs: legResults });
+        }
+      }
+    }
+
+    res.json({ resolved, total: activeSlips.length, results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+function getDateRange() {
+  const d = new Date();
+  const start = new Date(d); start.setDate(start.getDate() - 3);
+  const end = new Date(d); end.setDate(end.getDate() + 1);
+  const fmt = d => d.toISOString().slice(0,10).replace(/-/g,'');
+  return `${fmt(start)}-${fmt(end)}`;
+}
+
+// API: Get resolution status for a slip
+app.get('/api/slips/:id/check', async (req, res) => {
+  const slip = await store.getSlip(req.params.id);
+  if (!slip) return res.status(404).json({ error: 'Not found' });
+  res.json(slip);
+});
+
 // API: Cache stats
 app.get('/api/cache', (req, res) => {
   res.json(cache.stats());

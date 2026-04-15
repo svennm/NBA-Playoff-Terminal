@@ -255,7 +255,10 @@
   <div class="panel">
     <div class="panel-header">
       Live Slip Feed
-      <span class="count" id="slip-feed-count">0</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button onclick="resolveSlips()" id="resolve-btn" style="padding:3px 10px;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;border:1px solid var(--green);background:rgba(0,255,136,0.1);color:var(--green);border-radius:3px;cursor:pointer;">Resolve</button>
+        <span class="count" id="slip-feed-count">0</span>
+      </div>
     </div>
     <div class="tab-row">
       <div class="tab active" onclick="setFeedTab('all')">All</div>
@@ -1008,6 +1011,52 @@ async function loadLeaderboard() {
 }
 
 // === Boot ===
+async function resolveSlips() {
+  if (!authToken) { alert('Log in first'); return; }
+  const btn = $('resolve-btn');
+  btn.textContent = 'Resolving...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/slips/resolve', { method: 'POST', headers: authHeaders() });
+    const data = await res.json();
+
+    if (data.error) {
+      alert(data.error);
+    } else if (data.resolved === 0) {
+      btn.textContent = 'No games finished';
+      setTimeout(() => { btn.textContent = 'Resolve'; btn.disabled = false; }, 2000);
+      return;
+    } else {
+      // Show results
+      const wins = data.results.filter(r => r.result === 'won').length;
+      const losses = data.results.filter(r => r.result === 'lost').length;
+      btn.textContent = `${data.resolved} resolved (${wins}W ${losses}L)`;
+      btn.style.borderColor = wins > losses ? 'var(--green)' : 'var(--red)';
+
+      // Refresh everything
+      await loadFeed();
+      await loadLeaderboard();
+      await loadHistory();
+
+      // Refresh user data
+      try {
+        const meRes = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${authToken}` } });
+        if (meRes.ok) {
+          const meData = await meRes.json();
+          currentUser = meData.user;
+          localStorage.setItem('nba_user_cache', JSON.stringify(currentUser));
+          $('user-bankroll').textContent = currentUser.bankroll;
+        }
+      } catch {}
+    }
+  } catch (e) {
+    alert('Resolve failed: ' + e.message);
+  }
+
+  setTimeout(() => { btn.textContent = 'Resolve'; btn.disabled = false; btn.style.borderColor = 'var(--green)'; }, 3000);
+}
+
 async function loadHistory() {
   if (!currentUser) { $('history-panel').style.display = 'none'; return; }
   $('history-panel').style.display = '';
