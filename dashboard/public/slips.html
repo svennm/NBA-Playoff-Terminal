@@ -956,8 +956,65 @@ async function loadFeed() {
     // Display odds in chosen format
     const displayTotal = oddsFormat === 'decimal' ? s.decimalOdds?.toFixed(2) || s.totalOdds : s.totalOdds;
 
+    // Build parlay distribution for this slip
+    const n = s.legs.length;
+    const probs = s.legs.map(l => americanToImplied(l.odds) / 100);
+    let distHtml = '';
+    if (n >= 2) {
+      const dp = Array(n+1).fill(null).map(() => Array(n+1).fill(0));
+      dp[0][0] = 1;
+      for (let i = 1; i <= n; i++) {
+        const p = probs[i-1];
+        for (let j = 0; j <= i; j++) {
+          dp[i][j] = dp[i-1][j] * (1-p);
+          if (j > 0) dp[i][j] += dp[i-1][j-1] * p;
+        }
+      }
+      const dist = [];
+      for (let k = 0; k <= n; k++) dist.push({ k, prob: +(dp[n][k]*100).toFixed(1) });
+      const maxP = Math.max(...dist.map(d => d.prob), 1);
+
+      distHtml = `
+        <div class="slip-dist" id="dist-${s.id}" style="display:none;padding:8px;border-top:1px solid var(--border);background:rgba(0,0,0,0.2);">
+          <div style="font-size:8px;color:var(--purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Parlay Hit Distribution</div>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:40px;margin-bottom:3px;">
+            ${dist.map(d => {
+              const h = Math.max((d.prob/maxP)*100, 3);
+              const c = d.k === n ? 'var(--green)' : d.k === 0 ? 'var(--red)' : 'var(--cyan)';
+              return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">
+                <span style="font-size:7px;color:${c};">${d.prob}%</span>
+                <div style="width:100%;height:${h}%;background:${c};border-radius:2px 2px 0 0;opacity:${d.k===n?1:0.5};"></div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;gap:2px;margin-bottom:4px;">
+            ${dist.map(d => `<div style="flex:1;text-align:center;font-size:7px;color:${d.k===n?'var(--green)':d.k===0?'var(--red)':'var(--dim)'};">${d.k}/${n}</div>`).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:8px;">
+            <span style="color:var(--red);">Miss all: ${dist[0].prob}%</span>
+            <span style="color:var(--cyan);">1+: ${(100-dist[0].prob).toFixed(1)}%</span>
+            <span style="color:var(--green);font-weight:700;">All hit: ${dist[n].prob}%</span>
+          </div>
+          <div style="margin-top:4px;">
+            ${s.legs.map((l, i) => {
+              const imp = americanToImplied(l.odds);
+              const barW = Math.min(imp, 100);
+              const c = imp > 55 ? 'var(--green)' : imp > 45 ? 'var(--amber)' : 'var(--red)';
+              return `<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:9px;">
+                <span style="min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${l.player}</span>
+                <span style="min-width:35px;color:var(--dim);">${l.stat}</span>
+                <div style="flex:1;height:4px;background:rgba(255,255,255,0.03);border-radius:2px;overflow:hidden;">
+                  <div style="width:${barW}%;height:100%;background:${c};border-radius:2px;"></div>
+                </div>
+                <span style="color:${c};font-weight:600;min-width:30px;text-align:right;">${imp.toFixed(0)}%</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    }
+
     return `
-      <div class="slip-card ${s.status}">
+      <div class="slip-card ${s.status}" onclick="toggleSlipDist('${s.id}')" style="cursor:pointer;">
         <div class="slip-card-header">
           <div>
             <span class="slip-card-user">${s.user}</span>
@@ -986,8 +1043,14 @@ async function loadFeed() {
           <span style="color:var(--purple);font-size:9px;">${parlayPct}% implied</span>
           <span class="payout">To win $${s.payout}</span>
         </div>
+        ${distHtml}
       </div>`;
   }).join('');
+}
+
+function toggleSlipDist(slipId) {
+  const el = document.getElementById('dist-' + slipId);
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
 function setFeedTab(tab) {
