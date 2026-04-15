@@ -827,7 +827,7 @@ function renderGames(games) {
     const broadcastHtml = g.broadcast ? `<div class="game-broadcast">${g.broadcast}</div>` : '';
 
     return `
-      <div class="game-card ${cls}">
+      <div class="game-card ${cls}" onclick="window.location.href='/matchup.html?a=${g.away.abbr}&b=${g.home.abbr}'" style="cursor:pointer;" title="Click for matchup breakdown">
         <div class="game-status ${statusCls}">${statusText}</div>
         <div class="game-teams">
           <div class="team-line">
