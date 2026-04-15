@@ -1786,12 +1786,12 @@ function renderSoccerPlayerCompare(body, pa, pb, rosterA, rosterB) {
         <div class="p-name">${roster.name}</div>
         <div class="p-meta">#${roster.jersey} ${roster.position} | ${roster.nationality || ''} | Age ${roster.age}</div>
         <div class="p-stat-grid">
-          <div class="p-stat-box"><div class="p-stat-val">${stats.G || '0'}</div><div class="p-stat-label">Goals</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${stats.A || '0'}</div><div class="p-stat-label">Assists</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${stats.SH || '0'}</div><div class="p-stat-label">SHA</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${stats.ST || '0'}</div><div class="p-stat-label">SOT</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${stats.YC || '0'}</div><div class="p-stat-label">YC</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${gp}</div><div class="p-stat-label">Starts</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.G || '0'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">Goals</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.A || '0'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">Assists</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.SH || '0'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">SHA</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.ST || '0'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">SOT</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${stats.YC || '0'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">YC</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${gp}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">Starts</div></div>
         </div>
       </div>`;
   };
@@ -1854,12 +1854,12 @@ function renderNbaPlayerCompare(body, pa, pb, rosterA, rosterB) {
         <div class="p-name">${roster.name}</div>
         <div class="p-meta">#${roster.jersey} ${roster.position} | ${roster.height} ${roster.weight}lbs | Age ${roster.age}</div>
         <div class="p-stat-grid">
-          <div class="p-stat-box"><div class="p-stat-val">${s.avgPoints || '-'}</div><div class="p-stat-label">PTS</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${s.avgRebounds || '-'}</div><div class="p-stat-label">REB</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${s.avgAssists || '-'}</div><div class="p-stat-label">AST</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${s.avgSteals || '-'}</div><div class="p-stat-label">STL</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${s.avgBlocks || '-'}</div><div class="p-stat-label">BLK</div></div>
-          <div class="p-stat-box"><div class="p-stat-val">${s.fieldGoalPct ? s.fieldGoalPct + '%' : '-'}</div><div class="p-stat-label">FG%</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgPoints || '-'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">PTS</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgRebounds || '-'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">REB</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgAssists || '-'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">AST</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgSteals || '-'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">STL</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.avgBlocks || '-'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">BLK</div></div>
+          <div class="p-stat-box"><div class="p-stat-val">${s.fieldGoalPct ? s.fieldGoalPct + '%' : '-'}</div><div class="p-stat-label" style="color:var(--text);opacity:0.7;">FG%</div></div>
         </div>
       </div>`;
   };
@@ -2173,7 +2173,7 @@ function renderDistCard(key, d) {
       </div>
 
       <!-- Histogram -->
-      <div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Distribution (${d.n} games)</div>
+      <div style="font-size:9px;color:var(--text);opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Distribution (${d.n} games)</div>
       <div class="histogram">
         ${d.histogram.bins.map((count, i) => {
           const h = (count / maxBin * 100).toFixed(0);
@@ -2200,7 +2200,7 @@ function renderDistCard(key, d) {
       </div>
 
       <!-- Over/Under -->
-      <div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Over/Under Hit Rates (Actual)</div>
+      <div style="font-size:9px;color:var(--text);opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Over/Under Hit Rates (Actual)</div>
       ${d.overUnder.map(ou => {
         const color = ou.overPct > 60 ? 'var(--green)' : ou.overPct < 40 ? 'var(--red)' : 'var(--amber)';
         return `
@@ -2231,13 +2231,13 @@ function renderDistCard(key, d) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;">
           <div style="background:rgba(0,0,0,0.2);padding:4px;border-radius:2px;text-align:center;">
             <div style="font-size:12px;font-weight:700;color:var(--purple)">${d.poisson.dispersionIndex}</div>
-            <div style="font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Var/Mean</div>
+            <div style="font-size:9px;color:var(--text);opacity:0.65;text-transform:uppercase;letter-spacing:1px;">Var/Mean</div>
           </div>
           <div style="background:rgba(0,0,0,0.2);padding:4px;border-radius:2px;text-align:center;">
             <div style="font-size:12px;font-weight:700;color:${d.poisson.isOverdispersed ? 'var(--amber)' : d.poisson.isUnderdispersed ? 'var(--cyan)' : 'var(--green)'}">
               ${d.poisson.isOverdispersed ? 'Over' : d.poisson.isUnderdispersed ? 'Under' : 'Normal'}
             </div>
-            <div style="font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Dispersion</div>
+            <div style="font-size:9px;color:var(--text);opacity:0.65;text-transform:uppercase;letter-spacing:1px;">Dispersion</div>
           </div>
         </div>
         ${d.poisson.overUnder.length ? `
@@ -2308,7 +2308,7 @@ async function loadPlayoffStats(playerId, playerName) {
             ].map(([label, val]) => `
               <div style="background:rgba(0,0,0,0.3);padding:4px;border-radius:3px;text-align:center;">
                 <div style="font-size:14px;font-weight:700;color:var(--amber);">${val}</div>
-                <div style="font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">${label}</div>
+                <div style="font-size:9px;color:var(--text);opacity:0.7;text-transform:uppercase;letter-spacing:1px;">${label}</div>
               </div>
             `).join('')}
           </div>
@@ -2480,7 +2480,7 @@ async function openSoccerDeepDive(side, playerId) {
             ${[['G',g,'var(--green)'],['A',a,'var(--cyan)'],['SH',sh,''],['ST',st,''],['FC',fc,''],['YC',yc,'var(--amber)'],['RC',rc,'var(--red)'],['STRT',starts,'var(--dim)']].map(([label,val,color]) => `
               <div style="text-align:center;padding:4px;background:rgba(0,0,0,0.2);border-radius:3px;">
                 <div style="font-size:14px;font-weight:700;${color ? 'color:'+color : ''}">${val}</div>
-                <div style="font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">${label}</div>
+                <div style="font-size:9px;color:var(--text);opacity:0.7;text-transform:uppercase;letter-spacing:1px;">${label}</div>
               </div>`).join('')}
           </div>
         </div>`;

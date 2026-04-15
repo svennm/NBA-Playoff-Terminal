@@ -883,26 +883,26 @@ async function loadPlayerAnalysis() {
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:6px;">
                       <div style="text-align:center;background:rgba(0,0,0,0.2);padding:3px;border-radius:2px;">
-                        <div style="font-size:13px;font-weight:700;">${d.mean}</div>
-                        <div style="font-size:7px;color:var(--dim);">MEAN</div>
+                        <div style="font-size:15px;font-weight:700;">${d.mean}</div>
+                        <div style="font-size:9px;color:var(--text);opacity:0.7;">MEAN</div>
                       </div>
                       <div style="text-align:center;background:rgba(0,0,0,0.2);padding:3px;border-radius:2px;">
-                        <div style="font-size:13px;font-weight:700;">${d.median}</div>
-                        <div style="font-size:7px;color:var(--dim);">MED</div>
+                        <div style="font-size:15px;font-weight:700;">${d.median}</div>
+                        <div style="font-size:9px;color:var(--text);opacity:0.7;">MED</div>
                       </div>
                       <div style="text-align:center;background:rgba(0,0,0,0.2);padding:3px;border-radius:2px;">
-                        <div style="font-size:13px;font-weight:700;">${d.stdDev}</div>
-                        <div style="font-size:7px;color:var(--dim);">SD</div>
+                        <div style="font-size:15px;font-weight:700;">${d.stdDev}</div>
+                        <div style="font-size:9px;color:var(--text);opacity:0.7;">SD</div>
                       </div>
                       <div style="text-align:center;background:rgba(0,0,0,0.2);padding:3px;border-radius:2px;">
                         <div style="font-size:13px;font-weight:700;color:${d.trendPct > 0 ? 'var(--green)' : d.trendPct < 0 ? 'var(--red)' : 'var(--dim)'}">${d.trendPct > 0 ? '+' : ''}${d.trendPct}%</div>
-                        <div style="font-size:7px;color:var(--dim);">L10</div>
+                        <div style="font-size:9px;color:var(--text);opacity:0.7;">L10</div>
                       </div>
                     </div>
                     <div style="display:flex;align-items:flex-end;gap:1px;height:30px;margin-bottom:4px;">
                       ${d.histogram.bins.map(c => `<div style="flex:1;height:${(c/maxBin*100).toFixed(0)}%;background:var(--cyan);border-radius:1px 1px 0 0;min-height:1px;opacity:0.6;"></div>`).join('')}
                     </div>
-                    ${pois.fit ? `<div style="font-size:8px;color:var(--purple);">Poisson: λ=${pois.lambda} | Fit: ${pois.fit} | Disp: ${pois.dispersionIndex}</div>` : ''}
+                    ${pois.fit ? `<div style="font-size:10px;color:var(--purple);font-weight:500;">Poisson: λ=${pois.lambda} | Fit: ${pois.fit} | Disp: ${pois.dispersionIndex}</div>` : ''}
                     ${d.overUnder?.slice(0,3).map(ou => {
                       const c = ou.overPct > 55 ? 'var(--green)' : ou.overPct < 45 ? 'var(--red)' : 'var(--amber)';
                       const pName = (player.name||'').replace(/'/g, "\\'");
