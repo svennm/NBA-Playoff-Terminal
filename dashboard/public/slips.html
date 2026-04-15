@@ -212,9 +212,13 @@
           <select id="stat-filter-pick" onchange="filterPropsByStatPick()" style="width:100px;">
             <option value="all">All Stats</option>
           </select>
-          <button onclick="toggleView()" id="view-toggle" style="padding:4px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);background:var(--panel);color:var(--dim);border-radius:3px;cursor:pointer;">Grid View</button>
+          <button onclick="toggleView()" id="view-toggle" style="padding:4px 10px;font-size:9px;font-family:'JetBrains Mono',monospace;border:1px solid var(--border);background:var(--panel);color:var(--dim);border-radius:3px;cursor:pointer;">Show All Lines</button>
+          <button onclick="loadPlayerAnalysis()" id="analysis-btn" style="padding:4px 10px;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;border:1px solid var(--purple);background:rgba(155,89,182,0.1);color:var(--purple);border-radius:3px;cursor:pointer;">Analysis</button>
         </div>
       </div>
+
+      <!-- Player analysis panel (inline on slips page) -->
+      <div id="player-analysis" style="display:none;margin-bottom:10px;"></div>
 
       <!-- Player stat detail panel -->
       <div id="player-detail" style="display:none;margin-bottom:10px;"></div>
@@ -751,6 +755,160 @@ function showPlayerStats() {
         }).join('')}
       </div>
     </div>`;
+}
+
+async function loadPlayerAnalysis() {
+  const idx = $('player-pick').value;
+  const panel = $('player-analysis');
+  if (!idx || !loadedProps) { panel.style.display = 'none'; return; }
+
+  const player = loadedProps.playerProps[parseInt(idx)];
+  if (!player) return;
+
+  panel.style.display = '';
+  panel.innerHTML = '<div style="background:var(--panel);border:1px solid var(--border-glow);border-radius:6px;padding:12px;"><div style="text-align:center;color:var(--dim);"><div class="spinner" style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;"></div> Loading analysis...</div></div>';
+
+  // Find player ID — match from teams
+  let playerId = player.id;
+  if (!playerId) {
+    // Try to find by name in team roster
+    try {
+      const teams = currentSport === 'ucl'
+        ? await fetch('/api/soccer/uefa.champions/teams').then(r => r.json())
+        : await fetch('/api/teams').then(r => r.json());
+      for (const t of teams) {
+        const endpoint = currentSport === 'ucl'
+          ? `/api/soccer/uefa.champions/teams/${t.id}`
+          : `/api/teams/${t.id}`;
+        const td = await fetch(endpoint).then(r => r.json());
+        const match = (td.roster || []).find(p =>
+          p.name.toLowerCase() === player.name.toLowerCase() ||
+          p.name.toLowerCase().includes(player.name.toLowerCase().split(' ').pop())
+        );
+        if (match) { playerId = match.id; break; }
+      }
+    } catch {}
+  }
+
+  if (!playerId) {
+    panel.innerHTML = '<div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--dim);text-align:center;">Could not find player ID for analysis</div>';
+    return;
+  }
+
+  try {
+    if (currentSport === 'ucl') {
+      // Soccer: fetch player overview with splits
+      const res = await fetch(`/api/soccer/uefa.champions/players/${playerId}`);
+      const data = await res.json();
+      const splits = data.allSplits || [];
+      const last5 = data.last5 || [];
+      const last5Labels = data.last5Labels || [];
+
+      panel.innerHTML = `
+        <div style="background:var(--panel);border:1px solid var(--border-glow);border-radius:6px;overflow:hidden;">
+          <div style="padding:8px 12px;background:rgba(155,89,182,0.08);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-family:'Orbitron',sans-serif;font-size:10px;color:var(--purple);letter-spacing:2px;">PLAYER ANALYSIS: ${player.name}</span>
+            <span onclick="$('player-analysis').style.display='none'" style="cursor:pointer;color:var(--dim);font-size:14px;">&times;</span>
+          </div>
+          <div style="padding:10px 12px;max-height:400px;overflow-y:auto;">
+            ${splits.length ? `
+              <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Competition Splits</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:10px;">
+                ${splits.map(sp => {
+                  const s = sp.stats;
+                  const isCL = sp.name?.includes('Champions');
+                  return `<div style="background:rgba(0,0,0,0.3);border:1px solid ${isCL?'var(--cyan)':'var(--border)'};border-radius:4px;padding:8px;">
+                    <div style="font-size:9px;font-weight:700;color:${isCL?'var(--cyan)':'var(--text)'};margin-bottom:4px;">${sp.name}</div>
+                    <div style="display:flex;gap:8px;font-size:10px;">
+                      <span style="color:var(--green);font-weight:700;">${s.totalGoals||s._G||0}G</span>
+                      <span style="color:var(--cyan);">${s.goalAssists||s._A||0}A</span>
+                      <span>${s.totalShots||s._SH||0}SH</span>
+                      <span>${s.shotsOnTarget||s._ST||0}SOT</span>
+                      <span style="color:var(--amber);">${s.yellowCards||s._YC||0}YC</span>
+                      <span style="color:var(--dim);">${s.starts||s._STRT||0}GP</span>
+                    </div>
+                  </div>`;
+                }).join('')}
+              </div>` : ''}
+            ${last5.length ? `
+              <div style="font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Last 5 Matches</div>
+              <table style="width:100%;border-collapse:collapse;font-size:10px;margin-bottom:8px;">
+                <thead><tr>${last5Labels.map(l => `<th style="padding:2px 4px;color:var(--dim);font-size:8px;border-bottom:1px solid var(--border);">${l}</th>`).join('')}</tr></thead>
+                <tbody>${last5.map(g => `<tr>${last5Labels.map(l => {
+                  const v = g[l]||'0';
+                  const isG = l==='G' && parseInt(v)>0;
+                  return `<td style="padding:2px 4px;border-bottom:1px solid rgba(255,255,255,0.03);${isG?'color:var(--green);font-weight:700;':''}">${v}</td>`;
+                }).join('')}</tr>`).join('')}</tbody>
+              </table>` : ''}
+          </div>
+        </div>`;
+    } else {
+      // NBA: fetch gamelog with distributions
+      const res = await fetch(`/api/players/${playerId}/gamelog`);
+      const data = await res.json();
+      const dist = data.distributions || {};
+      const keyStats = ['PTS','REB','AST','3PM','STL','BLK','TO'];
+
+      panel.innerHTML = `
+        <div style="background:var(--panel);border:1px solid var(--border-glow);border-radius:6px;overflow:hidden;">
+          <div style="padding:8px 12px;background:rgba(155,89,182,0.08);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-family:'Orbitron',sans-serif;font-size:10px;color:var(--purple);letter-spacing:2px;">PLAYER ANALYSIS: ${player.name}</span>
+            <span onclick="$('player-analysis').style.display='none'" style="cursor:pointer;color:var(--dim);font-size:14px;">&times;</span>
+          </div>
+          <div style="padding:10px 12px;max-height:500px;overflow-y:auto;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;">
+              ${keyStats.map(key => {
+                const d = dist[key];
+                if (!d) return '';
+                const maxBin = Math.max(...d.histogram.bins, 1);
+                const pois = d.poisson || {};
+                return `
+                  <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                      <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;color:var(--cyan);">${key}</span>
+                      <span style="font-size:9px;color:var(--dim);">${d.n}G | ${d.consistency}</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:6px;">
+                      <div style="text-align:center;background:rgba(0,0,0,0.2);padding:3px;border-radius:2px;">
+                        <div style="font-size:13px;font-weight:700;">${d.mean}</div>
+                        <div style="font-size:7px;color:var(--dim);">MEAN</div>
+                      </div>
+                      <div style="text-align:center;background:rgba(0,0,0,0.2);padding:3px;border-radius:2px;">
+                        <div style="font-size:13px;font-weight:700;">${d.median}</div>
+                        <div style="font-size:7px;color:var(--dim);">MED</div>
+                      </div>
+                      <div style="text-align:center;background:rgba(0,0,0,0.2);padding:3px;border-radius:2px;">
+                        <div style="font-size:13px;font-weight:700;">${d.stdDev}</div>
+                        <div style="font-size:7px;color:var(--dim);">SD</div>
+                      </div>
+                      <div style="text-align:center;background:rgba(0,0,0,0.2);padding:3px;border-radius:2px;">
+                        <div style="font-size:13px;font-weight:700;color:${d.trendPct > 0 ? 'var(--green)' : d.trendPct < 0 ? 'var(--red)' : 'var(--dim)'}">${d.trendPct > 0 ? '+' : ''}${d.trendPct}%</div>
+                        <div style="font-size:7px;color:var(--dim);">L10</div>
+                      </div>
+                    </div>
+                    <div style="display:flex;align-items:flex-end;gap:1px;height:30px;margin-bottom:4px;">
+                      ${d.histogram.bins.map(c => `<div style="flex:1;height:${(c/maxBin*100).toFixed(0)}%;background:var(--cyan);border-radius:1px 1px 0 0;min-height:1px;opacity:0.6;"></div>`).join('')}
+                    </div>
+                    ${pois.fit ? `<div style="font-size:8px;color:var(--purple);">Poisson: λ=${pois.lambda} | Fit: ${pois.fit} | Disp: ${pois.dispersionIndex}</div>` : ''}
+                    ${d.overUnder?.slice(0,3).map(ou => {
+                      const c = ou.overPct > 55 ? 'var(--green)' : ou.overPct < 45 ? 'var(--red)' : 'var(--amber)';
+                      const pName = (player.name||'').replace(/'/g, "\\'");
+                      return `<div style="display:flex;align-items:center;gap:4px;padding:1px 0;font-size:9px;">
+                        <span style="color:var(--dim);min-width:30px;">O ${ou.line}</span>
+                        <div style="flex:1;height:3px;background:rgba(255,255,255,0.03);border-radius:2px;overflow:hidden;"><div style="width:${ou.overPct}%;height:100%;background:${c};"></div></div>
+                        <span style="color:${c};min-width:28px;">${ou.overPct}%</span>
+                        <span onclick="addToSlip({player:'${pName}',stat:'${key}',line:${ou.line},pick:'Over ${ou.line}',odds:${pois.overUnder?.find(p=>p.line===ou.line)?.overOdds||-110},game:''})" style="cursor:pointer;color:var(--green);font-size:10px;" title="Add Over">+</span>
+                      </div>`;
+                    }).join('') || ''}
+                  </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>`;
+    }
+  } catch (e) {
+    panel.innerHTML = `<div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:12px;color:var(--red);">Error: ${e.message}</div>`;
+  }
 }
 
 function filterPropsByStatPick() {
