@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHARP BETTING PRINCIPLES</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root { --bg:#030508;--panel:#0a0e14;--panel2:#0d1219;--border:#1a2a3a;--border-glow:#3a2a0f;--gold:#d4a825;--gold2:#f5d442;--cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--red:#ff3d3d;--text:#c8d6e5;--dim:#4a5568;--blue:#3498db;--purple:#9b59b6; }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;min-height:100vh;}
+  body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(212,168,37,0.01) 2px,rgba(212,168,37,0.01) 4px);pointer-events:none;z-index:9999;}
+
+  .header{background:linear-gradient(180deg,#0a1520,var(--bg));border-bottom:1px solid var(--border-glow);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+  .nav-links{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+  .nav-links a{color:var(--dim);text-decoration:none;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
+  .nav-links a:hover,.nav-links a.active{color:var(--gold);border-color:var(--border-glow);background:rgba(212,168,37,0.05);}
+
+  .main{max-width:1200px;margin:0 auto;padding:20px 12px;}
+
+  .page-title{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--gold),var(--gold2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:4px;}
+  .page-sub{text-align:center;font-size:10px;color:var(--dim);letter-spacing:3px;margin-bottom:30px;}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:16px;transition:border-color .2s;}
+  .panel:hover{border-color:var(--border-glow);}
+  .panel-header{background:linear-gradient(90deg,rgba(212,168,37,0.08),transparent);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--gold);cursor:pointer;user-select:none;}
+  .panel-header .toggle{font-size:14px;color:var(--dim);transition:transform .2s;}
+  .panel-header .toggle.open{transform:rotate(180deg);}
+  .panel-body{padding:14px;display:none;}
+  .panel-body.open{display:block;}
+
+  /* Principle cards */
+  .principle{display:flex;gap:12px;padding:12px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;margin-bottom:10px;transition:all .2s;}
+  .principle:hover{border-color:var(--gold);transform:translateX(2px);}
+  .principle-num{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;color:var(--gold);min-width:36px;text-align:center;line-height:1;}
+  .principle-content{flex:1;}
+  .principle-title{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--gold2);margin-bottom:4px;}
+  .principle-text{font-size:11px;color:var(--text);line-height:1.6;}
+  .principle-text .hl{color:var(--green);font-weight:600;}
+  .principle-text .warn{color:var(--red);font-weight:600;}
+  .principle-text .note{color:var(--amber);}
+
+  /* Tables */
+  .ref-table{width:100%;border-collapse:collapse;font-size:11px;margin:10px 0;}
+  .ref-table th{text-align:left;padding:6px 8px;color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);background:var(--panel);}
+  .ref-table td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .ref-table tr:hover td{background:rgba(212,168,37,0.03);}
+
+  /* Calculator */
+  .calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;}
+  .calc-box{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:14px;}
+  .calc-box h3{font-family:'Orbitron',sans-serif;font-size:10px;color:var(--gold);letter-spacing:2px;margin-bottom:10px;}
+  .calc-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .calc-row label{font-size:10px;color:var(--dim);min-width:100px;letter-spacing:1px;}
+  .calc-row input{background:var(--bg);color:var(--cyan);border:1px solid var(--border);padding:6px 10px;font-family:'JetBrains Mono',monospace;font-size:12px;border-radius:4px;width:100px;text-align:center;}
+  .calc-row input:focus{border-color:var(--gold);outline:none;}
+  .calc-result{background:rgba(212,168,37,0.08);border:1px solid var(--border-glow);border-radius:4px;padding:10px;margin-top:10px;font-size:11px;}
+  .calc-result .big{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;}
+
+  .btn{background:linear-gradient(135deg,rgba(212,168,37,0.2),rgba(245,212,66,0.2));color:var(--gold);border:1px solid var(--gold);padding:8px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border-radius:4px;cursor:pointer;transition:all .2s;}
+  .btn:hover{background:rgba(212,168,37,0.3);}
+
+  /* Checklist */
+  .checklist{list-style:none;}
+  .checklist li{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.03);display:flex;align-items:flex-start;gap:8px;font-size:11px;line-height:1.5;}
+  .checklist li:hover{background:rgba(212,168,37,0.03);}
+  .check-icon{font-size:14px;min-width:18px;text-align:center;}
+  .check-icon.go{color:var(--green);}
+  .check-icon.stop{color:var(--red);}
+  .check-icon.warn{color:var(--amber);}
+
+  /* Red flag grid */
+  .flag-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .flag-card{background:rgba(255,61,61,0.04);border:1px solid rgba(255,61,61,0.15);border-radius:6px;padding:10px;font-size:11px;display:flex;gap:8px;align-items:flex-start;}
+  .flag-card:hover{border-color:var(--red);background:rgba(255,61,61,0.08);}
+  .flag-card .flag-icon{color:var(--red);font-size:16px;}
+
+  /* Edge source cards */
+  .edge-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .edge-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:14px;transition:all .2s;}
+  .edge-card:hover{border-color:var(--green);transform:translateY(-2px);}
+  .edge-card h4{font-family:'Orbitron',sans-serif;font-size:10px;color:var(--green);letter-spacing:2px;margin-bottom:8px;}
+  .edge-card ul{list-style:none;font-size:10px;color:var(--dim);}
+  .edge-card ul li{padding:3px 0;padding-left:12px;position:relative;}
+  .edge-card ul li::before{content:'›';position:absolute;left:0;color:var(--gold);}
+
+  /* Stat badges */
+  .badge{display:inline-block;padding:2px 6px;border-radius:3px;font-size:9px;font-weight:600;letter-spacing:1px;}
+  .badge-green{background:rgba(0,255,136,0.12);color:var(--green);}
+  .badge-red{background:rgba(255,61,61,0.12);color:var(--red);}
+  .badge-amber{background:rgba(255,179,0,0.12);color:var(--amber);}
+  .badge-cyan{background:rgba(0,229,255,0.12);color:var(--cyan);}
+
+  @media(max-width:768px){
+    .calc-grid,.edge-grid,.flag-grid{grid-template-columns:1fr;}
+    .page-title{font-size:16px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">HxM</div>
+    <div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div>
+  </div>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <span style="color:#6b5b1f;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;">NBA</span>
+    <a href="/terminal.html">Scores</a>
+    <a href="/matchup.html">Matchup</a>
+    <a href="/bracket.html">Bracket</a>
+    <span style="color:#4a5568;font-size:8px;">|</span>
+    <span style="color:#1a73e8;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;">UCL</span>
+    <a href="/soccer.html">Scores</a>
+    <a href="/matchup.html?sport=soccer">Matchup</a>
+    <span style="color:#4a5568;font-size:8px;">|</span>
+    <a href="/slips.html">Slips</a>
+    <a href="/analysis.html">Analysis</a>
+    <a href="/principles.html" class="active">Principles</a>
+  </div>
+</div>
+
+<div class="main">
+  <div class="page-title">SHARP BETTING PRINCIPLES</div>
+  <div class="page-sub">Based on Stanford Wong's Sharp Sports Betting</div>
+
+  <!-- SECTION 1: Core Rules -->
+  <div class="panel" id="s-core">
+    <div class="panel-header" onclick="toggle('core')">
+      <span>&#9670; Core Rules — The Non-Negotiables</span>
+      <span class="toggle open" id="tog-core">&#9660;</span>
+    </div>
+    <div class="panel-body open" id="body-core">
+      <div class="principle">
+        <div class="principle-num">01</div>
+        <div class="principle-content">
+          <div class="principle-title">Only Bet With An Edge</div>
+          <div class="principle-text">If you have no edge, optimal bet size = <span class="hl">$0</span>. No edge means no bet. Every bet must have a quantifiable reason you expect positive EV. "I feel good about this one" is not an edge.</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="principle-num">02</div>
+        <div class="principle-content">
+          <div class="principle-title">Know Your Break-Even</div>
+          <div class="principle-text">At <span class="note">-110</span>, you need <span class="hl">52.38%</span> winners to break even. Every bet has a break-even rate. If your estimated win probability doesn't exceed it, the bet is -EV. Period.</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="principle-num">03</div>
+        <div class="principle-content">
+          <div class="principle-title">Size By Edge, Not Emotion</div>
+          <div class="principle-text">Use Kelly Criterion. Bigger edge = bigger bet. <span class="hl">Bet multiplier = edge / MinEdge</span>. Size to your MinWin, not a flat dollar amount. Never let a single weekend wipe your bankroll.</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="principle-num">04</div>
+        <div class="principle-content">
+          <div class="principle-title">Line Shop Everything</div>
+          <div class="principle-text">Shop <span class="hl">12+ books</span> before placing. The difference between -110 and -105 is <span class="hl">2.2% on action</span>. Over 1,000 bets that's massive. Always buy through key numbers 3 and 7 when price is right.</div>
+        </div>
+      </div>
+      <div class="principle">
+        <div class="principle-num">05</div>
+        <div class="principle-content">
+          <div class="principle-title">Record Everything</div>
+          <div class="principle-text">Track: date, teams, your line estimate, actual line, result. Calculate <span class="hl">net / total action = actual edge</span>. If your "big edge" picks underperform after 100+ bets, they weren't big edge picks.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: EV & Edge Calculator -->
+  <div class="panel" id="s-calc">
+    <div class="panel-header" onclick="toggle('calc')">
+      <span>&#9670; EV & Edge Calculator</span>
+      <span class="toggle open" id="tog-calc">&#9660;</span>
+    </div>
+    <div class="panel-body open" id="body-calc">
+      <div class="calc-grid">
+        <div class="calc-box">
+          <h3>Expected Value</h3>
+          <div class="calc-row">
+            <label>Win Prob %</label>
+            <input type="number" id="ev-prob" value="55" min="1" max="99" step="0.1">
+          </div>
+          <div class="calc-row">
+            <label>Odds (American)</label>
+            <input type="number" id="ev-odds" value="-110" step="1">
+          </div>
+          <div class="calc-row">
+            <label>Bet Amount $</label>
+            <input type="number" id="ev-bet" value="110" min="1" step="1">
+          </div>
+          <button class="btn" onclick="calcEV()" style="width:100%;margin-top:6px;">Calculate EV</button>
+          <div class="calc-result" id="ev-result">
+            <div>Expected Value: <span class="big" style="color:var(--green);" id="ev-val">—</span></div>
+            <div style="margin-top:4px;color:var(--dim);">EV%: <span id="ev-pct">—</span> | Break-even: <span id="ev-be">—</span></div>
+          </div>
+        </div>
+
+        <div class="calc-box">
+          <h3>Kelly Bet Sizer</h3>
+          <div class="calc-row">
+            <label>Your Edge %</label>
+            <input type="number" id="k-edge" value="5" min="0.1" max="50" step="0.1">
+          </div>
+          <div class="calc-row">
+            <label>Min Edge %</label>
+            <input type="number" id="k-minedge" value="5" min="0.1" max="50" step="0.1">
+          </div>
+          <div class="calc-row">
+            <label>MinWin $</label>
+            <input type="number" id="k-minwin" value="100" min="1" step="1">
+          </div>
+          <div class="calc-row">
+            <label>Bankroll $</label>
+            <input type="number" id="k-bank" value="10000" min="1" step="100">
+          </div>
+          <button class="btn" onclick="calcKelly()" style="width:100%;margin-top:6px;">Size My Bet</button>
+          <div class="calc-result" id="k-result">
+            <div>Recommended Bet: <span class="big" style="color:var(--gold);" id="k-val">—</span></div>
+            <div style="margin-top:4px;color:var(--dim);">Multiplier: <span id="k-mult">—</span>x | Bankroll %: <span id="k-pct">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Break-even reference -->
+      <div style="margin-top:16px;">
+        <table class="ref-table">
+          <thead><tr><th>Terms</th><th>Break-Even Win%</th><th>Edge at 55% Win Rate</th><th>Verdict</th></tr></thead>
+          <tbody>
+            <tr><td>+200</td><td>33.3%</td><td style="color:var(--green);">+21.7%</td><td><span class="badge badge-green">HIGH EDGE</span></td></tr>
+            <tr><td>+145</td><td>40.8%</td><td style="color:var(--green);">+14.2%</td><td><span class="badge badge-green">HIGH EDGE</span></td></tr>
+            <tr><td>+115</td><td>46.5%</td><td style="color:var(--green);">+8.5%</td><td><span class="badge badge-green">STRONG</span></td></tr>
+            <tr><td>EV (+100)</td><td>50.0%</td><td style="color:var(--green);">+5.0%</td><td><span class="badge badge-cyan">PLAYABLE</span></td></tr>
+            <tr><td style="font-weight:700;">-110</td><td style="font-weight:700;">52.38%</td><td style="color:var(--green);">+2.6%</td><td><span class="badge badge-amber">MARGINAL</span></td></tr>
+            <tr><td>-120</td><td>54.5%</td><td style="color:var(--green);">+0.5%</td><td><span class="badge badge-amber">THIN</span></td></tr>
+            <tr><td>-150</td><td>60.0%</td><td style="color:var(--red);">-5.0%</td><td><span class="badge badge-red">-EV</span></td></tr>
+            <tr><td>-200</td><td>66.7%</td><td style="color:var(--red);">-11.7%</td><td><span class="badge badge-red">-EV</span></td></tr>
+            <tr><td>-350</td><td>77.8%</td><td style="color:var(--red);">-22.8%</td><td><span class="badge badge-red">TRAP</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 3: Three Sources of Edge -->
+  <div class="panel" id="s-edge">
+    <div class="panel-header" onclick="toggle('edge')">
+      <span>&#9670; Three Sources of Edge</span>
+      <span class="toggle" id="tog-edge">&#9660;</span>
+    </div>
+    <div class="panel-body" id="body-edge">
+      <div class="edge-grid">
+        <div class="edge-card" style="border-top:3px solid var(--green);">
+          <h4>1. Breaking News</h4>
+          <div style="font-size:10px;color:var(--amber);margin-bottom:8px;">Act immediately — edge decays in minutes</div>
+          <ul>
+            <li>Key player injury in practice (not public yet)</li>
+            <li>Food poisoning, illness affecting team</li>
+            <li>Coaching changes, suspensions</li>
+            <li>Weather shifts (totals especially)</li>
+            <li>Rule changes books haven't adjusted to</li>
+            <li>Stadium/political factors</li>
+          </ul>
+        </div>
+        <div class="edge-card" style="border-top:3px solid var(--cyan);">
+          <h4>2. Superior Data Processing</h4>
+          <div style="font-size:10px;color:var(--amber);margin-bottom:8px;">Best in illiquid markets, not NFL sides</div>
+          <ul>
+            <li>Power ratings: assign strength, subtract for spread</li>
+            <li>Best opportunities: overnight lines, totals, props</li>
+            <li>Small-college / niche sports = softer lines</li>
+            <li>Track overcompensation after big TV wins/losses</li>
+            <li>Deep conference knowledge beats general models</li>
+          </ul>
+        </div>
+        <div class="edge-card" style="border-top:3px solid var(--amber);">
+          <h4>3. Motivation / Situational</h4>
+          <div style="font-size:10px;color:var(--amber);margin-bottom:8px;">Lines set by numbers, motivation is lopsided</div>
+          <ul>
+            <li>Teams that clinched — reduce home-field, fade them</li>
+            <li>Must-win games — teams outperform numbers</li>
+            <li>Horrible Defeat Syndrome — multi-week ATS slumps</li>
+            <li>Big dogs play hard, big favorites coast</li>
+            <li>NBA: intensity beats talent, especially playoffs</li>
+          </ul>
+        </div>
+        <div class="edge-card" style="border-top:3px solid var(--gold);">
+          <h4>4. Fade Fan Money</h4>
+          <div style="font-size:10px;color:var(--amber);margin-bottom:8px;">Public sentiment = inflated lines on other side</div>
+          <ul>
+            <li>Heavy public side → take unpopular side at value</li>
+            <li>Strongest: Super Bowl, NBA playoffs, marquee fights</li>
+            <li>Squares back favorites → books shade accordingly</li>
+            <li>Home dogs are historically undervalued</li>
+            <li>NFL home dogs +7 covered 52.7% over 16 years</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 4: Pre-Bet Checklist -->
+  <div class="panel" id="s-check">
+    <div class="panel-header" onclick="toggle('check')">
+      <span>&#9670; Pre-Bet Checklist — Go / No-Go</span>
+      <span class="toggle" id="tog-check">&#9660;</span>
+    </div>
+    <div class="panel-body" id="body-check">
+      <ul class="checklist">
+        <li><span class="check-icon go">&#10003;</span>Estimated win probability exceeds break-even at offered terms</li>
+        <li><span class="check-icon go">&#10003;</span>Edge is quantifiable and ≥ MinEdge (recommended: 5%)</li>
+        <li><span class="check-icon go">&#10003;</span>Can articulate exactly WHY market is wrong</li>
+        <li><span class="check-icon go">&#10003;</span>Line shopped across 12+ books for best price</li>
+        <li><span class="check-icon go">&#10003;</span>Checked key number half-points (3, 7 in NFL)</li>
+        <li><span class="check-icon go">&#10003;</span>Compared ML vs spread for close games (±3.5)</li>
+        <li><span class="check-icon go">&#10003;</span>Bet sized by Kelly — edge/MinEdge × MinWin</li>
+        <li><span class="check-icon go">&#10003;</span>All simultaneous bets won't wipe bankroll on bad day</li>
+        <li><span class="check-icon go">&#10003;</span>For season bets: annualized ROI justifies capital lock-up</li>
+        <li><span class="check-icon go">&#10003;</span>Bet recorded with date, teams, line estimate, actual line</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- SECTION 5: Red Flags -->
+  <div class="panel" id="s-flags">
+    <div class="panel-header" onclick="toggle('flags')">
+      <span>&#9670; Red Flags — Kill The Bet</span>
+      <span class="toggle" id="tog-flags">&#9660;</span>
+    </div>
+    <div class="panel-body" id="body-flags">
+      <div class="flag-grid">
+        <div class="flag-card">
+          <span class="flag-icon">&#9888;</span>
+          <div><strong>No Articulated Edge</strong><br><span style="color:var(--dim);">If you can't explain why you have an edge in one sentence, you don't have one.</span></div>
+        </div>
+        <div class="flag-card">
+          <span class="flag-icon">&#9888;</span>
+          <div><strong>Big Favorite -400+</strong><br><span style="color:var(--dim);">Need 80%+ win rate to break even. Almost always overpriced by fan money.</span></div>
+        </div>
+        <div class="flag-card">
+          <span class="flag-icon">&#9888;</span>
+          <div><strong>Teaser Missing Key Numbers</strong><br><span style="color:var(--dim);">Only profitable if teased points cross BOTH the 3 and the 7. Otherwise -EV.</span></div>
+        </div>
+        <div class="flag-card">
+          <span class="flag-icon">&#9888;</span>
+          <div><strong>Parlay With "Ties Lose"</strong><br><span style="color:var(--dim);">Destroys expected value. Pushes should return money, not lose the leg.</span></div>
+        </div>
+        <div class="flag-card">
+          <span class="flag-icon">&#9888;</span>
+          <div><strong>Season Bet < 2 Game Edge</strong><br><span style="color:var(--dim);">For 6-month sports at -110, need projection to exceed prop by ≥2 games.</span></div>
+        </div>
+        <div class="flag-card">
+          <span class="flag-icon">&#9888;</span>
+          <div><strong>Emotional Attachment</strong><br><span style="color:var(--dim);">Betting your team, chasing losses, or "gut feeling" without math = square behavior.</span></div>
+        </div>
+        <div class="flag-card">
+          <span class="flag-icon">&#9888;</span>
+          <div><strong>Insufficient Sample Size</strong><br><span style="color:var(--dim);">60% win rate needs 250+ games to be statistically meaningful. Don't trust small samples.</span></div>
+        </div>
+        <div class="flag-card">
+          <span class="flag-icon">&#9888;</span>
+          <div><strong>Capital Lock-Up Without ROI</strong><br><span style="color:var(--dim);">Futures tying up money 6 months need ≥15% expected return to justify.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 6: Money Management -->
+  <div class="panel" id="s-money">
+    <div class="panel-header" onclick="toggle('money')">
+      <span>&#9670; Money Management — Kelly Criterion</span>
+      <span class="toggle" id="tog-money">&#9660;</span>
+    </div>
+    <div class="panel-body" id="body-money">
+      <div class="principle">
+        <div class="principle-num">$</div>
+        <div class="principle-content">
+          <div class="principle-title">Bankroll Rules</div>
+          <div class="principle-text">
+            Bankroll = amount you'd stop betting if lost (not total wealth).<br>
+            MinWin = <span class="hl">1.5–2.5% of bankroll</span> at 5% MinEdge.<br>
+            Rule of thumb: <span class="hl">$200 MinWin per $10,000 bankroll</span>.<br>
+            Never let simultaneous bets wipe bankroll on bad weekend.
+          </div>
+        </div>
+      </div>
+
+      <table class="ref-table">
+        <thead><tr><th>Scenario</th><th>Bet Size</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>MinWin $100, terms -110</td><td style="color:var(--green);">$110</td><td>Standard -110 sizing</td></tr>
+          <tr><td>MinWin $100, terms -160</td><td style="color:var(--green);">$160</td><td>Risk more to win same MinWin</td></tr>
+          <tr><td>MinWin $100, terms +125</td><td style="color:var(--green);">$80</td><td>Risk less on plus-money</td></tr>
+          <tr><td>Edge 10%, MinEdge 5%</td><td style="color:var(--gold);">2× MinWin</td><td>Double edge = double bet</td></tr>
+          <tr><td>Edge 20%, MinEdge 5%, odds 5:1</td><td style="color:var(--gold);">$80 to win $400</td><td>4× multiplier on longshot</td></tr>
+        </tbody>
+      </table>
+
+      <table class="ref-table" style="margin-top:12px;">
+        <thead><tr><th>Parlay Type</th><th>Terms</th><th>Optimal Bet ($100 MinWin)</th><th>Winning Handicapper ROI (55%)</th></tr></thead>
+        <tbody>
+          <tr><td>2-team</td><td>13:5</td><td>$38</td><td style="color:var(--green);">8.9%</td></tr>
+          <tr><td>3-team</td><td>6:1</td><td>$17</td><td style="color:var(--green);">16.3%</td></tr>
+          <tr><td>Straight bet</td><td>-110</td><td>$110</td><td style="color:var(--green);">~5%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SECTION 7: NFL Key Numbers & Teasers -->
+  <div class="panel" id="s-nfl">
+    <div class="panel-header" onclick="toggle('nfl')">
+      <span>&#9670; NFL Key Numbers & Teasers</span>
+      <span class="toggle" id="tog-nfl">&#9660;</span>
+    </div>
+    <div class="panel-body" id="body-nfl">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <div style="font-family:'Orbitron',sans-serif;font-size:10px;color:var(--gold);letter-spacing:2px;margin-bottom:8px;">PUSH FREQUENCIES</div>
+          <table class="ref-table">
+            <thead><tr><th>Spread</th><th>Push %</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr style="background:rgba(0,255,136,0.06);"><td style="font-weight:700;">3</td><td style="color:var(--green);font-weight:700;">~10%</td><td><span class="badge badge-green">CRITICAL</span></td></tr>
+              <tr style="background:rgba(0,229,255,0.04);"><td style="font-weight:700;">7</td><td style="color:var(--cyan);font-weight:700;">~5%</td><td><span class="badge badge-cyan">IMPORTANT</span></td></tr>
+              <tr><td>4, 6, 10, 14, 17</td><td>~3%</td><td><span class="badge badge-amber">NOTABLE</span></td></tr>
+              <tr><td>2, 5, 8, 9, 16</td><td>~2%</td><td>—</td></tr>
+              <tr><td>0, 1, 12, 13</td><td>&lt;1-2%</td><td><span class="badge badge-red">NOT WORTH</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div style="font-family:'Orbitron',sans-serif;font-size:10px;color:var(--gold);letter-spacing:2px;margin-bottom:8px;">PROFITABLE TEASERS</div>
+          <table class="ref-table">
+            <thead><tr><th>Type</th><th>Range</th><th>Cover %</th></tr></thead>
+            <tbody>
+              <tr><td>6pt</td><td>Fav -7.5 to -8.5<br>Dog +1.5 to +2.5</td><td style="color:var(--green);">73.2%</td></tr>
+              <tr><td>6.5pt</td><td>Fav -7.5 to -9<br>Dog +1 to +2.5</td><td style="color:var(--green);">74.0%</td></tr>
+              <tr><td>7pt</td><td>Fav -7.5 to -9.5<br>Dog +1 to +2.5</td><td style="color:var(--green);">74.2%</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:8px;padding:8px;background:rgba(255,61,61,0.06);border:1px solid rgba(255,61,61,0.15);border-radius:4px;font-size:10px;">
+            <span style="color:var(--red);font-weight:700;">AVOID:</span> Visiting favorites (-7.5 to -9.5) only cover 63-64%. Never tease same-game teams.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 8: Props & Poisson -->
+  <div class="panel" id="s-props">
+    <div class="panel-header" onclick="toggle('props')">
+      <span>&#9670; Prop Bets — Poisson Analysis</span>
+      <span class="toggle" id="tog-props">&#9660;</span>
+    </div>
+    <div class="panel-body" id="body-props">
+      <div class="principle">
+        <div class="principle-num">&#955;</div>
+        <div class="principle-content">
+          <div class="principle-title">Three-Step Process</div>
+          <div class="principle-text">
+            <span class="hl">1.</span> Predict mean (from season data + matchup).<br>
+            <span class="hl">2.</span> Apply Poisson distribution for each outcome probability.<br>
+            <span class="hl">3.</span> Compare to offered odds — calculate edge.
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+        <div>
+          <div style="font-family:'Orbitron',sans-serif;font-size:10px;color:var(--green);letter-spacing:2px;margin-bottom:6px;">POISSON APPLIES TO</div>
+          <ul class="checklist">
+            <li><span class="check-icon go">&#10003;</span>QB sacks, field goals, touchdowns (by count)</li>
+            <li><span class="check-icon go">&#10003;</span>Penalties by count, free throws made/missed</li>
+            <li><span class="check-icon go">&#10003;</span>Three-pointers, home runs, strikeouts</li>
+          </ul>
+        </div>
+        <div>
+          <div style="font-family:'Orbitron',sans-serif;font-size:10px;color:var(--red);letter-spacing:2px;margin-bottom:6px;">DOES NOT APPLY TO</div>
+          <ul class="checklist">
+            <li><span class="check-icon stop">&#10007;</span>Yards (come in bunches)</li>
+            <li><span class="check-icon stop">&#10007;</span>Points scored (2+ at a time in basketball)</li>
+            <li><span class="check-icon stop">&#10007;</span>Penalty yards</li>
+          </ul>
+        </div>
+      </div>
+
+      <table class="ref-table" style="margin-top:12px;">
+        <thead><tr><th>Mean</th><th>P(0)</th><th>P(1)</th><th>P(2)</th><th>P(3)</th><th>P(4)</th><th>P(5)</th></tr></thead>
+        <tbody>
+          <tr><td>0.4</td><td>67%</td><td>27%</td><td>5%</td><td>1%</td><td>—</td><td>—</td></tr>
+          <tr><td>1.2</td><td>30%</td><td>36%</td><td>22%</td><td>9%</td><td>3%</td><td>1%</td></tr>
+          <tr><td>2.2</td><td>11%</td><td>24%</td><td>27%</td><td>20%</td><td>11%</td><td>5%</td></tr>
+          <tr><td>2.5</td><td>8%</td><td>21%</td><td>26%</td><td>21%</td><td>13%</td><td>7%</td></tr>
+          <tr><td>4.0</td><td>2%</td><td>7%</td><td>15%</td><td>20%</td><td>20%</td><td>16%</td></tr>
+          <tr><td>4.7</td><td>1%</td><td>4%</td><td>10%</td><td>16%</td><td>19%</td><td>17%</td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top:10px;font-size:10px;color:var(--dim);padding:8px;background:rgba(212,168,37,0.04);border:1px solid var(--border);border-radius:4px;">
+        <strong style="color:var(--gold);">Finding soft props:</strong> Props set quickly by one person with little research time. Max bets small ($500). Best props: obscure player stats, weather-affected totals, events with strong fan money.
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 9: Statistical Significance -->
+  <div class="panel" id="s-stats">
+    <div class="panel-header" onclick="toggle('stats')">
+      <span>&#9670; Statistical Significance — Trust Your Data</span>
+      <span class="toggle" id="tog-stats">&#9660;</span>
+    </div>
+    <div class="panel-body" id="body-stats">
+      <div class="principle">
+        <div class="principle-num">&#963;</div>
+        <div class="principle-content">
+          <div class="principle-title">Use 1:1000 Rarity Minimum</div>
+          <div class="principle-text">
+            Academic 1:100 (5%) is not enough — testing 100 hypotheses produces ~5 false positives. Use <span class="hl">1:1000</span> to filter. For data already played, hold to <span class="hl">1:10,000</span>. Never use games that formed hypothesis to test it.
+          </div>
+        </div>
+      </div>
+
+      <table class="ref-table">
+        <thead><tr><th>Sample Size</th><th>1:100 W-L</th><th>1:1000 W-L</th><th>1:10,000 W-L</th></tr></thead>
+        <tbody>
+          <tr><td>7</td><td>7-0</td><td>not possible</td><td>not possible</td></tr>
+          <tr><td>10</td><td>—</td><td>10-0</td><td>not possible</td></tr>
+          <tr><td>20</td><td>15-5</td><td>18-2</td><td>—</td></tr>
+          <tr><td>55</td><td>35-20</td><td>—</td><td>—</td></tr>
+          <tr><td>100</td><td>60-40</td><td style="color:var(--green);">66-34</td><td>—</td></tr>
+          <tr><td>250</td><td>—</td><td style="color:var(--green);">150-100</td><td>—</td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top:10px;padding:10px;background:rgba(0,229,255,0.04);border:1px solid var(--border);border-radius:4px;font-size:11px;">
+        <strong style="color:var(--cyan);">Standard Deviation (Binomial):</strong> SD = &#8730;(n/4). Excess wins needed for 2 SD significance &#8776; &#8730;n. For 55 games: need 5 excess wins minimum.
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 10: Staying Sharp (Account Management) -->
+  <div class="panel" id="s-accounts">
+    <div class="panel-header" onclick="toggle('accounts')">
+      <span>&#9670; Account Longevity — Don't Get Backed Off</span>
+      <span class="toggle" id="tog-accounts">&#9660;</span>
+    </div>
+    <div class="panel-body" id="body-accounts">
+      <ul class="checklist">
+        <li><span class="check-icon warn">&#9679;</span>Don't pass on games too often — 100% bet-when-called ratio flags you as sharp</li>
+        <li><span class="check-icon warn">&#9679;</span>Make occasional -110 bets even when -105 isn't available</li>
+        <li><span class="check-icon warn">&#9679;</span>Don't exclusively bet only lowest-vig markets</li>
+        <li><span class="check-icon warn">&#9679;</span>Make bets natural relative to deposit size — small bets on large deposits look suspicious</li>
+        <li><span class="check-icon warn">&#9679;</span>One withdrawal per month looks normal — weekly withdrawals flag you</li>
+        <li><span class="check-icon warn">&#9679;</span>Never use two accounts at same book</li>
+        <li><span class="check-icon warn">&#9679;</span>Don't bet opposing sides to exploit bonuses — books ban "middling" for bonus value</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggle(id) {
+  const body = document.getElementById('body-' + id);
+  const tog = document.getElementById('tog-' + id);
+  body.classList.toggle('open');
+  tog.classList.toggle('open');
+}
+
+function calcEV() {
+  const prob = parseFloat(document.getElementById('ev-prob').value) / 100;
+  const odds = parseInt(document.getElementById('ev-odds').value);
+  const bet = parseFloat(document.getElementById('ev-bet').value);
+
+  let winAmount;
+  if (odds > 0) {
+    winAmount = bet * (odds / 100);
+  } else {
+    winAmount = bet * (100 / Math.abs(odds));
+  }
+
+  const ev = (prob * winAmount) - ((1 - prob) * bet);
+  const evPct = (ev / bet * 100);
+
+  let breakEven;
+  if (odds > 0) {
+    breakEven = 100 / (odds + 100) * 100;
+  } else {
+    breakEven = Math.abs(odds) / (Math.abs(odds) + 100) * 100;
+  }
+
+  const evEl = document.getElementById('ev-val');
+  evEl.textContent = (ev >= 0 ? '+' : '') + '$' + ev.toFixed(2);
+  evEl.style.color = ev >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('ev-pct').textContent = (evPct >= 0 ? '+' : '') + evPct.toFixed(2) + '%';
+  document.getElementById('ev-pct').style.color = evPct >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('ev-be').textContent = breakEven.toFixed(1) + '%';
+}
+
+function calcKelly() {
+  const edge = parseFloat(document.getElementById('k-edge').value);
+  const minEdge = parseFloat(document.getElementById('k-minedge').value);
+  const minWin = parseFloat(document.getElementById('k-minwin').value);
+  const bankroll = parseFloat(document.getElementById('k-bank').value);
+
+  const multiplier = edge / minEdge;
+  const betSize = multiplier * minWin;
+  const bankPct = (betSize / bankroll * 100);
+
+  document.getElementById('k-val').textContent = '$' + betSize.toFixed(0);
+  document.getElementById('k-mult').textContent = multiplier.toFixed(1);
+
+  const pctEl = document.getElementById('k-pct');
+  pctEl.textContent = bankPct.toFixed(1) + '%';
+  pctEl.style.color = bankPct > 5 ? 'var(--red)' : bankPct > 3 ? 'var(--amber)' : 'var(--green)';
+}
+
+// Run calcs on load
+calcEV();
+calcKelly();
+</script>
+</body>
+</html>
