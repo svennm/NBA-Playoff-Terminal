@@ -1330,32 +1330,94 @@ app.post('/api/slips/resolve', authMiddleware, async (req, res) => {
         const teams = comp?.competitors || [];
         const away = teams.find(t => t.homeAway === 'away')?.team?.abbreviation || '';
         const home = teams.find(t => t.homeAway === 'home')?.team?.abbreviation || '';
+        // Store under many key variations for flexible matching
         boxScores[`${away} @ ${home}`.toLowerCase()] = players;
         boxScores[`${away} vs ${home}`.toLowerCase()] = players;
+        boxScores[`${home} vs ${away}`.toLowerCase()] = players;
+        boxScores[`${away}@${home}`.toLowerCase()] = players;
         boxScores[event.id] = players;
+        // Also store by team abbreviations for partial matching
+        if (away && home) {
+          boxScores[`${away.toLowerCase()}_${home.toLowerCase()}`] = players;
+          boxScores[`${home.toLowerCase()}_${away.toLowerCase()}`] = players;
+        }
       } catch {}
+    }
+
+    // Build all possible game key variations for matching
+    const allBoxKeys = Object.keys(boxScores);
+
+    // Helper: find box score for a game string
+    function findBoxScore(game, gameId) {
+      if (gameId && gameId !== 'undefined' && boxScores[gameId]) return boxScores[gameId];
+      const g = (game || '').toLowerCase().replace(/\s+/g, ' ');
+      // Try exact
+      if (boxScores[g]) return boxScores[g];
+      // Try with @ vs "vs"
+      const flipped = g.replace(' vs ', ' @ ').replace(' @ ', ' vs ');
+      if (boxScores[flipped]) return boxScores[flipped];
+      // Try matching team abbreviations from the game string
+      const parts = g.split(/\s+(?:@|vs|v)\s+/);
+      if (parts.length === 2) {
+        for (const k of allBoxKeys) {
+          if (k.includes(parts[0].trim()) && k.includes(parts[1].trim())) return boxScores[k];
+          // Also try last word of each part (team name)
+          const a = parts[0].trim().split(' ').pop();
+          const b = parts[1].trim().split(' ').pop();
+          if (a && b && k.includes(a) && k.includes(b)) return boxScores[k];
+        }
+      }
+      return null;
+    }
+
+    // Helper: find player stats with fuzzy name matching
+    function findPlayer(players, name) {
+      if (!players || !name) return null;
+      const n = name.toLowerCase();
+      if (players[n]) return players[n];
+      // Try partial match (last name)
+      const lastName = n.split(' ').pop();
+      for (const [k, v] of Object.entries(players)) {
+        if (k.includes(lastName) || lastName.length > 3 && k.split(' ').pop() === lastName) return v;
+      }
+      return null;
     }
 
     // Resolve each active slip
     let resolved = 0;
     const results = [];
     for (const slip of activeSlips) {
-      // Find matching box score
-      let players = null;
-      for (const leg of slip.legs) {
-        const gameKey = (leg.game || '').toLowerCase();
-        if (boxScores[gameKey]) { players = boxScores[gameKey]; break; }
-        // Try by gameId
-        if (leg.gameId && boxScores[leg.gameId]) { players = boxScores[leg.gameId]; break; }
-      }
-      if (!players) continue; // game not finished yet
-
+      // Each leg might be from a different game — resolve per-leg
       const legResults = [];
-      let allResolved = true;
+      let anyPending = false;
+      let anyFromFinishedGame = false;
+
       for (const leg of slip.legs) {
-        const playerName = (leg.player || '').toLowerCase();
-        const pStats = players[playerName];
-        if (!pStats) { legResults.push('pending'); allResolved = false; continue; }
+        const players = findBoxScore(leg.game, leg.gameId);
+
+        // Handle game-level bets (SPREAD, ML, TOTAL) — these use team names as "player"
+        if (leg.stat === 'SPREAD' || leg.stat === 'ML' || leg.stat === 'TOTAL') {
+          if (!players) { legResults.push('pending'); anyPending = true; continue; }
+          // For now, mark game bets as needing manual resolution
+          // TODO: auto-resolve from final scores
+          legResults.push('pending');
+          anyPending = true;
+          continue;
+        }
+
+        if (!players) {
+          legResults.push('pending');
+          anyPending = true;
+          continue;
+        }
+
+        anyFromFinishedGame = true;
+        const pStats = findPlayer(players, leg.player);
+        if (!pStats) {
+          // Player not found in box score — might not have played
+          legResults.push('lost'); // DNP = loss for over bets
+          continue;
+        }
 
         const statMap = { 'PTS': '_PTS', 'REB': '_REB', 'AST': '_AST', 'TO': '_TO', 'STL': '_STL', 'BLK': '_BLK',
           '3PM': '_3PM', 'FGM': '_FGM', 'FGA': '_FGA', 'FTM': '_FTM', 'PRA': '_PRA', 'MIN': '_MIN' };
@@ -1382,7 +1444,9 @@ app.post('/api/slips/resolve', authMiddleware, async (req, res) => {
         legResults.push(result);
       }
 
-      if (allResolved || legResults.every(r => r !== 'pending')) {
+      // Grade if all legs resolved (no pending) OR if we have finished game data and no pending game-level bets
+      const noPending = legResults.every(r => r !== 'pending');
+      if (noPending && anyFromFinishedGame) {
         const gradeResult = await store.gradeSlip(slip.id, legResults);
         if (!gradeResult.error) {
           resolved++;
