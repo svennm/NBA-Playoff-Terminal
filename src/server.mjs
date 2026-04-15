@@ -493,7 +493,7 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
           else if (Math.abs(dispersion - 1) < 2) fit = 'Fair';
 
           // Generate lines at common half-points around the mean
-          const line = Math.round(mean * 2) / 2;
+          const line = Math.floor(mean ) + 0.5;
           const overProb = +(1 - poissonCdf(line, lambda)).toFixed(4);
           const underProb = +poissonCdf(line, lambda).toFixed(4);
 
@@ -641,7 +641,7 @@ app.get('/api/book/auto-lines/:gameIndex', async (req, res) => {
             const mean = vals.reduce((a, b) => a + b, 0) / n;
             if (mean < 1 && key !== 'BLK' && key !== 'STL') return null;
             const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
-            const line = Math.round(mean * 2) / 2;
+            const line = Math.floor(mean ) + 0.5;
             const poissonOver = 1 - poissonCdfCalc(line, mean);
             const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
             return { mean: +mean.toFixed(1), stdDev: +Math.sqrt(variance).toFixed(1), line, games: n, overProb: +(poissonOver * 100).toFixed(1), overOdds: toAm(poissonOver), underOdds: toAm(1 - poissonOver) };
@@ -1794,14 +1794,14 @@ app.get('/api/props/:teamId', async (req, res) => {
       const stl = parseFloat(s.avgSteals);
       const blk = parseFloat(s.avgBlocks);
 
-      if (pts >= 5) lines.push({ stat: 'PTS', line: Math.round(pts * 2) / 2, avg: pts, source: 'model' });
-      if (reb >= 2) lines.push({ stat: 'REB', line: Math.round(reb * 2) / 2, avg: reb, source: 'model' });
-      if (ast >= 1.5) lines.push({ stat: 'AST', line: Math.round(ast * 2) / 2, avg: ast, source: 'model' });
-      if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.round(stl * 2) / 2, avg: stl, source: 'model' });
-      if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.round(blk * 2) / 2, avg: blk, source: 'model' });
+      if (pts >= 5) lines.push({ stat: 'PTS', line: Math.floor(pts ) + 0.5, avg: pts, source: 'model' });
+      if (reb >= 2) lines.push({ stat: 'REB', line: Math.floor(reb ) + 0.5, avg: reb, source: 'model' });
+      if (ast >= 1.5) lines.push({ stat: 'AST', line: Math.floor(ast ) + 0.5, avg: ast, source: 'model' });
+      if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.floor(stl ) + 0.5, avg: stl, source: 'model' });
+      if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.floor(blk ) + 0.5, avg: blk, source: 'model' });
       if (pts >= 10) lines.push({ stat: 'PRA', line: Math.round((pts + reb + ast) * 2) / 2, avg: +(pts + reb + ast).toFixed(1), source: 'model' });
       const to = parseFloat(s.avgTurnovers || '0');
-      if (to >= 1) lines.push({ stat: 'TO', line: Math.round(to * 2) / 2, avg: to, source: 'model' });
+      if (to >= 1) lines.push({ stat: 'TO', line: Math.floor(to ) + 0.5, avg: to, source: 'model' });
       const ddCats = [pts, reb, ast].filter(v => v >= 8).length;
       if (ddCats >= 2) lines.push({ stat: 'Double-Double', line: 0.5, avg: 'Yes/No', source: 'model' });
       if (pts >= 15 && reb >= 7 && ast >= 7) lines.push({ stat: 'Triple-Double', line: 0.5, avg: 'Yes/No', source: 'model' });
@@ -1922,7 +1922,7 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
           const pts = parseFloat(s.avgPoints), reb = parseFloat(s.avgRebounds), ast = parseFloat(s.avgAssists);
           const to = parseFloat(s.avgTurnovers || '0');
           const lines = [];
-          if (to >= 1) lines.push({ stat: 'TO', line: Math.round(to * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: to });
+          if (to >= 1) lines.push({ stat: 'TO', line: Math.floor(to ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: to });
           const ddCats = [pts, reb, ast].filter(v => v >= 8).length;
           if (ddCats >= 2) {
             const ddProb = ddCats >= 3 ? 0.6 : (Math.min(pts,10)/10 * Math.min(reb,10)/10 * 0.8);
@@ -1975,15 +1975,15 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
           const stl = parseFloat(s.avgSteals);
           const blk = parseFloat(s.avgBlocks);
           const lines = [];
-          if (pts >= 5) lines.push({ stat: 'PTS', line: Math.round(pts * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: pts });
-          if (reb >= 2) lines.push({ stat: 'REB', line: Math.round(reb * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: reb });
-          if (ast >= 1.5) lines.push({ stat: 'AST', line: Math.round(ast * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: ast });
-          if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.round(stl * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: stl });
-          if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.round(blk * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: blk });
+          if (pts >= 5) lines.push({ stat: 'PTS', line: Math.floor(pts ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: pts });
+          if (reb >= 2) lines.push({ stat: 'REB', line: Math.floor(reb ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: reb });
+          if (ast >= 1.5) lines.push({ stat: 'AST', line: Math.floor(ast ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: ast });
+          if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.floor(stl ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: stl });
+          if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.floor(blk ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: blk });
           if (pts >= 10) lines.push({ stat: 'PRA', line: Math.round((pts + reb + ast) * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: +(pts+reb+ast).toFixed(1) });
           // Turnovers
           const to = parseFloat(s.avgTurnovers || '0');
-          if (to >= 1) lines.push({ stat: 'TO', line: Math.round(to * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: to });
+          if (to >= 1) lines.push({ stat: 'TO', line: Math.floor(to ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: to });
           // Double-Double: estimate from averages — if 2 stats near 10+
           const dd_cats = [pts, reb, ast].filter(v => v >= 8).length;
           if (dd_cats >= 2) {

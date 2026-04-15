@@ -258,7 +258,7 @@ export async function getTeamProps(league, teamId) {
     };
 
     const makeLine = (stat, avg, total, gp) => {
-      const line = Math.round(avg * 2) / 2 || 0.5;
+      const line = Math.floor(avg) + 0.5;
       const overProb = 1 - poissonCdf(line, avg);
       const underProb = poissonCdf(line, avg);
       const toAmerican = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
