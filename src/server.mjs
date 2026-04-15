@@ -1272,194 +1272,243 @@ app.get('/api/polymarket/ucl', async (req, res) => {
   } catch { res.json([]); }
 });
 
-// === Slip Resolver — grades active slips from box scores ===
+// === Shared Resolver Engine ===
+async function resolveEngine() {
+  const activeSlips = await store.getSlips({ status: 'active', limit: 200 });
+  if (!activeSlips.length) return { resolved: 0, total: 0, results: [], message: 'No active slips' };
+
+  // Fetch finished games with scores
+  const scheduleRes = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + getDateRange(), {
+    headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
+  });
+  const schedData = await scheduleRes.json();
+  const finishedGames = (schedData.events || []).filter(e =>
+    e.competitions?.[0]?.status?.type?.description === 'Final'
+  );
+
+  const boxScores = {};
+  const gameScores = {}; // {gameKey: {home:{abbr,score}, away:{abbr,score}}}
+
+  for (const event of finishedGames) {
+    try {
+      // Get final scores from schedule data
+      const comp = event.competitions?.[0];
+      const teams = comp?.competitors || [];
+      const awayTeam = teams.find(t => t.homeAway === 'away');
+      const homeTeam = teams.find(t => t.homeAway === 'home');
+      const away = awayTeam?.team?.abbreviation || '';
+      const home = homeTeam?.team?.abbreviation || '';
+      const awayScore = parseInt(awayTeam?.score || '0');
+      const homeScore = parseInt(homeTeam?.score || '0');
+      const awayName = awayTeam?.team?.displayName || '';
+      const homeName = homeTeam?.team?.displayName || '';
+
+      const scoreData = {
+        home: { abbr: home, name: homeName, score: homeScore },
+        away: { abbr: away, name: awayName, score: awayScore },
+        total: homeScore + awayScore,
+        winner: homeScore > awayScore ? home : away,
+        winnerName: homeScore > awayScore ? homeName : awayName,
+        margin: Math.abs(homeScore - awayScore)
+      };
+
+      // Fetch box score for player stats
+      const bsRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${event.id}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000)
+      });
+      const bsData = await bsRes.json();
+      const players = {};
+      for (const team of bsData.boxscore?.players || []) {
+        for (const sg of team.statistics || []) {
+          const labels = sg.labels || [];
+          for (const a of sg.athletes || []) {
+            const name = a.athlete?.displayName || '';
+            const stats = {};
+            labels.forEach((l, i) => { stats[l] = a.stats?.[i] || '0'; });
+            const parseFG = (v) => { const p = (v || '0-0').split('-'); return { made: parseInt(p[0]) || 0, att: parseInt(p[1]) || 0 }; };
+            stats._PTS = parseInt(stats.PTS || '0');
+            stats._REB = parseInt(stats.REB || '0');
+            stats._AST = parseInt(stats.AST || '0');
+            stats._TO = parseInt(stats.TO || '0');
+            stats._STL = parseInt(stats.STL || '0');
+            stats._BLK = parseInt(stats.BLK || '0');
+            stats._3PM = parseFG(stats['3PT']).made;
+            stats._FGM = parseFG(stats.FG).made;
+            stats._FGA = parseFG(stats.FG).att;
+            stats._FTM = parseFG(stats.FT).made;
+            stats._MIN = parseInt(stats.MIN || '0');
+            stats._PRA = stats._PTS + stats._REB + stats._AST;
+            const ddCats = [stats._PTS, stats._REB, stats._AST, stats._STL, stats._BLK].filter(v => v >= 10).length;
+            stats._DD = ddCats >= 2;
+            stats._TD = ddCats >= 3;
+            players[name.toLowerCase()] = stats;
+          }
+        }
+      }
+
+      // Store under many key variations
+      const keys = [
+        `${away} @ ${home}`, `${away} vs ${home}`, `${home} vs ${away}`,
+        `${away}@${home}`, `${away}_${home}`, `${home}_${away}`
+      ];
+      for (const k of keys) {
+        boxScores[k.toLowerCase()] = players;
+        gameScores[k.toLowerCase()] = scoreData;
+      }
+      boxScores[event.id] = players;
+      gameScores[event.id] = scoreData;
+    } catch {}
+  }
+
+  if (!Object.keys(boxScores).length) return { resolved: 0, total: activeSlips.length, results: [], message: 'No finished games found' };
+
+  const allBoxKeys = Object.keys(boxScores);
+
+  function findGame(game, gameId) {
+    if (gameId && gameId !== 'undefined') {
+      if (boxScores[gameId]) return { players: boxScores[gameId], scores: gameScores[gameId] };
+    }
+    const g = (game || '').toLowerCase().replace(/\s+/g, ' ');
+    const tryKeys = [g, g.replace(' vs ', ' @ '), g.replace(' @ ', ' vs ')];
+    for (const k of tryKeys) {
+      if (boxScores[k]) return { players: boxScores[k], scores: gameScores[k] };
+    }
+    // Fuzzy: match by team abbreviation fragments
+    const parts = g.split(/\s+(?:@|vs|v)\s+/);
+    if (parts.length === 2) {
+      const a = parts[0].trim().split(' ').pop();
+      const b = parts[1].trim().split(' ').pop();
+      for (const k of allBoxKeys) {
+        if (a && b && k.includes(a) && k.includes(b)) return { players: boxScores[k], scores: gameScores[k] };
+      }
+    }
+    return null;
+  }
+
+  function findPlayer(players, name) {
+    if (!players || !name) return null;
+    const n = name.toLowerCase();
+    if (players[n]) return players[n];
+    const lastName = n.split(' ').pop();
+    for (const [k, v] of Object.entries(players)) {
+      if (k.includes(lastName) || (lastName.length > 3 && k.split(' ').pop() === lastName)) return v;
+    }
+    return null;
+  }
+
+  let resolved = 0;
+  const results = [];
+
+  for (const slip of activeSlips) {
+    const legResults = [];
+    let anyFromFinished = false;
+
+    for (const leg of slip.legs) {
+      const gameData = findGame(leg.game, leg.gameId);
+
+      if (!gameData) { legResults.push('pending'); continue; }
+      anyFromFinished = true;
+
+      const { players, scores } = gameData;
+      const pick = (leg.pick || '').toLowerCase();
+
+      // === ML (Moneyline) ===
+      if (leg.stat === 'ML') {
+        if (!scores) { legResults.push('pending'); continue; }
+        const pickedTeam = (leg.player || '').toLowerCase();
+        const winner = (scores.winnerName || '').toLowerCase();
+        const winnerAbbr = (scores.winner || '').toLowerCase();
+        const won = winner.includes(pickedTeam.split(' ').pop()) || winnerAbbr === pickedTeam.split(' ').pop()?.toLowerCase() || pickedTeam.includes(winner.split(' ').pop());
+        legResults.push(won ? 'won' : 'lost');
+        continue;
+      }
+
+      // === SPREAD ===
+      if (leg.stat === 'SPREAD') {
+        if (!scores) { legResults.push('pending'); continue; }
+        // Parse spread from pick like "Charlotte Hornets -6" or "CHA -5.5"
+        const spreadMatch = pick.match(/([\w\s]+?)\s+([+-]?\d+\.?\d*)/);
+        if (!spreadMatch) { legResults.push('pending'); continue; }
+        const spreadTeam = spreadMatch[1].trim();
+        const spreadVal = parseFloat(spreadMatch[2]);
+        // Determine if the picked team is home or away
+        const isHome = scores.home.name.toLowerCase().includes(spreadTeam.split(' ').pop()) || scores.home.abbr.toLowerCase() === spreadTeam.split(' ').pop();
+        const teamScore = isHome ? scores.home.score : scores.away.score;
+        const oppScore = isHome ? scores.away.score : scores.home.score;
+        const adjustedMargin = teamScore + spreadVal - oppScore;
+        legResults.push(adjustedMargin > 0 ? 'won' : adjustedMargin === 0 ? 'push' : 'lost');
+        continue;
+      }
+
+      // === TOTAL (Over/Under) ===
+      if (leg.stat === 'TOTAL') {
+        if (!scores) { legResults.push('pending'); continue; }
+        const line = parseFloat(leg.line) || 0;
+        const total = scores.total;
+        if (pick.includes('over')) {
+          legResults.push(total > line ? 'won' : total === line ? 'push' : 'lost');
+        } else {
+          legResults.push(total < line ? 'won' : total === line ? 'push' : 'lost');
+        }
+        continue;
+      }
+
+      // === Player props ===
+      const pStats = findPlayer(players, leg.player);
+      if (!pStats) { legResults.push('lost'); continue; }
+
+      const statMap = { 'PTS':'_PTS','REB':'_REB','AST':'_AST','TO':'_TO','STL':'_STL','BLK':'_BLK',
+        '3PM':'_3PM','FGM':'_FGM','FGA':'_FGA','FTM':'_FTM','PRA':'_PRA','MIN':'_MIN' };
+
+      let result = 'pending';
+      if (leg.stat === 'Double-Double') {
+        result = (pick.includes('over') || pick.includes('yes')) ? (pStats._DD ? 'won' : 'lost') : (!pStats._DD ? 'won' : 'lost');
+      } else if (leg.stat === 'Triple-Double') {
+        result = (pick.includes('over') || pick.includes('yes')) ? (pStats._TD ? 'won' : 'lost') : (!pStats._TD ? 'won' : 'lost');
+      } else {
+        const actual = statMap[leg.stat] ? pStats[statMap[leg.stat]] : null;
+        if (actual !== null && actual !== undefined) {
+          const line = parseFloat(leg.line) || 0;
+          if (pick.includes('over') || pick.includes('yes')) {
+            result = actual > line ? 'won' : actual === line ? 'push' : 'lost';
+          } else {
+            result = actual < line ? 'won' : actual === line ? 'push' : 'lost';
+          }
+        }
+      }
+      legResults.push(result);
+    }
+
+    const noPending = legResults.every(r => r !== 'pending');
+    if (noPending && anyFromFinished) {
+      const gradeResult = await store.gradeSlip(slip.id, legResults);
+      if (!gradeResult.error) {
+        resolved++;
+        const s = gradeResult.slip;
+        results.push({ id: slip.id, user: slip.user, result: s?.status, legs: legResults });
+        console.log(`[RESOLVE] ${slip.id} ${slip.user} -> ${s?.status} (${legResults.join(',')})`);
+        broadcast({ type: 'slip_graded', slip: s });
+      }
+    }
+  }
+
+  return { resolved, total: activeSlips.length, results };
+}
+
+// Slip resolver endpoint (auth required)
 app.post('/api/slips/resolve', authMiddleware, async (req, res) => {
   try {
-    const activeSlips = await store.getSlips({ status: 'active', limit: 200 });
-    if (!activeSlips.length) return res.json({ resolved: 0, message: 'No active slips' });
+    const result = await resolveEngine();
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
     // Get completed games from schedule
     const scheduleRes = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + getDateRange(), {
       headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
     });
-    const schedData = await scheduleRes.json();
-    const finishedGames = (schedData.events || []).filter(e =>
-      e.competitions?.[0]?.status?.type?.description === 'Final'
-    );
-
-    // Fetch box scores for finished games
-    const boxScores = {};
-    for (const event of finishedGames) {
-      try {
-        const bsRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${event.id}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000)
-        });
-        const bsData = await bsRes.json();
-        const players = {};
-        for (const team of bsData.boxscore?.players || []) {
-          for (const sg of team.statistics || []) {
-            const labels = sg.labels || [];
-            for (const a of sg.athletes || []) {
-              const name = a.athlete?.displayName || '';
-              const stats = {};
-              labels.forEach((l, i) => { stats[l] = a.stats?.[i] || '0'; });
-              // Parse made-attempted fields
-              const parseFG = (v) => { const p = (v || '0-0').split('-'); return { made: parseInt(p[0]) || 0, att: parseInt(p[1]) || 0 }; };
-              stats._PTS = parseInt(stats.PTS || '0');
-              stats._REB = parseInt(stats.REB || '0');
-              stats._AST = parseInt(stats.AST || '0');
-              stats._TO = parseInt(stats.TO || '0');
-              stats._STL = parseInt(stats.STL || '0');
-              stats._BLK = parseInt(stats.BLK || '0');
-              stats._3PM = parseFG(stats['3PT']).made;
-              stats._FGM = parseFG(stats.FG).made;
-              stats._FGA = parseFG(stats.FG).att;
-              stats._FTM = parseFG(stats.FT).made;
-              stats._MIN = parseInt(stats.MIN || '0');
-              stats._PRA = stats._PTS + stats._REB + stats._AST;
-              // Double-double check
-              const ddCats = [stats._PTS, stats._REB, stats._AST, stats._STL, stats._BLK].filter(v => v >= 10).length;
-              stats._DD = ddCats >= 2;
-              stats._TD = ddCats >= 3;
-              players[name.toLowerCase()] = stats;
-            }
-          }
-        }
-        // Map game name to box score
-        const comp = event.competitions?.[0];
-        const teams = comp?.competitors || [];
-        const away = teams.find(t => t.homeAway === 'away')?.team?.abbreviation || '';
-        const home = teams.find(t => t.homeAway === 'home')?.team?.abbreviation || '';
-        // Store under many key variations for flexible matching
-        boxScores[`${away} @ ${home}`.toLowerCase()] = players;
-        boxScores[`${away} vs ${home}`.toLowerCase()] = players;
-        boxScores[`${home} vs ${away}`.toLowerCase()] = players;
-        boxScores[`${away}@${home}`.toLowerCase()] = players;
-        boxScores[event.id] = players;
-        // Also store by team abbreviations for partial matching
-        if (away && home) {
-          boxScores[`${away.toLowerCase()}_${home.toLowerCase()}`] = players;
-          boxScores[`${home.toLowerCase()}_${away.toLowerCase()}`] = players;
-        }
-      } catch {}
-    }
-
-    // Build all possible game key variations for matching
-    const allBoxKeys = Object.keys(boxScores);
-
-    // Helper: find box score for a game string
-    function findBoxScore(game, gameId) {
-      if (gameId && gameId !== 'undefined' && boxScores[gameId]) return boxScores[gameId];
-      const g = (game || '').toLowerCase().replace(/\s+/g, ' ');
-      // Try exact
-      if (boxScores[g]) return boxScores[g];
-      // Try with @ vs "vs"
-      const flipped = g.replace(' vs ', ' @ ').replace(' @ ', ' vs ');
-      if (boxScores[flipped]) return boxScores[flipped];
-      // Try matching team abbreviations from the game string
-      const parts = g.split(/\s+(?:@|vs|v)\s+/);
-      if (parts.length === 2) {
-        for (const k of allBoxKeys) {
-          if (k.includes(parts[0].trim()) && k.includes(parts[1].trim())) return boxScores[k];
-          // Also try last word of each part (team name)
-          const a = parts[0].trim().split(' ').pop();
-          const b = parts[1].trim().split(' ').pop();
-          if (a && b && k.includes(a) && k.includes(b)) return boxScores[k];
-        }
-      }
-      return null;
-    }
-
-    // Helper: find player stats with fuzzy name matching
-    function findPlayer(players, name) {
-      if (!players || !name) return null;
-      const n = name.toLowerCase();
-      if (players[n]) return players[n];
-      // Try partial match (last name)
-      const lastName = n.split(' ').pop();
-      for (const [k, v] of Object.entries(players)) {
-        if (k.includes(lastName) || lastName.length > 3 && k.split(' ').pop() === lastName) return v;
-      }
-      return null;
-    }
-
-    // Resolve each active slip
-    let resolved = 0;
-    const results = [];
-    for (const slip of activeSlips) {
-      // Each leg might be from a different game — resolve per-leg
-      const legResults = [];
-      let anyPending = false;
-      let anyFromFinishedGame = false;
-
-      for (const leg of slip.legs) {
-        const players = findBoxScore(leg.game, leg.gameId);
-
-        // Handle game-level bets (SPREAD, ML, TOTAL) — these use team names as "player"
-        if (leg.stat === 'SPREAD' || leg.stat === 'ML' || leg.stat === 'TOTAL') {
-          if (!players) { legResults.push('pending'); anyPending = true; continue; }
-          // For now, mark game bets as needing manual resolution
-          // TODO: auto-resolve from final scores
-          legResults.push('pending');
-          anyPending = true;
-          continue;
-        }
-
-        if (!players) {
-          legResults.push('pending');
-          anyPending = true;
-          continue;
-        }
-
-        anyFromFinishedGame = true;
-        const pStats = findPlayer(players, leg.player);
-        if (!pStats) {
-          // Player not found in box score — might not have played
-          legResults.push('lost'); // DNP = loss for over bets
-          continue;
-        }
-
-        const statMap = { 'PTS': '_PTS', 'REB': '_REB', 'AST': '_AST', 'TO': '_TO', 'STL': '_STL', 'BLK': '_BLK',
-          '3PM': '_3PM', 'FGM': '_FGM', 'FGA': '_FGA', 'FTM': '_FTM', 'PRA': '_PRA', 'MIN': '_MIN' };
-
-        const pick = (leg.pick || '').toLowerCase();
-        let result = 'pending';
-
-        if (leg.stat === 'Double-Double') {
-          result = (pick.includes('over') || pick.includes('yes')) ? (pStats._DD ? 'won' : 'lost') : (!pStats._DD ? 'won' : 'lost');
-        } else if (leg.stat === 'Triple-Double') {
-          result = (pick.includes('over') || pick.includes('yes')) ? (pStats._TD ? 'won' : 'lost') : (!pStats._TD ? 'won' : 'lost');
-        } else {
-          const statKey = statMap[leg.stat];
-          const actual = statKey ? pStats[statKey] : null;
-          if (actual !== null && actual !== undefined) {
-            const line = parseFloat(leg.line) || 0;
-            if (pick.includes('over') || pick.includes('yes')) {
-              result = actual > line ? 'won' : actual === line ? 'push' : 'lost';
-            } else {
-              result = actual < line ? 'won' : actual === line ? 'push' : 'lost';
-            }
-          }
-        }
-        legResults.push(result);
-      }
-
-      // Grade if all legs resolved (no pending) OR if we have finished game data and no pending game-level bets
-      const noPending = legResults.every(r => r !== 'pending');
-      if (noPending && anyFromFinishedGame) {
-        const gradeResult = await store.gradeSlip(slip.id, legResults);
-        if (!gradeResult.error) {
-          resolved++;
-          results.push({ id: slip.id, user: slip.user, result: gradeResult.slip?.status, legs: legResults });
-        }
-      }
-    }
-
-    res.json({ resolved, total: activeSlips.length, results });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 function getDateRange() {
   const d = new Date();
@@ -1891,161 +1940,14 @@ async function sweepLoop() {
 // === Auto-Resolver — runs every 5 min, grades ALL users' slips ===
 async function autoResolve() {
   try {
-    const activeSlips = await store.getSlips({ status: 'active', limit: 200 });
-    if (!activeSlips.length) return;
-
-    console.log(`[AUTO-RESOLVE] Checking ${activeSlips.length} active slips...`);
-
-    // Fetch finished NBA games (last 3 days)
-    const scheduleRes = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + getDateRange(), {
-      headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
-    });
-    const schedData = await scheduleRes.json();
-    const finishedGames = (schedData.events || []).filter(e =>
-      e.competitions?.[0]?.status?.type?.description === 'Final'
-    );
-
-    // Fetch box scores
-    const boxScores = {};
-    for (const event of finishedGames) {
-      try {
-        const bsRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${event.id}`, {
-          headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000)
-        });
-        const bsData = await bsRes.json();
-        const players = {};
-        for (const team of bsData.boxscore?.players || []) {
-          for (const sg of team.statistics || []) {
-            const labels = sg.labels || [];
-            for (const a of sg.athletes || []) {
-              const name = a.athlete?.displayName || '';
-              const stats = {};
-              labels.forEach((l, i) => { stats[l] = a.stats?.[i] || '0'; });
-              const parseFG = (v) => { const p = (v || '0-0').split('-'); return { made: parseInt(p[0]) || 0, att: parseInt(p[1]) || 0 }; };
-              stats._PTS = parseInt(stats.PTS || '0');
-              stats._REB = parseInt(stats.REB || '0');
-              stats._AST = parseInt(stats.AST || '0');
-              stats._TO = parseInt(stats.TO || '0');
-              stats._STL = parseInt(stats.STL || '0');
-              stats._BLK = parseInt(stats.BLK || '0');
-              stats._3PM = parseFG(stats['3PT']).made;
-              stats._FGM = parseFG(stats.FG).made;
-              stats._FGA = parseFG(stats.FG).att;
-              stats._FTM = parseFG(stats.FT).made;
-              stats._MIN = parseInt(stats.MIN || '0');
-              stats._PRA = stats._PTS + stats._REB + stats._AST;
-              const ddCats = [stats._PTS, stats._REB, stats._AST, stats._STL, stats._BLK].filter(v => v >= 10).length;
-              stats._DD = ddCats >= 2;
-              stats._TD = ddCats >= 3;
-              players[name.toLowerCase()] = stats;
-            }
-          }
-        }
-        const comp = event.competitions?.[0];
-        const teams = comp?.competitors || [];
-        const away = teams.find(t => t.homeAway === 'away')?.team?.abbreviation || '';
-        const home = teams.find(t => t.homeAway === 'home')?.team?.abbreviation || '';
-        const keys = [
-          `${away} @ ${home}`, `${away} vs ${home}`, `${home} vs ${away}`,
-          `${away}@${home}`, `${away}_${home}`, `${home}_${away}`
-        ];
-        for (const k of keys) boxScores[k.toLowerCase()] = players;
-        boxScores[event.id] = players;
-      } catch {}
-    }
-
-    if (!Object.keys(boxScores).length) return;
-
-    // Resolve slips
-    let resolved = 0;
-    const allBoxKeys = Object.keys(boxScores);
-
-    function findBoxScore(game, gameId) {
-      if (gameId && gameId !== 'undefined' && boxScores[gameId]) return boxScores[gameId];
-      const g = (game || '').toLowerCase().replace(/\s+/g, ' ');
-      if (boxScores[g]) return boxScores[g];
-      const flipped = g.replace(' vs ', ' @ ').replace(' @ ', ' vs ');
-      if (boxScores[flipped]) return boxScores[flipped];
-      const parts = g.split(/\s+(?:@|vs|v)\s+/);
-      if (parts.length === 2) {
-        for (const k of allBoxKeys) {
-          const a = parts[0].trim().split(' ').pop();
-          const b = parts[1].trim().split(' ').pop();
-          if (a && b && k.includes(a) && k.includes(b)) return boxScores[k];
-        }
-      }
-      return null;
-    }
-
-    function findPlayer(players, name) {
-      if (!players || !name) return null;
-      const n = name.toLowerCase();
-      if (players[n]) return players[n];
-      const lastName = n.split(' ').pop();
-      for (const [k, v] of Object.entries(players)) {
-        if (k.includes(lastName) || (lastName.length > 3 && k.split(' ').pop() === lastName)) return v;
-      }
-      return null;
-    }
-
-    for (const slip of activeSlips) {
-      const legResults = [];
-      let anyFromFinished = false;
-
-      for (const leg of slip.legs) {
-        const players = findBoxScore(leg.game, leg.gameId);
-
-        if (leg.stat === 'SPREAD' || leg.stat === 'ML' || leg.stat === 'TOTAL') {
-          legResults.push('pending');
-          continue;
-        }
-
-        if (!players) { legResults.push('pending'); continue; }
-        anyFromFinished = true;
-
-        const pStats = findPlayer(players, leg.player);
-        if (!pStats) { legResults.push('lost'); continue; }
-
-        const statMap = { 'PTS':'_PTS','REB':'_REB','AST':'_AST','TO':'_TO','STL':'_STL','BLK':'_BLK',
-          '3PM':'_3PM','FGM':'_FGM','FGA':'_FGA','FTM':'_FTM','PRA':'_PRA','MIN':'_MIN' };
-        const pick = (leg.pick || '').toLowerCase();
-        let result = 'pending';
-
-        if (leg.stat === 'Double-Double') {
-          result = (pick.includes('over') || pick.includes('yes')) ? (pStats._DD ? 'won' : 'lost') : (!pStats._DD ? 'won' : 'lost');
-        } else if (leg.stat === 'Triple-Double') {
-          result = (pick.includes('over') || pick.includes('yes')) ? (pStats._TD ? 'won' : 'lost') : (!pStats._TD ? 'won' : 'lost');
-        } else {
-          const actual = statMap[leg.stat] ? pStats[statMap[leg.stat]] : null;
-          if (actual !== null && actual !== undefined) {
-            const line = parseFloat(leg.line) || 0;
-            if (pick.includes('over') || pick.includes('yes')) {
-              result = actual > line ? 'won' : actual === line ? 'push' : 'lost';
-            } else {
-              result = actual < line ? 'won' : actual === line ? 'push' : 'lost';
-            }
-          }
-        }
-        legResults.push(result);
-      }
-
-      const noPending = legResults.every(r => r !== 'pending');
-      if (noPending && anyFromFinished) {
-        const gradeResult = await store.gradeSlip(slip.id, legResults);
-        if (!gradeResult.error) {
-          resolved++;
-          const status = gradeResult.slip?.status;
-          console.log(`[AUTO-RESOLVE] ${slip.id} ${slip.user} -> ${status} (${legResults.join(',')})`);
-          broadcast({ type: 'slip_graded', slip: gradeResult.slip });
-        }
-      }
-    }
-
-    if (resolved > 0) console.log(`[AUTO-RESOLVE] Resolved ${resolved} slips`);
+    const result = await resolveEngine();
+    if (result.resolved > 0) console.log(`[AUTO-RESOLVE] ${result.resolved} slips graded`);
   } catch (e) {
     console.error('[AUTO-RESOLVE]', e.message);
   }
 }
+
+// Legacy auto-resolve code replaced by resolveEngine above
 
 // Admin resolve endpoint — no auth required, resolves ALL slips
 app.post('/api/admin/resolve', async (req, res) => {
