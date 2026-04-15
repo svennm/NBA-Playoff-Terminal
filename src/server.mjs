@@ -703,11 +703,35 @@ app.get('/api/players/:id/gamelog', async (req, res) => {
 
     // Compute statistical distributions for key stat columns
     const statKeys = ['MIN', 'PTS', 'REB', 'AST', 'STL', 'BLK', 'TO', 'FGM', 'FGA', '3PM', '3PA', 'FTM', 'FTA'];
+
+    // Helper: extract made/attempted from "7-15" format
+    const parseMadeAtt = (val) => {
+      if (!val || typeof val !== 'string') return { made: 0, att: 0 };
+      const parts = val.split('-');
+      return { made: parseInt(parts[0]) || 0, att: parseInt(parts[1]) || 0 };
+    };
+
+    // Map stat keys to how to extract them from gamelog
+    const extractStat = (stats, key) => {
+      // Direct keys
+      if (stats[`_${key}`] !== undefined && typeof stats[`_${key}`] !== 'string') return parseFloat(stats[`_${key}`]);
+      if (stats[key] !== undefined && typeof stats[key] !== 'string') return parseFloat(stats[key]);
+      // Parse from combined format
+      if (key === 'FGM') return parseMadeAtt(stats['_FG'] || stats['fieldGoalsMade-fieldGoalsAttempted']).made;
+      if (key === 'FGA') return parseMadeAtt(stats['_FG'] || stats['fieldGoalsMade-fieldGoalsAttempted']).att;
+      if (key === '3PM') return parseMadeAtt(stats['_3PT'] || stats['threePointFieldGoalsMade-threePointFieldGoalsAttempted']).made;
+      if (key === '3PA') return parseMadeAtt(stats['_3PT'] || stats['threePointFieldGoalsMade-threePointFieldGoalsAttempted']).att;
+      if (key === 'FTM') return parseMadeAtt(stats['_FT'] || stats['freeThrowsMade-freeThrowsAttempted']).made;
+      if (key === 'FTA') return parseMadeAtt(stats['_FT'] || stats['freeThrowsMade-freeThrowsAttempted']).att;
+      // Fallback
+      return parseFloat(stats[`_${key}`] || stats[key] || '0');
+    };
+
     const distributions = {};
 
     for (const key of statKeys) {
       const values = gamelog.games
-        .map(g => parseFloat(g.stats[`_${key}`] || g.stats[key] || '0'))
+        .map(g => extractStat(g.stats, key))
         .filter(v => !isNaN(v));
 
       if (values.length < 3) continue;
