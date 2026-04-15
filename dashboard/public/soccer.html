@@ -98,6 +98,7 @@
     <span style="color:#4a5568;font-size:8px;">|</span>
     <a href="/slips.html" >Slips</a>
     <a href="/analysis.html" >Analysis</a>
+    <a href="/principles.html" >Principles</a>
   </div>
 </div>
 
@@ -271,30 +272,76 @@ async function loadTeam(abbr) {
     $('team-title').textContent = data.detail?.name || abbr;
 
     const roster = data.roster || [];
-    $('team-body').innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-        <img src="${data.detail?.logo}" style="width:48px;height:48px;object-fit:contain;">
-        <div>
-          <div style="font-size:16px;font-weight:700;">${data.detail?.name}</div>
-          <div style="color:var(--dim);font-size:10px;">${data.detail?.record || ''} | ${data.detail?.standingSummary || ''}</div>
-          ${data.detail?.nextEvent ? `<div style="color:var(--amber);font-size:10px;">Next: ${data.detail.nextEvent.name}</div>` : ''}
-        </div>
-      </div>
-      <table class="roster-table">
-        <thead><tr><th>Player</th><th>Pos</th><th>#</th><th>Age</th><th>Nationality</th></tr></thead>
-        <tbody>
-          ${roster.map(p => `
-            <tr>
-              <td style="font-weight:500">${p.name}</td>
-              <td>${p.position}</td>
-              <td>${p.jersey}</td>
-              <td>${p.age || '-'}</td>
-              <td style="color:var(--dim)">${p.nationality || '-'}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
+    const posOrder = { F: 0, M: 1, D: 2, G: 3 };
+    const sorted = [...roster].sort((a, b) => (posOrder[a.position] ?? 4) - (posOrder[b.position] ?? 4));
 
+    // Show roster immediately, then load stats
+    const renderRoster = (playerStats) => {
+      $('team-body').innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <img src="${data.detail?.logo}" style="width:48px;height:48px;object-fit:contain;">
+          <div>
+            <div style="font-size:16px;font-weight:700;">${data.detail?.name}</div>
+            <div style="color:var(--dim);font-size:10px;">${data.detail?.record || ''} | ${data.detail?.standingSummary || ''}</div>
+            ${data.detail?.nextEvent ? `<div style="color:var(--amber);font-size:10px;">Next: ${data.detail.nextEvent.name}</div>` : ''}
+          </div>
+        </div>
+        <table class="roster-table">
+          <thead><tr><th>Player</th><th>Pos</th><th>#</th><th>G</th><th>A</th><th>SH</th><th>SOT</th><th>YC</th><th>STRT</th></tr></thead>
+          <tbody>
+            ${sorted.map(p => {
+              const s = playerStats[p.id];
+              return `<tr style="cursor:pointer;" onclick="window.location.href='/matchup.html?a=${abbr}&sport=soccer'">
+                <td style="font-weight:500">${p.name}</td>
+                <td>${p.position}</td>
+                <td>${p.jersey}</td>
+                <td style="color:var(--green);font-weight:700;">${s ? s.G : '-'}</td>
+                <td style="color:var(--cyan);">${s ? s.A : '-'}</td>
+                <td>${s ? s.SH : '-'}</td>
+                <td>${s ? s.ST : '-'}</td>
+                <td style="color:var(--amber);">${s ? s.YC : '-'}</td>
+                <td style="color:var(--dim);">${s ? s.STRT : '-'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    };
+
+    // Render basic roster first
+    renderRoster({});
     panel.scrollIntoView({ behavior: 'smooth' });
+
+    // Fetch player stats in background
+    const outfield = sorted.filter(p => p.position !== 'G').slice(0, 18);
+    const gks = sorted.filter(p => p.position === 'G').slice(0, 1);
+    const toFetch = [...outfield, ...gks];
+    const results = await Promise.allSettled(
+      toFetch.map(p => fetch(`/api/soccer/${LEAGUE}/players/${p.id}`).then(r => r.json()))
+    );
+
+    const playerStats = {};
+    results.forEach((r, i) => {
+      if (r.status !== 'fulfilled' || !r.value || r.value.error) return;
+      const d = r.value;
+      const allSplits = d.allSplits || [];
+      const clSplit = allSplits.find(s => s.name?.includes('Champions'));
+      const lgSplit = allSplits.find(s => s.name && !s.name.includes('Champions') && !s.name.includes('Friendly') && !s.name.includes('Copa') && !s.name.includes('International'));
+      const s = clSplit?.stats || lgSplit?.stats || d.clStats || d.leagueStats;
+      if (s) {
+        playerStats[toFetch[i].id] = {
+          G: s.totalGoals || s._G || '0',
+          A: s.goalAssists || s._A || '0',
+          SH: s.totalShots || s._SH || '0',
+          ST: s.shotsOnTarget || s._ST || '0',
+          FC: s.foulsCommitted || s._FC || '0',
+          YC: s.yellowCards || s._YC || '0',
+          STRT: s.starts || s._STRT || '0'
+        };
+      }
+    });
+
+    // Re-render with stats
+    renderRoster(playerStats);
   } catch (e) { $('team-body').innerHTML = `Error: ${e.message}`; }
 }
 

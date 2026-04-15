@@ -907,6 +907,7 @@
     <span style="color:#4a5568;font-size:8px;">|</span>
     <a href="/slips.html" >Slips</a>
     <a href="/analysis.html" >Analysis</a>
+    <a href="/principles.html" >Principles</a>
   </div>
 </div>
 
@@ -1184,20 +1185,39 @@ async function loadRosterStats(side) {
 
 async function loadSoccerRosterStats(side) {
   const roster = state[side].roster;
+  if (!roster.length) { console.warn('[SOCCER] No roster for side', side); return; }
   const posOrder = { F: 0, M: 1, D: 2, G: 3 };
   const top = roster
     .filter(p => p.position !== 'G')
     .sort((a, b) => (posOrder[a.position] ?? 4) - (posOrder[b.position] ?? 4))
     .slice(0, 18);
 
-  // Fetch player overviews through our server (avoids CORS)
-  const results = await Promise.allSettled(
-    top.map(p => fetch(`/api/soccer/${SOCCER_LEAGUE}/players/${p.id}`).then(r => r.json()))
-  );
+  // Also fetch starting GK
+  const gks = roster.filter(p => p.position === 'G').slice(0, 1);
+  const toFetch = [...top, ...gks];
 
+  // Fetch player overviews in batches of 6 to avoid overwhelming server/ESPN
+  const BATCH = 6;
+  const results = [];
+  for (let i = 0; i < toFetch.length; i += BATCH) {
+    const batch = toFetch.slice(i, i + BATCH);
+    const batchResults = await Promise.allSettled(
+      batch.map(p => fetch(`/api/soccer/${SOCCER_LEAGUE}/players/${p.id}`).then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status} for player ${p.id}`);
+        return r.json();
+      }))
+    );
+    results.push(...batchResults);
+  }
+
+  let loaded = 0;
   results.forEach((r, i) => {
-    if (r.status !== 'fulfilled' || !r.value) return;
+    if (r.status !== 'fulfilled' || !r.value) {
+      console.warn('[SOCCER] Failed to load player', toFetch[i].name, r.reason?.message || 'null');
+      return;
+    }
     const data = r.value;
+    if (data.error) { console.warn('[SOCCER] Player error:', toFetch[i].name, data.error); return; }
     // Find CL split first, then league split
     const allSplits = data.allSplits || [];
     const clSplit = allSplits.find(s => s.name?.includes('Champions'));
@@ -1206,7 +1226,6 @@ async function loadSoccerRosterStats(side) {
     if (s) {
       // Normalize stat keys — the stats object uses ESPN name keys
       const stats = {};
-      // Map from long names to short labels
       stats.G = s.totalGoals || s._G || '0';
       stats.A = s.goalAssists || s._A || '0';
       stats.SH = s.totalShots || s._SH || '0';
@@ -1217,9 +1236,11 @@ async function loadSoccerRosterStats(side) {
       stats.RC = s.redCards || s._RC || '0';
       stats.STRT = s.starts || s._STRT || '0';
       stats.OF = s.offsides || s._OF || '0';
-      state[side].players[top[i].id] = { stats, splitName: clSplit?.name || leagueSplit?.name || 'Season' };
+      state[side].players[toFetch[i].id] = { stats, splitName: clSplit?.name || leagueSplit?.name || 'Season' };
+      loaded++;
     }
   });
+  console.log(`[SOCCER] Loaded stats for ${loaded}/${toFetch.length} players (${side})`);
 }
 
 function renderSoccerRoster(side) {
@@ -2694,14 +2715,14 @@ async function boot() {
     const match = state.teams.find(t => t.abbr === teamA || t.name.toLowerCase().includes(teamA.toLowerCase()));
     if (match) {
       $('team-a-select').value = match.id;
-      loadTeam('a');
+      await loadTeam('a');
     }
   }
   if (teamB && state.teams.length) {
     const match = state.teams.find(t => t.abbr === teamB || t.name.toLowerCase().includes(teamB.toLowerCase()));
     if (match) {
       $('team-b-select').value = match.id;
-      loadTeam('b');
+      await loadTeam('b');
     }
   }
 }
