@@ -1282,14 +1282,22 @@ async function resolveEngine() {
   const activeSlips = await store.getSlips({ status: 'active', limit: 200 });
   if (!activeSlips.length) return { resolved: 0, total: 0, results: [], message: 'No active slips' };
 
-  // Fetch finished games with scores
-  const scheduleRes = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + getDateRange(), {
-    headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
-  });
-  const schedData = await scheduleRes.json();
-  const finishedGames = (schedData.events || []).filter(e =>
-    e.competitions?.[0]?.status?.type?.description === 'Final'
-  );
+  // Fetch finished games — NBA + Soccer
+  const [nbaSchedRes, soccerSchedRes] = await Promise.allSettled([
+    fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + getDateRange(), {
+      headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
+    }).then(r => r.json()),
+    fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard?dates=' + getDateRange(), {
+      headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
+    }).then(r => r.json())
+  ]);
+
+  const nbaEvents = nbaSchedRes.status === 'fulfilled' ? nbaSchedRes.value.events || [] : [];
+  const soccerEvents = soccerSchedRes.status === 'fulfilled' ? soccerSchedRes.value.events || [] : [];
+  const finishedGames = [
+    ...nbaEvents.filter(e => e.competitions?.[0]?.status?.type?.description === 'Final').map(e => ({ ...e, _sport: 'nba' })),
+    ...soccerEvents.filter(e => ['Full Time','Final'].includes(e.competitions?.[0]?.status?.type?.description)).map(e => ({ ...e, _sport: 'soccer' }))
+  ];
 
   const boxScores = {};
   const gameScores = {}; // {gameKey: {home:{abbr,score}, away:{abbr,score}}}
@@ -1317,36 +1325,80 @@ async function resolveEngine() {
         margin: Math.abs(homeScore - awayScore)
       };
 
-      // Fetch box score for player stats
-      const bsRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${event.id}`, {
+      // Fetch box score for player stats — different endpoint for NBA vs Soccer
+      const sportPath = event._sport === 'soccer' ? 'soccer/uefa.champions' : 'basketball/nba';
+      const bsRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${sportPath}/summary?event=${event.id}`, {
         headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000)
       });
       const bsData = await bsRes.json();
       const players = {};
-      for (const team of bsData.boxscore?.players || []) {
-        for (const sg of team.statistics || []) {
-          const labels = sg.labels || [];
-          for (const a of sg.athletes || []) {
-            const name = a.athlete?.displayName || '';
+
+      if (event._sport === 'soccer') {
+        // Soccer: stats are in rosters[].roster[].stats (array of stat objects)
+        for (const team of bsData.rosters || []) {
+          for (const p of team.roster || []) {
+            const name = p.athlete?.displayName || '';
+            const rawStats = p.stats || [];
             const stats = {};
-            labels.forEach((l, i) => { stats[l] = a.stats?.[i] || '0'; });
-            const parseFG = (v) => { const p = (v || '0-0').split('-'); return { made: parseInt(p[0]) || 0, att: parseInt(p[1]) || 0 }; };
-            stats._PTS = parseInt(stats.PTS || '0');
-            stats._REB = parseInt(stats.REB || '0');
-            stats._AST = parseInt(stats.AST || '0');
-            stats._TO = parseInt(stats.TO || '0');
-            stats._STL = parseInt(stats.STL || '0');
-            stats._BLK = parseInt(stats.BLK || '0');
-            stats._3PM = parseFG(stats['3PT']).made;
-            stats._FGM = parseFG(stats.FG).made;
-            stats._FGA = parseFG(stats.FG).att;
-            stats._FTM = parseFG(stats.FT).made;
-            stats._MIN = parseInt(stats.MIN || '0');
-            stats._PRA = stats._PTS + stats._REB + stats._AST;
-            const ddCats = [stats._PTS, stats._REB, stats._AST, stats._STL, stats._BLK].filter(v => v >= 10).length;
-            stats._DD = ddCats >= 2;
-            stats._TD = ddCats >= 3;
+            for (const s of rawStats) {
+              stats[s.abbreviation || s.name] = parseFloat(s.value) || 0;
+            }
+            // Normalize to resolver keys
+            stats._G = stats.G || 0;
+            stats._A = stats.A || 0;
+            stats._SH = stats.SH || 0;
+            stats._ST = stats.ST || 0;
+            stats._FC = stats.FC || 0;
+            stats._FA = stats.FA || 0;
+            stats._YC = stats.YC || 0;
+            stats._RC = stats.RC || 0;
+            stats._SV = stats.SV || 0;
+            stats._GA = stats.GA || 0;
+            stats._OF = stats.OF || 0;
+            // Map soccer stat names to resolver stat names
+            stats['Anytime Goal'] = stats._G;
+            stats['Goals'] = stats._G;
+            stats['Assists'] = stats._A;
+            stats['Shots Attempted'] = stats._SH;
+            stats['Shots on Target'] = stats._ST;
+            stats['Fouls Committed'] = stats._FC;
+            stats['Fouls Drawn'] = stats._FA;
+            stats['Yellow Cards'] = stats._YC;
+            stats['Goals + Assists'] = stats._G + stats._A;
+            stats['Goal or Assist'] = (stats._G + stats._A) > 0 ? 1 : 0;
+            stats['To Be Carded'] = stats._YC + stats._RC > 0 ? 1 : 0;
+            stats['Saves'] = stats._SV;
+            stats['Clean Sheet'] = stats._GA === 0 ? 1 : 0;
             players[name.toLowerCase()] = stats;
+          }
+        }
+      } else {
+        // NBA: stats are in boxscore.players[].statistics[].athletes[]
+        for (const team of bsData.boxscore?.players || []) {
+          for (const sg of team.statistics || []) {
+            const labels = sg.labels || [];
+            for (const a of sg.athletes || []) {
+              const name = a.athlete?.displayName || '';
+              const stats = {};
+              labels.forEach((l, i) => { stats[l] = a.stats?.[i] || '0'; });
+              const parseFG = (v) => { const p = (v || '0-0').split('-'); return { made: parseInt(p[0]) || 0, att: parseInt(p[1]) || 0 }; };
+              stats._PTS = parseInt(stats.PTS || '0');
+              stats._REB = parseInt(stats.REB || '0');
+              stats._AST = parseInt(stats.AST || '0');
+              stats._TO = parseInt(stats.TO || '0');
+              stats._STL = parseInt(stats.STL || '0');
+              stats._BLK = parseInt(stats.BLK || '0');
+              stats._3PM = parseFG(stats['3PT']).made;
+              stats._FGM = parseFG(stats.FG).made;
+              stats._FGA = parseFG(stats.FG).att;
+              stats._FTM = parseFG(stats.FT).made;
+              stats._MIN = parseInt(stats.MIN || '0');
+              stats._PRA = stats._PTS + stats._REB + stats._AST;
+              const ddCats = [stats._PTS, stats._REB, stats._AST, stats._STL, stats._BLK].filter(v => v >= 10).length;
+              stats._DD = ddCats >= 2;
+              stats._TD = ddCats >= 3;
+              players[name.toLowerCase()] = stats;
+            }
           }
         }
       }
@@ -1462,6 +1514,7 @@ async function resolveEngine() {
       const pStats = findPlayer(players, leg.player);
       if (!pStats) { legResults.push('lost'); continue; }
 
+      // NBA stat key mapping
       const statMap = { 'PTS':'_PTS','REB':'_REB','AST':'_AST','TO':'_TO','STL':'_STL','BLK':'_BLK',
         '3PM':'_3PM','FGM':'_FGM','FGA':'_FGA','FTM':'_FTM','PRA':'_PRA','MIN':'_MIN' };
 
@@ -1471,7 +1524,8 @@ async function resolveEngine() {
       } else if (leg.stat === 'Triple-Double') {
         result = (pick.includes('over') || pick.includes('yes')) ? (pStats._TD ? 'won' : 'lost') : (!pStats._TD ? 'won' : 'lost');
       } else {
-        const actual = statMap[leg.stat] ? pStats[statMap[leg.stat]] : null;
+        // Try NBA stat map first, then direct stat name (soccer stores stats by prop name)
+        const actual = statMap[leg.stat] ? pStats[statMap[leg.stat]] : (pStats[leg.stat] ?? null);
         if (actual !== null && actual !== undefined) {
           const line = parseFloat(leg.line) || 0;
           if (pick.includes('over') || pick.includes('yes')) {
