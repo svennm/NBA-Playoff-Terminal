@@ -216,13 +216,19 @@ let oddsData = [];
 let polyData = [];
 
 async function init() {
-  const [sweepRes, standingsRes] = await Promise.all([
+  const [sweepRes, standingsRes, scheduleRes] = await Promise.all([
     fetch('/api/sweep').then(r => r.json()),
-    fetch('/api/standings').then(r => r.json())
+    fetch('/api/standings').then(r => r.json()),
+    fetch('/api/schedule').then(r => r.json()).catch(() => [])
   ]);
 
   standings = standingsRes;
-  games = sweepRes.games || [];
+  // Merge: today's games from sweep + upcoming from schedule
+  const todayGames = sweepRes.games || [];
+  const upcoming = scheduleRes || [];
+  // Deduplicate by game name
+  const seen = new Set(todayGames.map(g => g.shortName || g.name));
+  games = [...todayGames, ...upcoming.filter(g => !seen.has(g.name))];
 
   // Try to get real odds
   try {
@@ -244,6 +250,29 @@ async function init() {
   renderSeeds('east');
   renderSeeds('west');
 }
+
+// Auto-refresh every 60 seconds for live scores
+setInterval(async () => {
+  try {
+    const [sweepRes, standingsRes] = await Promise.all([
+      fetch('/api/sweep').then(r => r.json()),
+      fetch('/api/standings').then(r => r.json())
+    ]);
+    standings = standingsRes;
+    const todayGames = sweepRes.games || [];
+    // Update today's games in the list
+    for (const tg of todayGames) {
+      const idx = games.findIndex(g => (g.shortName || g.name) === (tg.shortName || tg.name));
+      if (idx >= 0) games[idx] = tg;
+      else games.unshift(tg);
+    }
+    renderPlayIn();
+    renderBrackets();
+    renderGames();
+    renderSeeds('east');
+    renderSeeds('west');
+  } catch {}
+}, 60000);
 
 function getTeamByRank(conf, rank) {
   const teams = standings[conf] || [];
@@ -458,30 +487,42 @@ function renderBrackets() {
 
 function renderGames() {
   const el = $('games-body');
-  // Merge sweep games + check for playoff/playin games in upcoming days
-  const playoffGames = games.filter(g => true); // all current games
+  // Sort: live first, then scheduled by date, then final
+  const sorted = [...games].sort((a, b) => {
+    const order = { 'In Progress': 0, 'Halftime': 0, 'Scheduled': 1, 'Final': 2 };
+    const oa = order[a.status] ?? 1;
+    const ob = order[b.status] ?? 1;
+    if (oa !== ob) return oa - ob;
+    return new Date(a.date) - new Date(b.date);
+  });
 
-  $('game-count').textContent = playoffGames.length;
+  $('game-count').textContent = sorted.length;
 
-  if (!playoffGames.length) {
-    el.innerHTML = '<div style="color:var(--dim);text-align:center;padding:12px;">No games today. Play-in starts Apr 14-15.</div>';
+  if (!sorted.length) {
+    el.innerHTML = '<div style="color:var(--dim);text-align:center;padding:12px;">No upcoming games.</div>';
     return;
   }
 
-  el.innerHTML = playoffGames.map(g => {
-    const isLive = g.status === 'In Progress';
+  el.innerHTML = sorted.map(g => {
+    const isLive = g.status === 'In Progress' || g.status === 'Halftime';
     const isFinal = g.status === 'Final';
     const statusCls = isLive ? 'live' : isFinal ? 'final' : 'sched';
     const time = new Date(g.date).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
     const odds = g.odds;
+    const note = g.note || '';
+    const isTBD = (g.away?.abbr === 'TBD' || g.home?.abbr === 'TBD');
+    const awayAbbr = g.away?.abbr || 'TBD';
+    const homeAbbr = g.home?.abbr || 'TBD';
+    const scoreHtml = (isLive || isFinal) && g.away?.score && g.home?.score
+      ? `<span style="font-weight:700;${isLive?'color:var(--green)':''}">${g.away.score}-${g.home.score}</span>` : '';
 
     return `
-      <div class="game-row">
-        <span class="game-matchup">${g.away.abbr} @ ${g.home.abbr}</span>
-        <span class="game-status ${statusCls}">${isLive ? `Q${g.period} ${g.clock}` : g.status}</span>
+      <div class="game-row" ${!isTBD ? `onclick="window.location.href='/matchup.html?a=${awayAbbr}&b=${homeAbbr}'" style="cursor:pointer;"` : ''}>
+        <span class="game-matchup">${awayAbbr} @ ${homeAbbr}</span>
+        <span class="game-status ${statusCls}">${isLive ? `Q${g.period || '?'} ${g.clock || ''}` : g.status} ${scoreHtml}</span>
         <span class="game-time">${time}</span>
         <span class="game-spread">${odds ? odds.spread : ''}</span>
-        <span class="game-note">${g.broadcast || ''} ${odds ? `O/U ${odds.overUnder}` : ''}</span>
+        <span class="game-note">${note}${odds ? ` O/U ${odds.overUnder}` : ''}</span>
       </div>`;
   }).join('');
 }
