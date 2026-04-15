@@ -769,14 +769,18 @@ app.get('/api/players/:id/gamelog', async (req, res) => {
       if (kurtosis > 1) shape += ', heavy-tailed';
       else if (kurtosis < -1) shape += ', light-tailed';
 
-      // Histogram bins (8 bins)
-      const binCount = 8;
-      const binWidth = (max - min) / binCount || 1;
+      // Histogram bins — use integer bins for counting stats
+      const intMin = Math.floor(min);
+      const intMax = Math.ceil(max);
+      const range = intMax - intMin;
+      // For stats with small range (0-5), use 1-wide bins. Otherwise group.
+      const binWidth = range <= 10 ? 1 : range <= 20 ? 2 : Math.ceil(range / 10);
+      const binCount = Math.min(Math.ceil(range / binWidth) || 1, 15);
       const bins = Array(binCount).fill(0);
       const binEdges = [];
-      for (let i = 0; i <= binCount; i++) binEdges.push(+(min + i * binWidth).toFixed(1));
+      for (let i = 0; i <= binCount; i++) binEdges.push(intMin + i * binWidth);
       for (const v of values) {
-        const idx = Math.min(Math.floor((v - min) / binWidth), binCount - 1);
+        const idx = Math.min(Math.floor((v - intMin) / binWidth), binCount - 1);
         bins[idx]++;
       }
 
@@ -794,7 +798,11 @@ app.get('/api/players/:id/gamelog', async (req, res) => {
       const trendPct = mean !== 0 ? (trend / mean * 100) : 0;
 
       // Over/under analysis at common lines
-      const lines = [0.5, mean - 0.5, mean, mean + 0.5].filter(l => l >= 0);
+      // Generate O/U lines at standard half-integers around the mean
+      const baseLine = Math.floor(mean) + 0.5; // e.g. mean=7.1 → 7.5, mean=3.75 → 3.5
+      const lines = [
+        baseLine - 2, baseLine - 1, baseLine, baseLine + 1, baseLine + 2
+      ].filter(l => l >= 0.5);
       const overUnder = lines.map(line => ({
         line: +line.toFixed(1),
         over: values.filter(v => v > line).length,
@@ -844,14 +852,13 @@ app.get('/api/players/:id/gamelog', async (req, res) => {
         else poissonFit = 'Poor';
       }
 
-      // Poisson probabilities for over/under at key lines
+      // Poisson probabilities at standard half-integer lines (0.5, 1.5, 2.5...)
       const poissonOU = [];
       if (isCountData && mean > 0) {
+        const base = Math.floor(mean) + 0.5;
         const checkLines = [
-          Math.floor(mean) - 2, Math.floor(mean) - 1, Math.floor(mean),
-          Math.ceil(mean), Math.ceil(mean) + 1, Math.ceil(mean) + 2,
-          Math.round(mean * 2) / 2 // common half-line
-        ].filter(l => l >= 0);
+          base - 2, base - 1, base, base + 1, base + 2
+        ].filter(l => l >= 0.5);
         const uniqueLines = [...new Set(checkLines)].sort((a, b) => a - b);
         for (const line of uniqueLines) {
           const overProb = +(1 - poissonCdf(line, lambda)).toFixed(4);
