@@ -1888,6 +1888,179 @@ async function sweepLoop() {
   }
 }
 
+// === Auto-Resolver — runs every 5 min, grades ALL users' slips ===
+async function autoResolve() {
+  try {
+    const activeSlips = await store.getSlips({ status: 'active', limit: 200 });
+    if (!activeSlips.length) return;
+
+    console.log(`[AUTO-RESOLVE] Checking ${activeSlips.length} active slips...`);
+
+    // Fetch finished NBA games (last 3 days)
+    const scheduleRes = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + getDateRange(), {
+      headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000)
+    });
+    const schedData = await scheduleRes.json();
+    const finishedGames = (schedData.events || []).filter(e =>
+      e.competitions?.[0]?.status?.type?.description === 'Final'
+    );
+
+    // Fetch box scores
+    const boxScores = {};
+    for (const event of finishedGames) {
+      try {
+        const bsRes = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${event.id}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000)
+        });
+        const bsData = await bsRes.json();
+        const players = {};
+        for (const team of bsData.boxscore?.players || []) {
+          for (const sg of team.statistics || []) {
+            const labels = sg.labels || [];
+            for (const a of sg.athletes || []) {
+              const name = a.athlete?.displayName || '';
+              const stats = {};
+              labels.forEach((l, i) => { stats[l] = a.stats?.[i] || '0'; });
+              const parseFG = (v) => { const p = (v || '0-0').split('-'); return { made: parseInt(p[0]) || 0, att: parseInt(p[1]) || 0 }; };
+              stats._PTS = parseInt(stats.PTS || '0');
+              stats._REB = parseInt(stats.REB || '0');
+              stats._AST = parseInt(stats.AST || '0');
+              stats._TO = parseInt(stats.TO || '0');
+              stats._STL = parseInt(stats.STL || '0');
+              stats._BLK = parseInt(stats.BLK || '0');
+              stats._3PM = parseFG(stats['3PT']).made;
+              stats._FGM = parseFG(stats.FG).made;
+              stats._FGA = parseFG(stats.FG).att;
+              stats._FTM = parseFG(stats.FT).made;
+              stats._MIN = parseInt(stats.MIN || '0');
+              stats._PRA = stats._PTS + stats._REB + stats._AST;
+              const ddCats = [stats._PTS, stats._REB, stats._AST, stats._STL, stats._BLK].filter(v => v >= 10).length;
+              stats._DD = ddCats >= 2;
+              stats._TD = ddCats >= 3;
+              players[name.toLowerCase()] = stats;
+            }
+          }
+        }
+        const comp = event.competitions?.[0];
+        const teams = comp?.competitors || [];
+        const away = teams.find(t => t.homeAway === 'away')?.team?.abbreviation || '';
+        const home = teams.find(t => t.homeAway === 'home')?.team?.abbreviation || '';
+        const keys = [
+          `${away} @ ${home}`, `${away} vs ${home}`, `${home} vs ${away}`,
+          `${away}@${home}`, `${away}_${home}`, `${home}_${away}`
+        ];
+        for (const k of keys) boxScores[k.toLowerCase()] = players;
+        boxScores[event.id] = players;
+      } catch {}
+    }
+
+    if (!Object.keys(boxScores).length) return;
+
+    // Resolve slips
+    let resolved = 0;
+    const allBoxKeys = Object.keys(boxScores);
+
+    function findBoxScore(game, gameId) {
+      if (gameId && gameId !== 'undefined' && boxScores[gameId]) return boxScores[gameId];
+      const g = (game || '').toLowerCase().replace(/\s+/g, ' ');
+      if (boxScores[g]) return boxScores[g];
+      const flipped = g.replace(' vs ', ' @ ').replace(' @ ', ' vs ');
+      if (boxScores[flipped]) return boxScores[flipped];
+      const parts = g.split(/\s+(?:@|vs|v)\s+/);
+      if (parts.length === 2) {
+        for (const k of allBoxKeys) {
+          const a = parts[0].trim().split(' ').pop();
+          const b = parts[1].trim().split(' ').pop();
+          if (a && b && k.includes(a) && k.includes(b)) return boxScores[k];
+        }
+      }
+      return null;
+    }
+
+    function findPlayer(players, name) {
+      if (!players || !name) return null;
+      const n = name.toLowerCase();
+      if (players[n]) return players[n];
+      const lastName = n.split(' ').pop();
+      for (const [k, v] of Object.entries(players)) {
+        if (k.includes(lastName) || (lastName.length > 3 && k.split(' ').pop() === lastName)) return v;
+      }
+      return null;
+    }
+
+    for (const slip of activeSlips) {
+      const legResults = [];
+      let anyFromFinished = false;
+
+      for (const leg of slip.legs) {
+        const players = findBoxScore(leg.game, leg.gameId);
+
+        if (leg.stat === 'SPREAD' || leg.stat === 'ML' || leg.stat === 'TOTAL') {
+          legResults.push('pending');
+          continue;
+        }
+
+        if (!players) { legResults.push('pending'); continue; }
+        anyFromFinished = true;
+
+        const pStats = findPlayer(players, leg.player);
+        if (!pStats) { legResults.push('lost'); continue; }
+
+        const statMap = { 'PTS':'_PTS','REB':'_REB','AST':'_AST','TO':'_TO','STL':'_STL','BLK':'_BLK',
+          '3PM':'_3PM','FGM':'_FGM','FGA':'_FGA','FTM':'_FTM','PRA':'_PRA','MIN':'_MIN' };
+        const pick = (leg.pick || '').toLowerCase();
+        let result = 'pending';
+
+        if (leg.stat === 'Double-Double') {
+          result = (pick.includes('over') || pick.includes('yes')) ? (pStats._DD ? 'won' : 'lost') : (!pStats._DD ? 'won' : 'lost');
+        } else if (leg.stat === 'Triple-Double') {
+          result = (pick.includes('over') || pick.includes('yes')) ? (pStats._TD ? 'won' : 'lost') : (!pStats._TD ? 'won' : 'lost');
+        } else {
+          const actual = statMap[leg.stat] ? pStats[statMap[leg.stat]] : null;
+          if (actual !== null && actual !== undefined) {
+            const line = parseFloat(leg.line) || 0;
+            if (pick.includes('over') || pick.includes('yes')) {
+              result = actual > line ? 'won' : actual === line ? 'push' : 'lost';
+            } else {
+              result = actual < line ? 'won' : actual === line ? 'push' : 'lost';
+            }
+          }
+        }
+        legResults.push(result);
+      }
+
+      const noPending = legResults.every(r => r !== 'pending');
+      if (noPending && anyFromFinished) {
+        const gradeResult = await store.gradeSlip(slip.id, legResults);
+        if (!gradeResult.error) {
+          resolved++;
+          const status = gradeResult.slip?.status;
+          console.log(`[AUTO-RESOLVE] ${slip.id} ${slip.user} -> ${status} (${legResults.join(',')})`);
+          broadcast({ type: 'slip_graded', slip: gradeResult.slip });
+        }
+      }
+    }
+
+    if (resolved > 0) console.log(`[AUTO-RESOLVE] Resolved ${resolved} slips`);
+  } catch (e) {
+    console.error('[AUTO-RESOLVE]', e.message);
+  }
+}
+
+// Admin resolve endpoint — no auth required, resolves ALL slips
+app.post('/api/admin/resolve', async (req, res) => {
+  try {
+    await autoResolve();
+    const slips = await store.getSlips({ limit: 200 });
+    const active = slips.filter(s => s.status === 'active').length;
+    const won = slips.filter(s => s.status === 'won').length;
+    const lost = slips.filter(s => s.status === 'lost').length;
+    res.json({ message: 'Auto-resolve complete', active, won, lost, total: slips.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Export for Vercel serverless
 export default app;
 
@@ -1906,5 +2079,10 @@ if (!process.env.VERCEL) {
 
     await sweepLoop();
     setInterval(sweepLoop, 60_000);
+
+    // Auto-resolve slips every 5 minutes
+    setTimeout(autoResolve, 30_000); // first run 30s after start
+    setInterval(autoResolve, 5 * 60_000);
+    console.log('  Auto-resolver: every 5 min');
   });
 }
