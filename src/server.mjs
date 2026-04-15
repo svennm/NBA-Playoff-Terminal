@@ -229,6 +229,29 @@ app.get('/api/players/:id', async (req, res) => {
       }
     }
 
+    // Fallback: estimate FGM/FGA from overview stats if gamelog didn't provide them
+    if (data.season && !data.season.fgm) {
+      const s = data.season;
+      const gp = parseFloat(s.gamesPlayed) || 1;
+      const pts = parseFloat(s.avgPoints) || 0;
+      const fgPct = parseFloat(s.fieldGoalPct) / 100 || 0.45;
+      const tpPct = parseFloat(s.threePointPct) / 100 || 0.35;
+      const ftPct = parseFloat(s.freeThrowPct) / 100 || 0.75;
+      // Estimate: PTS = 2*FGM + 3PM + FTM, with FG% and 3P%
+      // Rough: assume ~30% of FGA are 3PA
+      const estFGA = pts / (2 * fgPct + 0.3 * tpPct);
+      const estFGM = estFGA * fgPct;
+      const est3PA = estFGA * 0.3;
+      const est3PM = est3PA * tpPct;
+      s.fgm = s.fgm || estFGM.toFixed(1);
+      s.fga = s.fga || estFGA.toFixed(1);
+      s.tpm = s.tpm || est3PM.toFixed(1);
+      s.tpa = s.tpa || est3PA.toFixed(1);
+      s.ftm = s.ftm || (pts - 2 * estFGM - est3PM > 0 ? ((pts - 2 * estFGM - est3PM) / ftPct * ftPct).toFixed(1) : '0');
+      s.fta = s.fta || (parseFloat(s.ftm || 0) / ftPct).toFixed(1);
+      s._estimated = true;
+    }
+
     cache.set(cacheKey, data, TTL.PLAYER_STATS);
     res.json(data);
   } catch (e) {
