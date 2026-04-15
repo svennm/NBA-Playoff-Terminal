@@ -635,15 +635,17 @@ async function loadGameProps() {
     </div>
     ${gameHtml}${propsHtml}`;
 
-  // Populate player selector
+  // Hide the grid by default — player selector is the primary UI
+  area.style.display = 'none';
+
+  // Populate player selector — clean names only, no stat info
   loadedProps = data;
   const ps = $('player-pick');
   const allPlayers = data.playerProps || [];
   ps.innerHTML = '<option value="">-- Select Player --</option>' +
     allPlayers.map((p, i) => {
-      const topStat = p.lines?.[0];
-      const info = topStat ? ` (${topStat.stat} ${topStat.overOdds > 0 ? '+' : ''}${topStat.overOdds})` : '';
-      return `<option value="${i}">${p.name}${p.team ? ' ['+p.team+']' : ''}${info}</option>`;
+      const team = p.team ? ` [${p.team}]` : '';
+      return `<option value="${i}">${p.name}${team}</option>`;
     }).join('');
 
   // Populate stat filter from all available stats
@@ -654,22 +656,22 @@ async function loadGameProps() {
 
   $('player-selector').style.display = '';
   $('player-detail').style.display = 'none';
-  viewMode = 'grid';
-  $('view-toggle').textContent = 'Player View';
+  viewMode = 'player';
+  $('view-toggle').textContent = 'Show All Lines';
 }
 
 // === Player/Stat Selector ===
 function toggleView() {
-  if (viewMode === 'grid') {
-    viewMode = 'player';
-    $('view-toggle').textContent = 'Grid View';
-    $('props-area').style.display = 'none';
-    showPlayerStats();
-  } else {
+  if (viewMode === 'player') {
     viewMode = 'grid';
-    $('view-toggle').textContent = 'Player View';
+    $('view-toggle').textContent = 'Hide All Lines';
     $('props-area').style.display = '';
     $('player-detail').style.display = 'none';
+  } else {
+    viewMode = 'player';
+    $('view-toggle').textContent = 'Show All Lines';
+    $('props-area').style.display = 'none';
+    showPlayerStats();
   }
 }
 
