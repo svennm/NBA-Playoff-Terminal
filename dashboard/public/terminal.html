@@ -92,6 +92,16 @@
     align-items: center;
     gap: 20px;
   }
+  .hamburger{display:none;background:none;border:1px solid var(--border);color:var(--dim);font-size:20px;padding:4px 8px;border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  .hamburger:hover{color:var(--cyan);border-color:var(--border-glow);}
+  @media(max-width:768px){
+    .hamburger{display:block;}
+    .header-right{display:none;position:absolute;top:100%;right:0;left:0;background:var(--panel);border-bottom:1px solid var(--border-glow);padding:10px 16px;flex-direction:column;gap:6px;z-index:99;}
+    .header-right.open{display:flex;}
+    .header-right a{width:100%;text-align:center;padding:8px 10px;}
+    .header-right span{text-align:center;padding:4px 0;}
+    .header{position:sticky;top:0;z-index:100;flex-wrap:wrap;}
+  }
 
   .status-dot {
     width: 8px; height: 8px;
@@ -181,6 +191,12 @@
   .panel-body::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
 
   /* Game Cards */
+  .game-section-label{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:8px 10px 4px;display:flex;align-items:center;gap:6px;}
+  .game-section-label .dot{width:6px;height:6px;border-radius:50%;}
+  .game-section-label.live-label{color:var(--green);}.game-section-label.live-label .dot{background:var(--green);animation:pulse 1.5s infinite;}
+  .game-section-label.upcoming-label{color:var(--amber);}.game-section-label.upcoming-label .dot{background:var(--amber);}
+  .game-section-label.final-label{color:var(--dim);}.game-section-label.final-label .dot{background:var(--dim);}
+
   .game-card {
     background: rgba(0,0,0,0.3);
     border: 1px solid var(--border);
@@ -191,9 +207,10 @@
   }
 
   .game-card:hover { border-color: var(--cyan); }
-  .game-card.live { border-left: 3px solid var(--green); }
-  .game-card.final { border-left: 3px solid var(--dim); }
-  .game-card.upcoming { border-left: 3px solid var(--amber); }
+  .game-card.live { border-left: 3px solid var(--green); background:rgba(0,255,136,0.02); }
+  .game-card.final { border-left: 3px solid var(--dim); opacity:0.7; }
+  .game-card.final:hover { opacity:1; }
+  .game-card.upcoming { border-left: 3px solid var(--amber); background:rgba(255,179,0,0.02); }
 
   .game-teams {
     display: flex;
@@ -241,19 +258,33 @@
 
   .game-status {
     font-size: 10px;
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 600;
+    letter-spacing: 1px;
     text-align: center;
-    padding: 4px;
-    border-radius: 2px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    margin-bottom: 6px;
   }
 
   .game-status.live-status {
     color: var(--green);
-    background: rgba(0,255,136,0.1);
+    background: rgba(0,255,136,0.12);
+    border: 1px solid rgba(0,255,136,0.2);
     animation: pulse 1.5s infinite;
   }
 
-  .game-status.final-status { color: var(--dim); }
-  .game-status.upcoming-status { color: var(--amber); }
+  .game-status.final-status {
+    color: var(--dim);
+    background: rgba(74,85,104,0.1);
+    font-weight: 400;
+  }
+
+  .game-status.upcoming-status {
+    color: var(--amber);
+    background: rgba(255,179,0,0.08);
+    border: 1px solid rgba(255,179,0,0.15);
+  }
 
   .game-odds {
     display: flex;
@@ -613,10 +644,11 @@
 <body>
 
 <div class="header">
-  <div class="header-left">
+  <div class="header-left" style="display:flex;align-items:center;gap:12px;">
     <div>
       <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div>
     </div>
+    <button class="hamburger" onclick="document.querySelector('.header-right').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
   </div>
   <div class="header-right" style="flex-wrap:wrap;">
     <a href="/" style="color:var(--dim);text-decoration:none;font-size:11px;font-weight:600;font-family:'Orbitron',sans-serif;letter-spacing:1px;padding:5px 10px;border:1px solid var(--border);border-radius:3px;">Home</a>
@@ -799,18 +831,30 @@ function renderGames(games) {
     return;
   }
 
-  el.innerHTML = games.map(g => {
+  // Group: live first, upcoming second, final last
+  const live = games.filter(g => g.status === 'In Progress');
+  const upcoming = games.filter(g => g.status !== 'In Progress' && g.status !== 'Final');
+  const final = games.filter(g => g.status === 'Final');
+
+  const renderCard = (g) => {
     const isLive = g.status === 'In Progress';
     const isFinal = g.status === 'Final';
     const cls = isLive ? 'live' : isFinal ? 'final' : 'upcoming';
     const statusCls = isLive ? 'live-status' : isFinal ? 'final-status' : 'upcoming-status';
 
     let statusText = g.status;
-    if (isLive) statusText = `Q${g.period} ${g.clock}`;
+    if (isLive) statusText = `LIVE \u2022 Q${g.period} ${g.clock}`;
+    if (isFinal) statusText = 'FINAL';
     if (!isLive && !isFinal) {
       const d = new Date(g.date);
       statusText = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
+
+    // Winner highlight for final games
+    const awayWon = isFinal && parseInt(g.away.score) > parseInt(g.home.score);
+    const homeWon = isFinal && parseInt(g.home.score) > parseInt(g.away.score);
+    const awayScoreStyle = awayWon ? 'color:var(--green);' : isFinal && homeWon ? 'opacity:0.5;' : '';
+    const homeScoreStyle = homeWon ? 'color:var(--green);' : isFinal && awayWon ? 'opacity:0.5;' : '';
 
     const oddsHtml = g.odds ? `
       <div class="game-odds">
@@ -837,7 +881,7 @@ function renderGames(games) {
               <div class="team-record">${g.away.record}</div>
             </div>
           </div>
-          <div class="team-score">${g.away.score}</div>
+          <div class="team-score" style="${awayScoreStyle}">${g.away.score}</div>
         </div>
         <div class="game-teams">
           <div class="team-line">
@@ -847,13 +891,28 @@ function renderGames(games) {
               <div class="team-record">${g.home.record}</div>
             </div>
           </div>
-          <div class="team-score">${g.home.score}</div>
+          <div class="team-score" style="${homeScoreStyle}">${g.home.score}</div>
         </div>
         ${oddsHtml}
         ${leadersHtml}
         ${broadcastHtml}
       </div>`;
-  }).join('');
+  };
+
+  let html = '';
+  if (live.length) {
+    html += '<div class="game-section-label live-label"><span class="dot"></span>LIVE NOW</div>';
+    html += live.map(renderCard).join('');
+  }
+  if (upcoming.length) {
+    html += '<div class="game-section-label upcoming-label"><span class="dot"></span>UPCOMING</div>';
+    html += upcoming.map(renderCard).join('');
+  }
+  if (final.length) {
+    html += '<div class="game-section-label final-label"><span class="dot"></span>COMPLETED</div>';
+    html += final.map(renderCard).join('');
+  }
+  el.innerHTML = html;
 }
 
 function renderStandings(standings) {

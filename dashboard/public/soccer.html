@@ -17,6 +17,16 @@
   .nav-links a{color:var(--dim);text-decoration:none;font-size:11px;font-weight:600;font-family:'Orbitron',sans-serif;letter-spacing:1px;text-transform:uppercase;padding:4px 8px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
   .nav-links a:hover,.nav-links a.active{color:var(--cyan);border-color:var(--border-glow);background:rgba(0,229,255,0.05);}
   .nav-links .sport-divider{color:var(--dim);font-size:11px;font-weight:700;display:flex;align-items:center;}
+  .hamburger{display:none;background:none;border:1px solid var(--border);color:var(--dim);font-size:20px;padding:4px 8px;border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  .hamburger:hover{color:var(--cyan);border-color:var(--border-glow);}
+  @media(max-width:768px){
+    .hamburger{display:block;}
+    .nav-links{display:none;position:absolute;top:100%;right:0;left:0;background:var(--panel);border-bottom:1px solid var(--border-glow);padding:10px 16px;flex-direction:column;gap:6px;z-index:99;}
+    .nav-links.open{display:flex;}
+    .nav-links a{width:100%;text-align:center;padding:8px 10px;}
+    .nav-links span{text-align:center;padding:4px 0;}
+    .header{position:sticky;top:0;z-index:100;flex-wrap:wrap;}
+  }
 
   .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:2px;max-width:1800px;margin:0 auto;}
   .grid .full-width{grid-column:1/-1;}
@@ -30,11 +40,19 @@
   .panel-body::-webkit-scrollbar{width:4px;}
   .panel-body::-webkit-scrollbar-thumb{background:var(--border-glow);border-radius:2px;}
 
-  .match-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px;transition:border-color .2s;cursor:pointer;}
+  .game-section-label{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:8px 10px 4px;display:flex;align-items:center;gap:6px;}
+  .game-section-label .dot{width:6px;height:6px;border-radius:50%;}
+  .game-section-label.live-label{color:var(--green);}.game-section-label.live-label .dot{background:var(--green);animation:pulse 1.5s infinite;}
+  .game-section-label.upcoming-label{color:var(--amber);}.game-section-label.upcoming-label .dot{background:var(--amber);}
+  .game-section-label.final-label{color:var(--dim);}.game-section-label.final-label .dot{background:var(--dim);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+  .match-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px;transition:all .2s;cursor:pointer;}
   .match-card:hover{border-color:var(--cyan);}
-  .match-card.live{border-left:3px solid var(--green);}
-  .match-card.final{border-left:3px solid var(--dim);}
-  .match-card.upcoming{border-left:3px solid var(--amber);}
+  .match-card.live{border-left:3px solid var(--green);background:rgba(0,255,136,0.02);}
+  .match-card.final{border-left:3px solid var(--dim);opacity:0.7;}
+  .match-card.final:hover{opacity:1;}
+  .match-card.upcoming{border-left:3px solid var(--amber);background:rgba(255,179,0,0.02);}
   .match-teams{display:flex;justify-content:space-between;align-items:center;gap:8px;}
   .match-team{display:flex;align-items:center;gap:6px;flex:1;}
   .match-team.away{justify-content:flex-end;text-align:right;}
@@ -82,8 +100,11 @@
 </head>
 <body>
 <div class="header">
-  <div>
-    <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div>
+      <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div>
+    </div>
+    <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
   </div>
   <div class="nav-links">
     <a href="/" style="color:var(--dim);text-decoration:none;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;">Home</a>
@@ -177,7 +198,13 @@ async function loadMatches() {
       $('matches').innerHTML = '<div style="color:var(--dim);text-align:center;padding:20px;">No matches scheduled. Check back on match days.</div>';
       return;
     }
-    $('matches').innerHTML = games.map(g => {
+
+    // Group: live first, upcoming second, final last
+    const live = games.filter(g => g.status === 'In Progress');
+    const upcoming = games.filter(g => g.status !== 'In Progress' && g.status !== 'Final');
+    const final = games.filter(g => g.status === 'Final');
+
+    const renderCard = (g) => {
       const isLive = g.status === 'In Progress';
       const isFinal = g.status === 'Final';
       const cls = isLive ? 'live' : isFinal ? 'final' : 'upcoming';
@@ -189,8 +216,10 @@ async function loadMatches() {
         scoreHtml = `<span class="vs">${t}</span>`;
       }
       const oddsHtml = g.odds ? `<div class="match-odds"><span>${g.odds.spread}</span><span>O/U ${g.odds.overUnder}</span><span>${g.odds.provider}</span></div>` : '';
+      const statusLabel = isLive ? `<div style="text-align:center;font-size:9px;font-family:'Orbitron',sans-serif;color:var(--green);letter-spacing:1px;margin-bottom:4px;animation:pulse 1.5s infinite;">LIVE \u2022 ${g.clock}</div>` : '';
       return `
         <div class="match-card ${cls}" onclick="window.location.href='/matchup.html?a=${g.away.abbr}&b=${g.home.abbr}&sport=soccer'">
+          ${statusLabel}
           <div class="match-teams">
             <div class="match-team">
               <img src="${g.away.logo}" alt="" onerror="this.style.display='none'">
@@ -206,11 +235,26 @@ async function loadMatches() {
           <div class="match-meta">
             <span>${g.venue}</span>
             <span>${g.broadcast}</span>
-            <span style="color:${isLive?'var(--green)':isFinal?'var(--dim)':'var(--amber)'};">${isLive?'LIVE '+g.clock:g.status}</span>
+            <span style="color:${isLive?'var(--green)':isFinal?'var(--dim)':'var(--amber)'};">${isLive?'':isFinal?'FINAL':g.status}</span>
           </div>
           ${oddsHtml}
         </div>`;
-    }).join('');
+    };
+
+    let html = '';
+    if (live.length) {
+      html += '<div class="game-section-label live-label"><span class="dot"></span>LIVE NOW</div>';
+      html += live.map(renderCard).join('');
+    }
+    if (upcoming.length) {
+      html += '<div class="game-section-label upcoming-label"><span class="dot"></span>UPCOMING</div>';
+      html += upcoming.map(renderCard).join('');
+    }
+    if (final.length) {
+      html += '<div class="game-section-label final-label"><span class="dot"></span>COMPLETED</div>';
+      html += final.map(renderCard).join('');
+    }
+    $('matches').innerHTML = html;
   } catch { $('matches').innerHTML = '<div style="color:var(--red);">Failed to load</div>'; }
 }
 
