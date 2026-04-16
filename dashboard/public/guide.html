@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to Use — HunterxMafia</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root{--bg:#030508;--panel:#0a0e14;--border:#1a2a3a;--border-glow:#3a2a0f;--gold:#d4a825;--gold2:#f5d442;--cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--red:#ff3d3d;--text:#c8d6e5;--dim:#4a5568;--purple:#9b59b6;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;line-height:1.7;min-height:100vh;}
+  body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(212,168,37,0.01) 2px,rgba(212,168,37,0.01) 4px);pointer-events:none;z-index:9999;}
+
+  .header{background:linear-gradient(180deg,#0a1520,var(--bg));border-bottom:1px solid var(--border-glow);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+  .logo{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .back{color:var(--dim);text-decoration:none;font-size:11px;font-family:'Orbitron',sans-serif;letter-spacing:2px;padding:5px 12px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
+  .back:hover{color:var(--gold);border-color:var(--gold);}
+
+  .content{max-width:800px;margin:0 auto;padding:30px 20px;}
+  h1{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;letter-spacing:4px;color:var(--gold);margin-bottom:8px;}
+  h2{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:var(--cyan);margin:30px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+  h3{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:600;letter-spacing:2px;color:var(--amber);margin:20px 0 8px;}
+  p{margin-bottom:12px;color:var(--text);}
+  .dim{color:var(--dim);}
+  .highlight{color:var(--cyan);font-weight:600;}
+  .gold{color:var(--gold);font-weight:600;}
+  .green{color:var(--green);font-weight:600;}
+  .amber{color:var(--amber);font-weight:600;}
+  .red{color:var(--red);font-weight:600;}
+  .purple{color:var(--purple);font-weight:600;}
+
+  .step{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin-bottom:16px;position:relative;border-left:3px solid var(--gold);}
+  .step:hover{border-color:var(--border-glow);}
+  .step-num{position:absolute;top:-10px;left:-10px;width:28px;height:28px;background:var(--gold);color:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-size:12px;font-weight:900;}
+  .step-title{font-weight:700;font-size:14px;margin-bottom:6px;color:var(--text);}
+
+  .feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;}
+  .feature{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}
+  .feature .icon{font-size:28px;margin-bottom:6px;}
+  .feature .name{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:var(--cyan);margin-bottom:4px;}
+  .feature .desc{font-size:11px;color:var(--dim);line-height:1.4;}
+
+  .tip{background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.2);border-radius:6px;padding:12px 16px;margin:12px 0;font-size:12px;}
+  .tip::before{content:'TIP';font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:var(--cyan);letter-spacing:2px;display:block;margin-bottom:4px;}
+
+  .warning{background:rgba(255,179,0,0.05);border:1px solid rgba(255,179,0,0.2);border-radius:6px;padding:12px 16px;margin:12px 0;font-size:12px;}
+  .warning::before{content:'NOTE';font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:var(--amber);letter-spacing:2px;display:block;margin-bottom:4px;}
+
+  .path{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:12px;flex-wrap:wrap;}
+  .path span{background:rgba(0,229,255,0.08);color:var(--cyan);padding:3px 8px;border-radius:3px;font-size:11px;}
+  .path .arrow{color:var(--dim);font-size:14px;}
+
+  .key-bind{display:inline-block;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:11px;color:var(--text);}
+
+  .stat-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:11px;}
+  .stat-table th{text-align:left;padding:6px 8px;color:var(--cyan);font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:1px;border-bottom:1px solid var(--border);}
+  .stat-table td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.03);}
+
+  .toc{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin-bottom:24px;}
+  .toc a{color:var(--cyan);text-decoration:none;display:block;padding:4px 0;font-size:12px;}
+  .toc a:hover{color:var(--gold);}
+
+  @media(max-width:600px){.feature-grid{grid-template-columns:1fr;}.content{padding:20px 12px;}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">HxM Guide</div>
+  <a href="/" class="back">Home</a>
+</div>
+
+<div class="content">
+
+<h1>How to Use HunterxMafia</h1>
+<p class="dim">Your crew's distributed betting platform — NBA + Champions League with real book lines, Poisson modeling, and fake-money parlays.</p>
+
+<div class="toc">
+  <div style="font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:8px;">TABLE OF CONTENTS</div>
+  <a href="#getting-started">1. Getting Started</a>
+  <a href="#making-slips">2. Making Betting Slips</a>
+  <a href="#reading-stats">3. Reading Player Stats & Distributions</a>
+  <a href="#understanding-odds">4. Understanding Odds & Implied Probability</a>
+  <a href="#matchup-analysis">5. Matchup Analysis</a>
+  <a href="#line-analysis">6. Line Analysis & Edge Finding</a>
+  <a href="#in-house-book">7. In-House Bookmaker</a>
+  <a href="#resolving-bets">8. How Bets Get Resolved</a>
+  <a href="#leaderboard">9. Leaderboard & History</a>
+  <a href="#themes">10. Themes & Settings</a>
+</div>
+
+<!-- 1. GETTING STARTED -->
+<h2 id="getting-started">1. Getting Started</h2>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-title">Create Your Account</div>
+  <p>Go to <span class="highlight">Slips</span> page. You'll see a login screen. Pick a <span class="gold">username</span> and <span class="gold">password</span> (4+ characters). Click <span class="green">SIGN UP</span>.</p>
+  <p>You start with <span class="amber">$1,000</span> fake bankroll. Your session stays logged in across browser restarts.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-title">Pick Your Sport</div>
+  <p>From the home page, click <span class="amber">NBA</span> or <span class="highlight">UCL</span> to go to that sport's live scores. You can also use the top navigation bar on any page — it shows both sports.</p>
+  <div class="path">
+    <span>Home</span><span class="arrow">→</span>
+    <span>NBA Scores</span><span class="arrow">or</span>
+    <span>UCL Scores</span>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-title">Explore a Game</div>
+  <p><span class="highlight">Click any game card</span> on the scores page to open the full matchup breakdown with team stats, rosters, player comparisons, and injury reports.</p>
+</div>
+
+<!-- 2. MAKING SLIPS -->
+<h2 id="making-slips">2. Making Betting Slips</h2>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-title">Go to Slips Page</div>
+  <p>Click <span class="highlight">Slips</span> in the nav bar. Toggle between <span class="amber">NBA</span> and <span class="highlight">UCL</span> at the top.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-title">Select a Game</div>
+  <p>Pick an upcoming game from the dropdown. Only <span class="green">scheduled</span> and <span class="green">live</span> games show — finished games are filtered out. Games show the day, time, and spread/total if available.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-title">Select a Player</div>
+  <p>Use the <span class="highlight">player dropdown</span> to pick a player. Their available betting lines appear below — grouped by stat with the primary line shown and alternate lines in a dropdown.</p>
+  <p>Click <span class="purple">Analysis</span> to see their full statistical breakdown (distributions, Poisson model, trends) without leaving the page.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">4</div>
+  <div class="step-title">Add Legs to Your Slip</div>
+  <p>Click <span class="green">Over</span> or <span class="red">Under</span> on any line to add it to your slip. Each button shows:</p>
+  <table class="stat-table">
+    <tr><td class="highlight">Line</td><td>The threshold (e.g. Over 22.5 points)</td></tr>
+    <tr><td class="amber">Odds</td><td>American odds from the book (-115, +145, etc.)</td></tr>
+    <tr><td class="purple">Implied %</td><td>How likely the book thinks this is</td></tr>
+    <tr><td class="green">Book</td><td>Which sportsbook (DraftKings, FanDuel, Model)</td></tr>
+  </table>
+</div>
+
+<div class="step">
+  <div class="step-num">5</div>
+  <div class="step-title">Set Your Wager & Submit</div>
+  <p>Your slip preview shows all legs, combined odds, <span class="purple">implied probability</span>, and a <span class="highlight">parlay distribution chart</span> showing P(0 hit), P(1 hit)... P(all hit).</p>
+  <p>Set your wager amount and click <span class="green">LOCK IT IN</span>.</p>
+</div>
+
+<div class="tip">You can also add props from the <span class="highlight">Matchup</span> page — click the <span class="green">+O</span> or <span class="red">+U</span> buttons next to any O/U line in the player analysis. A floating slip widget appears in the bottom-right corner. Navigate to Slips to finalize.</div>
+
+<!-- 3. READING STATS -->
+<h2 id="reading-stats">3. Reading Player Stats & Distributions</h2>
+
+<h3>NBA Player Stats</h3>
+<p>When you click a player (on Matchup or Slips page), you see:</p>
+<table class="stat-table">
+  <tr><th>Section</th><th>What It Shows</th></tr>
+  <tr><td class="highlight">Season Averages</td><td>PTS, REB, AST, FGM, FGA, FG%, 3PM, 3PA, 3P%, FTM, FTA, FT%, STL, BLK per game</td></tr>
+  <tr><td class="purple">Distributions</td><td>Histogram of each stat across all games, showing how consistent the player is</td></tr>
+  <tr><td class="amber">Mean / Median / StdDev</td><td>Average, middle value, and how spread out the data is</td></tr>
+  <tr><td class="green">L10 Trend</td><td>Last 10 games vs season average — positive means trending up</td></tr>
+  <tr><td class="cyan">Poisson Model</td><td>Lambda (rate), dispersion, fit quality, and model-predicted O/U probabilities</td></tr>
+  <tr><td class="gold">Playoff History</td><td>Career playoff stats, season-by-season, home/away splits with full shooting data</td></tr>
+</table>
+
+<h3>UCL Player Stats</h3>
+<table class="stat-table">
+  <tr><th>Section</th><th>What It Shows</th></tr>
+  <tr><td class="highlight">Competition Splits</td><td>Stats broken down by Champions League, La Liga, Copa del Rey, etc.</td></tr>
+  <tr><td class="green">Per-Game Averages</td><td>Goals/G, Assists/G, Shots/G, SOT/G from their primary competition</td></tr>
+  <tr><td class="purple">CL vs League</td><td>Side-by-side comparison — does the player perform better in UCL or domestic league?</td></tr>
+  <tr><td class="amber">Last 5 Matches</td><td>Game-by-game: Goals, Assists, Shots, SOT, Fouls, Cards</td></tr>
+</table>
+
+<div class="warning">All stats are from ESPN. NBA gamelogs give per-game data for full distributions. UCL uses season totals with Poisson modeling since ESPN doesn't provide per-game soccer gamelogs.</div>
+
+<!-- 4. UNDERSTANDING ODDS -->
+<h2 id="understanding-odds">4. Understanding Odds & Implied Probability</h2>
+
+<h3>American Odds</h3>
+<table class="stat-table">
+  <tr><td class="green">-110</td><td>Bet $110 to win $100. Implied: 52.4%. Slight favorite.</td></tr>
+  <tr><td class="green">-200</td><td>Bet $200 to win $100. Implied: 66.7%. Strong favorite.</td></tr>
+  <tr><td class="amber">+150</td><td>Bet $100 to win $150. Implied: 40%. Underdog.</td></tr>
+  <tr><td class="red">+500</td><td>Bet $100 to win $500. Implied: 16.7%. Big underdog.</td></tr>
+</table>
+
+<h3>Decimal Odds</h3>
+<p>Click the <span class="key-bind">AM</span> / <span class="key-bind">DEC</span> toggle on the Slips page to switch. Decimal odds = total return per $1 bet. Example: 2.50 means $2.50 back on a $1 bet ($1.50 profit).</p>
+
+<h3>Parlay Math</h3>
+<p>A parlay multiplies the odds of each leg. A 3-leg parlay at -115 each:</p>
+<p class="dim">Decimal: 1.87 x 1.87 x 1.87 = 6.54x → <span class="green">$100 bet wins $554</span></p>
+<p class="dim">Implied probability: 53.5% x 53.5% x 53.5% = <span class="purple">15.3%</span> chance all hit</p>
+
+<!-- 5. MATCHUP ANALYSIS -->
+<h2 id="matchup-analysis">5. Matchup Analysis</h2>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-title">Select Two Teams</div>
+  <p>Go to <span class="highlight">Matchup</span> page. Toggle <span class="amber">NBA</span> / <span class="highlight">UCL</span> at the top. Pick two teams from the dropdowns.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-title">Team Comparison</div>
+  <p>See head-to-head stat bars — who wins each category. For NBA, use the <span class="amber">window slider</span> to compare L5, L10, L15, L20, L30, Home, or Away splits.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-title">Player Deep Dive</div>
+  <p>Click any player in the roster to see their full statistical profile. Add props to your slip with the <span class="green">+O</span> / <span class="red">+U</span> buttons.</p>
+</div>
+
+<!-- 6. LINE ANALYSIS -->
+<h2 id="line-analysis">6. Line Analysis & Edge Finding</h2>
+
+<p>Go to <span class="highlight">Analysis</span> page. Three tabs:</p>
+
+<div class="feature-grid">
+  <div class="feature">
+    <div class="icon">&#128200;</div>
+    <div class="name">Edge Finder</div>
+    <div class="desc">Compares our Poisson model probability vs book implied probability. Positive edge = the book is giving you a better price than the true odds.</div>
+  </div>
+  <div class="feature">
+    <div class="icon">&#127970;</div>
+    <div class="name">In-House Book</div>
+    <div class="desc">Create your own lines. Pick a player, stat, set your odds. Friends can bet against you. You're the house.</div>
+  </div>
+  <div class="feature">
+    <div class="icon">&#128202;</div>
+    <div class="name">Auto Book (3 Models)</div>
+    <div class="desc">See lines from 3 time windows: Last 10 games, Last 20, and Full Season. The "Spread" column shows if a player is trending up or down.</div>
+  </div>
+</div>
+
+<div class="tip">The <span class="green">Edges Only</span> filter shows only props where our model finds 3%+ edge over the book. Sort by edge to find the best value bets.</div>
+
+<!-- 7. IN-HOUSE BOOK -->
+<h2 id="in-house-book">7. In-House Bookmaker</h2>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-title">Create a Line</div>
+  <p>On the Analysis page, click <span class="amber">In-House Book</span> tab. Enter a player name, stat, line (must be a .5 number), and set your Over/Under odds. Set a max wager.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-title">Friends Bet Against You</div>
+  <p>Your line appears in the Open Lines feed. Friends click Over or Under and enter their wager amount. You're the house — if they win, you pay. If they lose, you keep the wager.</p>
+</div>
+
+<!-- 8. RESOLVING BETS -->
+<h2 id="resolving-bets">8. How Bets Get Resolved</h2>
+
+<p>Bets are resolved <span class="green">automatically every 5 minutes</span> after games finish. The system:</p>
+
+<table class="stat-table">
+  <tr><td class="highlight">1.</td><td>Fetches box scores from ESPN for all finished NBA + UCL games</td></tr>
+  <tr><td class="highlight">2.</td><td>Matches each slip leg to the correct player's actual stats</td></tr>
+  <tr><td class="highlight">3.</td><td>Compares actual stat vs the line (e.g. player scored 28, line was 22.5 → <span class="green">Over hits</span>)</td></tr>
+  <tr><td class="highlight">4.</td><td>Grades the full slip: all legs must hit for a parlay to win</td></tr>
+  <tr><td class="highlight">5.</td><td>Updates your bankroll and W/L record</td></tr>
+</table>
+
+<h3>What Gets Resolved</h3>
+<table class="stat-table">
+  <tr><th>Bet Type</th><th>How It's Graded</th></tr>
+  <tr><td>Player Props (PTS, REB, AST, etc.)</td><td>Actual stat vs line from box score</td></tr>
+  <tr><td>3PM, FGM, Shots, SOT</td><td>Parsed from box score shooting data</td></tr>
+  <tr><td>Double-Double / Triple-Double</td><td>Checks if player hit 10+ in 2/3 categories</td></tr>
+  <tr><td>Moneyline</td><td>Which team won the game</td></tr>
+  <tr><td>Spread</td><td>Final margin + spread value</td></tr>
+  <tr><td>Total (O/U)</td><td>Combined final score vs line</td></tr>
+  <tr><td>Anytime Goal (Soccer)</td><td>Did the player score?</td></tr>
+  <tr><td>Yellow Cards, Fouls (Soccer)</td><td>From match rosters data</td></tr>
+</table>
+
+<p>You can also click <span class="green">Resolve</span> on the slip feed to trigger manual resolution.</p>
+
+<!-- 9. LEADERBOARD -->
+<h2 id="leaderboard">9. Leaderboard & History</h2>
+
+<p>The <span class="highlight">Leaderboard</span> on the Slips page ranks all users by bankroll. Everyone starts at $1,000.</p>
+
+<p>Your <span class="purple">Betting History</span> section shows:</p>
+<table class="stat-table">
+  <tr><td class="green">Won / Lost / Active</td><td>Count of each</td></tr>
+  <tr><td class="amber">Total Wagered</td><td>Sum of all your bets</td></tr>
+  <tr><td class="highlight">P&L</td><td>Profit/Loss in dollars</td></tr>
+  <tr><td class="purple">ROI %</td><td>Return on investment</td></tr>
+</table>
+
+<p>Click any slip in the feed to expand it and see the <span class="purple">parlay distribution</span> — probability of hitting 0, 1, 2... all legs.</p>
+
+<!-- 10. THEMES -->
+<h2 id="themes">10. Themes & Settings</h2>
+
+<p>Five color dots in the <span class="dim">bottom-left corner</span> of every page:</p>
+
+<table class="stat-table">
+  <tr><td style="color:#00e5ff;">&#9679;</td><td>Default — dark terminal with cyan/green</td></tr>
+  <tr><td style="color:#00ffff;">&#9679;</td><td>Bright — higher contrast colors</td></tr>
+  <tr><td style="color:#39ff14;">&#9679;</td><td>Neon — vivid neon on deep black</td></tr>
+  <tr><td style="color:#f5d442;">&#9679;</td><td>Gold — warm HxM gold/amber theme</td></tr>
+  <tr><td style="color:#0088cc;">&#9679;</td><td>Light — light background for daytime</td></tr>
+</table>
+
+<p>Theme persists across all pages via localStorage.</p>
+
+<div class="tip">Use the <span class="key-bind">AM</span>/<span class="key-bind">DEC</span> button on the Slips page to toggle between American and Decimal odds display.</div>
+
+<div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid var(--border);">
+  <div style="font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;">HxM</div>
+  <p class="dim" style="font-size:10px;">HunterxMafia Distributed Betting Platform</p>
+  <a href="/" class="back" style="margin-top:12px;display:inline-block;">Back to Home</a>
+</div>
+
+</div>
+
+<script src="/theme.js"></script>
+</body>
+</html>
