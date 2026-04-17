@@ -385,10 +385,11 @@ export async function getPlayerGamelog(playerId, season = '2026') {
 
 export async function getPlayerPlayoffStats(playerId) {
   // Get career playoff + play-in gamelogs
-  // Fetch 15 years in parallel (2012-2026) to cover deep playoff histories
-  // LeBron: ~200 games in this range, KD: ~130, Curry: ~120
+  // Fetch full career playoff history in parallel (2003-2026)
+  // Covers LeBron from rookie year, KD from 2010, etc.
+  // 24 parallel requests ~800ms total
   const years = [];
-  for (let y = 2026; y >= 2012; y--) years.push(y);
+  for (let y = 2026; y >= 2003; y--) years.push(y);
   const allGames = [];
   const labels = ['MIN','FG','FG%','3PT','3P%','FT','FT%','REB','AST','BLK','STL','PF','TO','PTS'];
   const names = ['minutes','fieldGoalsMade-fieldGoalsAttempted','fieldGoalPct',
