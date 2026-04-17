@@ -543,7 +543,9 @@ app.get('/api/players/:id/playoffs', async (req, res) => {
 
 // API: Full edge analysis for a game — fetches all player gamelogs + Poisson vs book lines
 app.get('/api/analysis/game/:gameIndex', async (req, res) => {
-  const cacheKey = `analysis-game-${req.params.gameIndex}`;
+  // ?window=season|L5|L10|L20|L50|playoffs|playoffs2026
+  const window = req.query.window || 'season';
+  const cacheKey = `analysis-game-${req.params.gameIndex}-${window}`;
   const cached = cache.get(cacheKey);
   if (cached) return res.json(cached);
 
@@ -552,98 +554,116 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
     const game = sweepData?.games?.[parseInt(req.params.gameIndex)];
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
-    // Get both team rosters
     const teams = sweepData?.teams || await espn.getTeams();
     const homeTeam = teams.find(t => t.abbr === game.home.abbr);
     const awayTeam = teams.find(t => t.abbr === game.away.abbr);
 
+    const poissonCdf = (k, lam) => {
+      let sum = 0;
+      for (let i = 0; i <= Math.floor(k); i++) {
+        let term = Math.exp(-lam);
+        for (let j = 1; j <= i; j++) term *= lam / j;
+        sum += term;
+      }
+      return Math.min(sum, 1);
+    };
+    const toAmerican = (prob) => prob >= 0.5
+      ? Math.round(-100 * prob / (1 - prob))
+      : Math.round(100 * (1 - prob) / prob);
+
+    const computePoisson = (values) => {
+      const n = values.length;
+      const mean = values.reduce((a, b) => a + b, 0) / n;
+      if (mean < 0.3) return null;
+      const variance = n > 1 ? values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
+      const stdDev = Math.sqrt(variance);
+      const dispersion = mean > 0 ? variance / mean : 0;
+      const line = Math.floor(mean) + 0.5;
+      const overProb = +(1 - poissonCdf(line, mean)).toFixed(4);
+      const underProb = +poissonCdf(line, mean).toFixed(4);
+      const actualOver = values.filter(v => v > line).length;
+
+      let fit = 'Poor';
+      if (Math.abs(dispersion - 1) < 0.5) fit = 'Excellent';
+      else if (Math.abs(dispersion - 1) < 1) fit = 'Good';
+      else if (Math.abs(dispersion - 1) < 2) fit = 'Fair';
+
+      return {
+        line, mean: +mean.toFixed(1), stdDev: +stdDev.toFixed(1), games: n,
+        modelOverProb: +(overProb * 100).toFixed(1), modelUnderProb: +(underProb * 100).toFixed(1),
+        modelOverOdds: toAmerican(overProb), modelUnderOdds: toAmerican(underProb),
+        actualOverPct: +(actualOver / n * 100).toFixed(1),
+        poissonFit: fit, dispersion: +dispersion.toFixed(3),
+        consistency: stdDev / mean < 0.2 ? 'High' : stdDev / mean < 0.35 ? 'Medium' : 'Low'
+      };
+    };
+
+    const isPlayoffWindow = window === 'playoffs' || window === 'playoffs2026';
+
     const fetchTeamAnalysis = async (teamId, teamAbbr) => {
       if (!teamId) return [];
       const roster = await espn.getPlayerStats(teamId);
-      const results = [];
-
-      // Fetch gamelogs in parallel (top 10 players)
       const top = roster.slice(0, 10);
+
       const gamelogs = await Promise.allSettled(
         top.map(p => espn.getPlayerGamelog(p.id))
       );
-      const overviews = await Promise.allSettled(
-        top.map(p => espn.getPlayerOverview(p.id))
-      );
+      // Only fetch playoff data if needed
+      const playoffData = isPlayoffWindow ? await Promise.allSettled(
+        top.map(p => espn.getPlayerPlayoffStats(p.id))
+      ) : null;
+
+      const results = [];
+      const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
 
       for (let i = 0; i < top.length; i++) {
         const player = top[i];
         const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
-        const ov = overviews[i].status === 'fulfilled' ? overviews[i].value : null;
-        if (!gl?.games?.length) continue;
-
-        const season = ov?.season || {};
-        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+        const po = playoffData?.[i]?.status === 'fulfilled' ? playoffData[i].value : null;
 
         for (const key of statKeys) {
-          const values = gl.games
-            .map(g => parseFloat(g.stats[`_${key}`] || '0'))
-            .filter(v => !isNaN(v));
-          if (values.length < 10) continue;
+          let values;
 
-          const n = values.length;
-          const mean = values.reduce((a, b) => a + b, 0) / n;
-          if (mean < 0.5) continue;
-          const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
-          const stdDev = Math.sqrt(variance);
-          const dispersion = mean > 0 ? variance / mean : 0;
+          if (window === 'playoffs') {
+            // All career playoff games
+            const poGames = po?.games || [];
+            values = poGames.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            if (values.length < 3) continue;
+          } else if (window === 'playoffs2026') {
+            // Current year playoff games only
+            const poGames = (po?.games || []).filter(g => g.season === 2026);
+            values = poGames.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            if (values.length < 2) continue;
+          } else {
+            // Regular season windows
+            if (!gl?.games?.length) continue;
+            const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            if (all.length < 5) continue;
 
-          // Poisson
-          const lambda = mean;
-          const poissonCdf = (k, lam) => {
-            let sum = 0;
-            for (let i = 0; i <= Math.floor(k); i++) {
-              let term = Math.exp(-lam);
-              for (let j = 1; j <= i; j++) term *= lam / j;
-              sum += term;
-            }
-            return Math.min(sum, 1);
-          };
+            const windowSize = window === 'season' ? all.length :
+              window === 'L5' ? 5 : window === 'L10' ? 10 :
+              window === 'L20' ? 20 : window === 'L50' ? 50 : all.length;
+            values = all.slice(0, Math.min(windowSize, all.length));
+            if (values.length < 3) continue;
+          }
 
-          // Fit quality
-          let fit = 'Poor';
-          if (Math.abs(dispersion - 1) < 0.5) fit = 'Excellent';
-          else if (Math.abs(dispersion - 1) < 1) fit = 'Good';
-          else if (Math.abs(dispersion - 1) < 2) fit = 'Fair';
+          const result = computePoisson(values);
+          if (!result) continue;
 
-          // Generate lines at common half-points around the mean
-          const line = Math.floor(mean ) + 0.5;
-          const overProb = +(1 - poissonCdf(line, lambda)).toFixed(4);
-          const underProb = +poissonCdf(line, lambda).toFixed(4);
-
-          const toAmerican = (prob) => prob >= 0.5
-            ? Math.round(-100 * prob / (1 - prob))
-            : Math.round(100 * (1 - prob) / prob);
-
-          // Actual hit rate
-          const actualOver = values.filter(v => v > line).length;
+          // Also compute season baseline for comparison
+          let seasonMean = null;
+          if (window !== 'season' && gl?.games?.length) {
+            const seasonVals = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            if (seasonVals.length >= 5) seasonMean = +(seasonVals.reduce((a, b) => a + b, 0) / seasonVals.length).toFixed(1);
+          }
 
           results.push({
-            player: player.name,
-            playerId: player.id,
-            team: teamAbbr,
-            headshot: player.headshot || '',
-            stat: key,
-            line,
-            mean: +mean.toFixed(1),
-            stdDev: +stdDev.toFixed(1),
-            games: n,
-            // Poisson model
-            modelOverProb: +(overProb * 100).toFixed(1),
-            modelUnderProb: +(underProb * 100).toFixed(1),
-            modelOverOdds: toAmerican(overProb),
-            modelUnderOdds: toAmerican(underProb),
-            // Actual
-            actualOverPct: +(actualOver / n * 100).toFixed(1),
-            // Quality
-            poissonFit: fit,
-            dispersion: +dispersion.toFixed(3),
-            consistency: stdDev / mean < 0.2 ? 'High' : stdDev / mean < 0.35 ? 'Medium' : 'Low'
+            player: player.name, playerId: player.id, team: teamAbbr,
+            headshot: player.headshot || '', stat: key,
+            ...result,
+            seasonMean,
+            trend: seasonMean ? +(result.mean - seasonMean).toFixed(1) : null,
+            window
           });
         }
       }
@@ -659,11 +679,9 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
 
     const result = {
       game: { home: game.home, away: game.away, date: game.date, odds: game.odds },
+      window,
       rows: allRows,
-      summary: {
-        total: allRows.length,
-        withEdge: 0 // client computes edge based on book lines
-      }
+      summary: { total: allRows.length, withEdge: 0 }
     };
 
     cache.set(cacheKey, result, 5 * 60_000);

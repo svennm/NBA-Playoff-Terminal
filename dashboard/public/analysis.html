@@ -133,11 +133,27 @@
         <option value="">-- Pick a game to analyze --</option>
       </select>
     </div>
+
+    <!-- Window selector -->
+    <div id="window-tabs" style="display:none;margin-bottom:10px;">
+      <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Poisson Window</div>
+      <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:4px;overflow:hidden;flex-wrap:wrap;">
+        <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:60px;" id="w-season" onclick="setWindow('season',this)">Season</button>
+        <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:50px;" id="w-L5" onclick="setWindow('L5',this)">L5</button>
+        <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:50px;" id="w-L10" onclick="setWindow('L10',this)">L10</button>
+        <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:50px;" id="w-L20" onclick="setWindow('L20',this)">L20</button>
+        <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:50px;" id="w-L50" onclick="setWindow('L50',this)">L50</button>
+        <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:70px;color:var(--amber);" id="w-playoffs" onclick="setWindow('playoffs',this)">PO Career</button>
+        <button class="filter-btn" style="border:none;border-radius:0;flex:1;min-width:70px;color:var(--amber);" id="w-playoffs2026" onclick="setWindow('playoffs2026',this)">PO '26</button>
+      </div>
+    </div>
+
     <div class="summary-grid" id="summary" style="display:none;">
       <div class="summary-card"><div class="val" style="color:var(--cyan);" id="s-total">0</div><div class="lbl">Props</div></div>
       <div class="summary-card"><div class="val edge-pos" id="s-edges">0</div><div class="lbl">Over Edges</div></div>
       <div class="summary-card"><div class="val" style="color:var(--amber);" id="s-under">0</div><div class="lbl">Under Edges</div></div>
       <div class="summary-card"><div class="val" style="color:var(--purple);" id="s-best">--</div><div class="lbl">Best Edge</div></div>
+      <div class="summary-card"><div class="val" style="color:var(--dim);" id="s-window">Season</div><div class="lbl">Window</div></div>
     </div>
     <div class="filter-row" id="filters" style="display:none;">
       <button class="filter-btn active" onclick="setFilter('all',this)">ALL</button>
@@ -214,6 +230,7 @@ let statFilter = 'all';
 let edgeOnly = false;
 let sortEdge = false;
 let currentSport = 'nba';
+let currentWindow = 'season';
 
 function setSport(sport) {
   currentSport = sport;
@@ -259,15 +276,33 @@ async function init() {
     }).join('');
 }
 
+function setWindow(w, btn) {
+  currentWindow = w;
+  document.querySelectorAll('#window-tabs button').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else document.getElementById('w-' + w)?.classList.add('active');
+  analyzeGame();
+}
+
 async function analyzeGame() {
   const idx = $('game-select').value;
   if (!idx) return;
 
-  $('results').innerHTML = '<div class="loading"><div class="spinner"></div><br>Running Poisson model on all players...<br><span style="font-size:10px;color:var(--dim);">Fetching gamelogs for both rosters</span></div>';
+  // Show window tabs
+  $('window-tabs').style.display = currentSport === 'nba' ? '' : 'none';
+  // Highlight active window button
+  document.querySelectorAll('#window-tabs button').forEach(b => b.classList.remove('active'));
+  document.getElementById('w-' + currentWindow)?.classList.add('active');
+
+  const windowLabel = { season:'Season', L5:'Last 5', L10:'Last 10', L20:'Last 20', L50:'Last 50', playoffs:'Playoff Career', playoffs2026:"Playoffs '26" }[currentWindow] || currentWindow;
+
+  $('results').innerHTML = `<div class="loading"><div class="spinner"></div><br>Running Poisson model (${windowLabel})...<br><span style="font-size:10px;color:var(--dim);">Fetching gamelogs for both rosters</span></div>`;
   $('summary').style.display = 'none';
   $('filters').style.display = 'none';
 
-  const endpoint = currentSport === 'ucl' ? `/api/soccer/uefa.champions/analysis/${idx}` : `/api/analysis/game/${idx}`;
+  const endpoint = currentSport === 'ucl'
+    ? `/api/soccer/uefa.champions/analysis/${idx}`
+    : `/api/analysis/game/${idx}?window=${currentWindow}`;
   const res = await fetch(endpoint);
   const data = await res.json();
 
@@ -301,11 +336,13 @@ function renderAnalysis() {
   if (sortEdge) rows.sort((a, b) => Math.max(b.overEdge, b.underEdge) - Math.max(a.overEdge, a.underEdge));
 
   // Summary
+  const windowLabel = { season:'Season', L5:'Last 5', L10:'Last 10', L20:'Last 20', L50:'Last 50', playoffs:'PO Career', playoffs2026:"PO '26" }[currentWindow] || currentWindow;
   $('s-total').textContent = allRows.length;
   $('s-edges').textContent = allRows.filter(r => r.overEdge > 3).length;
   $('s-under').textContent = allRows.filter(r => r.underEdge > 3).length;
   const best = allRows.reduce((b, r) => Math.max(r.overEdge, r.underEdge) > b.e ? { ...r, e: Math.max(r.overEdge, r.underEdge) } : b, { e: 0 });
   $('s-best').textContent = best.player ? `${best.player} ${best.stat} +${best.e}%` : '--';
+  $('s-window').textContent = windowLabel;
 
   if (!rows.length) {
     $('results').innerHTML = '<div class="panel"><div class="panel-body" style="text-align:center;color:var(--dim);">No props match filters</div></div>';
@@ -319,23 +356,33 @@ function renderAnalysis() {
   };
   const fmtOdds = (o) => (o > 0 ? '+' : '') + o;
 
+  const showTrend = currentWindow !== 'season';
+  const trendHeader = showTrend ? '<th>Trend</th><th>Szn Avg</th>' : '';
+
   $('results').innerHTML = `
     <div class="panel">
-      <div class="panel-header">Poisson Model vs -115 Book Lines <span style="font-family:'JetBrains Mono',monospace;font-size:10px;">${rows.length} props</span></div>
+      <div class="panel-header">Poisson Model (${windowLabel}) vs -115 Book Lines <span style="font-family:'JetBrains Mono',monospace;font-size:10px;">${rows.length} props | ${rows[0]?.games || '?'}g window</span></div>
       <div class="panel-body">
         <table class="edge-table">
           <thead><tr>
             <th>Player</th><th>Stat</th><th>Line</th><th>Mean±SD</th>
+            ${trendHeader}
             <th>Model O%</th><th>Model Odds</th><th>Over Edge</th>
             <th>Model U%</th><th>Under Edge</th>
-            <th>Actual O%</th><th>Fit</th><th>Disp</th>
+            <th>Hit%</th><th>Fit</th><th>Games</th>
           </tr></thead>
-          <tbody>${rows.map(r => `
-            <tr>
+          <tbody>${rows.map(r => {
+            const trendCells = showTrend ? `
+              <td style="color:${r.trend > 0.5 ? 'var(--green)' : r.trend < -0.5 ? 'var(--red)' : 'var(--dim)'};font-weight:600;">
+                ${r.trend !== null ? (r.trend > 0 ? '▲+' : r.trend < -0.5 ? '▼' : '') + r.trend : '—'}
+              </td>
+              <td style="color:var(--dim);font-size:10px;">${r.seasonMean || '—'}</td>` : '';
+            return `<tr>
               <td style="font-weight:500;">${r.player} <span style="color:var(--dim);font-size:9px;">${r.team}</span></td>
               <td><span class="stat-badge stat-${r.stat}">${r.stat}</span></td>
               <td style="font-weight:700;">${r.line}</td>
               <td style="color:var(--dim);">${r.mean}±${r.stdDev}</td>
+              ${trendCells}
               <td style="color:var(--purple);font-weight:600;">${r.modelOverProb}%</td>
               <td>${fmtOdds(r.modelOverOdds)}</td>
               <td>${fmtEdge(r.overEdge)}</td>
@@ -343,8 +390,9 @@ function renderAnalysis() {
               <td>${fmtEdge(r.underEdge)}</td>
               <td>${r.actualOverPct}%</td>
               <td><span class="fit-badge fit-${r.poissonFit}">${r.poissonFit}</span></td>
-              <td style="color:${r.dispersion>1.5?'var(--amber)':'var(--dim)'};">${r.dispersion}</td>
-            </tr>`).join('')}</tbody>
+              <td style="color:var(--dim);">${r.games}</td>
+            </tr>`;
+          }).join('')}</tbody>
         </table>
       </div>
     </div>`;
