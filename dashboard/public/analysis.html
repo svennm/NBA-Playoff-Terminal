@@ -146,6 +146,12 @@
         <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:70px;color:var(--amber);" id="w-playoffs" onclick="setWindow('playoffs',this)">PO Career</button>
         <button class="filter-btn" style="border:none;border-radius:0;flex:1;min-width:70px;color:var(--amber);" id="w-playoffs2026" onclick="setWindow('playoffs2026',this)">PO '26</button>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
+        <span style="font-size:9px;color:var(--dim);">Custom:</span>
+        <input type="number" id="custom-edge-window" placeholder="e.g. 15" min="3" max="82" style="width:70px;font-size:10px;padding:4px 6px;">
+        <button class="filter-btn" onclick="applyCustomEdgeWindow()" style="font-size:9px;">Apply</button>
+        <span style="font-size:8px;color:var(--dim);">Enter any number (3-82 games)</span>
+      </div>
     </div>
 
     <div class="summary-grid" id="summary" style="display:none;">
@@ -214,8 +220,20 @@
         <option value="">-- Pick a game for auto-lines --</option>
       </select>
     </div>
+    <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;" id="autobook-windows">
+      <span style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;">Windows:</span>
+      <button class="filter-btn active" onclick="setAutoWindows('5,10,season',this)">L5 / L10 / Season</button>
+      <button class="filter-btn" onclick="setAutoWindows('10,20,season',this)">L10 / L20 / Season</button>
+      <button class="filter-btn" onclick="setAutoWindows('5,15,30,season',this)">L5 / L15 / L30 / Season</button>
+      <button class="filter-btn" onclick="setAutoWindows('10,25,50,season',this)">L10 / L25 / L50 / Season</button>
+      <button class="filter-btn" style="color:var(--amber);" onclick="setAutoWindows('10,20,season,playoffs',this)">L10 / L20 / Season / Playoffs</button>
+      <span style="color:var(--dim);font-size:8px;">|</span>
+      <span style="font-size:9px;color:var(--dim);">Custom:</span>
+      <input type="text" id="custom-windows" placeholder="e.g. 7,15,40,season" style="width:160px;font-size:10px;padding:4px 8px;">
+      <button class="filter-btn" onclick="applyCustomWindows()">Apply</button>
+    </div>
     <div id="autobook-body">
-      <div class="panel"><div class="panel-body" style="text-align:center;color:var(--dim);padding:30px;">Select a game to generate lines from 3 Poisson models: Last 10 games, Last 20 games, Full Season</div></div>
+      <div class="panel"><div class="panel-body" style="text-align:center;color:var(--dim);padding:30px;">Select a game to generate multi-window Poisson lines.<br><span style="font-size:10px;">Choose preset windows or type custom ones (e.g. 7,15,40,season,playoffs)</span></div></div>
     </div>
   </div>
 </div>
@@ -316,6 +334,15 @@ function setWindow(w, btn) {
   document.querySelectorAll('#window-tabs button').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   else document.getElementById('w-' + w)?.classList.add('active');
+  $('custom-edge-window').value = '';
+  analyzeGame();
+}
+
+function applyCustomEdgeWindow() {
+  const val = parseInt($('custom-edge-window').value);
+  if (!val || val < 3 || val > 82) return;
+  currentWindow = `L${val}`;
+  document.querySelectorAll('#window-tabs button').forEach(b => b.classList.remove('active'));
   analyzeGame();
 }
 
@@ -546,40 +573,84 @@ function betLine(lineId, side, el) {
   });
 }
 
-// === AUTO BOOK (3 Models) ===
+// === AUTO BOOK (Custom Windows) ===
+let autoBookWindows = '5,10,season';
+
+function setAutoWindows(w, btn) {
+  autoBookWindows = w;
+  document.querySelectorAll('#autobook-windows .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  $('custom-windows').value = '';
+  loadAutoBook();
+}
+
+function applyCustomWindows() {
+  const val = $('custom-windows').value.trim();
+  if (!val) return;
+  autoBookWindows = val;
+  document.querySelectorAll('#autobook-windows .filter-btn').forEach(b => b.classList.remove('active'));
+  loadAutoBook();
+}
+
 async function initAutoBook() {
-  // Load same games as edge finder
-  let games = [];
   if (currentSport === 'ucl') {
     const res = await fetch('/api/soccer/uefa.champions/scoreboard');
-    games = await res.json();
-  } else {
-    const res = await fetch('/api/sweep');
-    const data = await res.json();
-    games = data.games || [];
+    const games = await res.json();
+    const sel = $('autobook-game');
+    sel.innerHTML = `<option value="">-- Pick a UCL game --</option>` +
+      games.map((g, i) => `<option value="today:${i}">${g.away.abbr} @ ${g.home.abbr}</option>`).join('');
+    return;
   }
+
+  // Load today + schedule
+  const [sweepRes, schedRes] = await Promise.all([
+    fetch('/api/sweep').then(r => r.json()),
+    fetch('/api/schedule').then(r => r.json()).catch(() => [])
+  ]);
+  const games = sweepRes.games || [];
+  const todayIds = new Set(games.map(g => g.id));
+  const schedGames = (schedRes || [])
+    .map((g, idx) => ({ ...g, _schedIdx: idx }))
+    .filter(g => !todayIds.has(g.id) && g.status !== 'Final')
+    .filter(g => g.home.abbr !== 'TBD' && g.away.abbr !== 'TBD' && !g.away.name.includes('/'));
+
   const sel = $('autobook-game');
-  const label = currentSport === 'ucl' ? 'UCL' : 'NBA';
-  sel.innerHTML = `<option value="">-- Pick a ${label} game --</option>` +
-    games.map((g, i) => {
-      const away = g.away?.abbr || g.away?.name || '?';
-      const home = g.home?.abbr || g.home?.name || '?';
-      return `<option value="${i}">${away} @ ${home}</option>`;
+  let html = '<option value="">-- Pick a game --</option>';
+  if (games.length) {
+    html += '<optgroup label="Today\'s Games">';
+    html += games.map((g, i) => {
+      const playIn = g.isPlayIn ? ' [PLAY-IN]' : '';
+      return `<option value="today:${i}">${g.away.abbr} @ ${g.home.abbr}${playIn}</option>`;
     }).join('');
+    html += '</optgroup>';
+  }
+  if (schedGames.length) {
+    html += '<optgroup label="Upcoming Games">';
+    html += schedGames.map(g => {
+      const t = new Date(g.date).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric'});
+      return `<option value="sched:${g._schedIdx}">${g.away.abbr} @ ${g.home.abbr} — ${t}</option>`;
+    }).join('');
+    html += '</optgroup>';
+  }
+  sel.innerHTML = html;
 }
 
 async function loadAutoBook() {
-  const idx = $('autobook-game').value;
-  if (!idx) return;
+  const raw = $('autobook-game').value;
+  if (!raw) return;
   const body = $('autobook-body');
-  body.innerHTML = '<div class="loading"><div class="spinner"></div><br>Computing 3-model lines for all players...</div>';
+
+  const [source, idx] = raw.includes(':') ? raw.split(':') : ['today', raw];
+  const windowList = autoBookWindows;
+  const windowNames = windowList.split(',').map(w => w.trim());
+
+  body.innerHTML = `<div class="loading"><div class="spinner"></div><br>Computing ${windowNames.length}-model lines (${windowNames.join(' / ')})...</div>`;
 
   let endpoint;
   if (currentSport === 'ucl') {
-    // For soccer, use the props endpoint which already has Poisson lines
     endpoint = `/api/soccer/uefa.champions/props/${idx}`;
   } else {
-    endpoint = `/api/book/auto-lines/${idx}`;
+    endpoint = `/api/book/auto-lines/${source}/${idx}?windows=${windowList}`;
   }
 
   const res = await fetch(endpoint);
@@ -591,24 +662,22 @@ async function loadAutoBook() {
   }
 
   if (currentSport === 'ucl') {
-    // Soccer: show model lines with single model (season stats)
     const props = data.playerProps || [];
     body.innerHTML = `
       <div class="panel">
         <div class="panel-header">Poisson Model Lines — Season Stats<span style="font-family:'JetBrains Mono',monospace;font-size:10px;">${props.length} players</span></div>
         <div class="panel-body" style="overflow-x:auto;">
           <table class="edge-table">
-            <thead><tr><th>Player</th><th>Stat</th><th>Line</th><th>Avg/G</th><th>Over %</th><th>Over Odds</th><th>Under Odds</th><th>Book</th></tr></thead>
+            <thead><tr><th>Player</th><th>Stat</th><th>Line</th><th>Avg/G</th><th>Over %</th><th>Over Odds</th><th>Under Odds</th></tr></thead>
             <tbody>${props.flatMap(p => p.lines.map(l => `
               <tr>
-                <td style="font-weight:500;">${p.name} <span style="color:var(--dim);font-size:9px;">${p.team || ''}</span></td>
+                <td style="font-weight:500;">${p.name}</td>
                 <td><span class="stat-badge">${l.stat}</span></td>
                 <td style="font-weight:700;">${l.line}</td>
                 <td>${l.avg}</td>
                 <td style="color:var(--purple);">${l.overProb || '?'}%</td>
                 <td style="color:var(--green);">${l.overOdds > 0 ? '+' : ''}${l.overOdds}</td>
                 <td style="color:var(--red);">${l.underOdds > 0 ? '+' : ''}${l.underOdds}</td>
-                <td style="color:var(--dim);font-size:9px;">${l.book || 'Poisson'}</td>
               </tr>`)).join('')}
             </tbody>
           </table>
@@ -617,52 +686,49 @@ async function loadAutoBook() {
     return;
   }
 
-  // NBA: 3-model display
+  // Dynamic multi-model display
   const lines = data.lines || [];
+  const windows = data.windows || windowNames;
+  const colors = ['var(--green)', 'var(--cyan)', 'var(--amber)', 'var(--purple)', 'var(--blue)', 'var(--red)'];
+
   body.innerHTML = `
     <div class="panel">
-      <div class="panel-header">3-Model Auto Book — L10 / L20 / Season<span style="font-family:'JetBrains Mono',monospace;font-size:10px;">${lines.length} props</span></div>
+      <div class="panel-header">Auto Book — ${windows.join(' / ')}<span style="font-family:'JetBrains Mono',monospace;font-size:10px;">${lines.length} props</span></div>
       <div class="panel-body" style="overflow-x:auto;">
-        <table class="edge-table" style="min-width:1000px;">
+        <table class="edge-table" style="min-width:${400 + windows.length * 200}px;">
           <thead><tr>
             <th>Player</th><th>Stat</th>
-            <th colspan="3" style="text-align:center;color:var(--green);">L10 (Recent)</th>
-            <th colspan="3" style="text-align:center;color:var(--cyan);">L20</th>
-            <th colspan="3" style="text-align:center;color:var(--amber);">Season</th>
+            ${windows.map((w, i) => `<th colspan="3" style="text-align:center;color:${colors[i % colors.length]};">${w}</th>`).join('')}
             <th>Spread</th>
           </tr>
           <tr style="font-size:8px;color:var(--dim);">
             <th></th><th></th>
-            <th>Line</th><th>Mean</th><th>Over</th>
-            <th>Line</th><th>Mean</th><th>Over</th>
-            <th>Line</th><th>Mean</th><th>Over</th>
+            ${windows.map(() => '<th>Line</th><th>Mean</th><th>O%</th>').join('')}
             <th></th>
           </tr></thead>
           <tbody>${lines.map(r => {
             const m = r.models;
-            const l10 = m.L10;
-            const l20 = m.L20;
-            const full = m.season;
-            // Spread = difference between L10 and Season line
-            const spread = l10 && full ? (l10.mean - full.mean).toFixed(1) : '-';
+            const firstWindow = windows.find(w => m[w]);
+            const lastWindow = [...windows].reverse().find(w => m[w]);
+            const spread = firstWindow && lastWindow && firstWindow !== lastWindow
+              ? (m[firstWindow].mean - m[lastWindow].mean).toFixed(1) : '-';
             const spreadColor = parseFloat(spread) > 0.5 ? 'var(--green)' : parseFloat(spread) < -0.5 ? 'var(--red)' : 'var(--dim)';
-            const fmtModel = (m, color) => m ? `
-              <td style="font-weight:600;">${m.line}</td>
-              <td style="color:var(--dim);">${m.mean}</td>
-              <td style="color:${color};">${m.overProb}%</td>` : '<td>-</td><td>-</td><td>-</td>';
+
+            const fmtModel = (model, color) => model ? `
+              <td style="font-weight:600;">${model.line}</td>
+              <td style="color:var(--dim);">${model.mean}</td>
+              <td style="color:${color};">${model.overProb}%</td>` : '<td>-</td><td>-</td><td>-</td>';
 
             return `<tr>
               <td style="font-weight:500;">${r.player} <span style="color:var(--dim);font-size:9px;">${r.team}</span></td>
               <td><span class="stat-badge stat-${r.stat}">${r.stat}</span></td>
-              ${fmtModel(l10, 'var(--green)')}
-              ${fmtModel(l20, 'var(--cyan)')}
-              ${fmtModel(full, 'var(--amber)')}
+              ${windows.map((w, i) => fmtModel(m[w], colors[i % colors.length])).join('')}
               <td style="color:${spreadColor};font-weight:700;">${spread > 0 ? '+' : ''}${spread}</td>
             </tr>`;
           }).join('')}</tbody>
         </table>
         <div style="margin-top:8px;font-size:9px;color:var(--dim);">
-          <strong>Spread</strong> = L10 mean - Season mean. Positive = player trending UP recently. Negative = trending DOWN.
+          <strong>Spread</strong> = first window mean − last window mean. Shows trend direction.
         </div>
       </div>
     </div>`;

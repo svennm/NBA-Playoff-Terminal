@@ -886,54 +886,103 @@ app.get('/api/soccer/:league/analysis/:gameIndex', async (req, res) => {
 
 // API: Auto-generate bookmaker lines with 3 models (NBA)
 // Uses L10, L20, and full season windows
-app.get('/api/book/auto-lines/:gameIndex', async (req, res) => {
-  const ck = `auto-lines-${req.params.gameIndex}`;
+// source: 'today' (sweep) or 'sched' (schedule)
+// ?windows=5,10,20 for custom windows (default: 10,20,season)
+app.get('/api/book/auto-lines/:source/:gameIndex', async (req, res) => {
+  const { source, gameIndex } = req.params;
+  const windowsParam = req.query.windows || '10,20,season';
+  const ck = `auto-lines-${source}-${gameIndex}-${windowsParam}`;
   const cached = cache.get(ck);
   if (cached) return res.json(cached);
 
   try {
-    const sweepData = getCache() || await runSweep();
-    const game = sweepData?.games?.[parseInt(req.params.gameIndex)];
+    let game;
+    if (source === 'sched') {
+      // Fetch schedule from ESPN
+      const today = new Date();
+      const end = new Date(today); end.setDate(end.getDate() + 7);
+      const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+      const sr = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${fmt(today)}-${fmt(end)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      const sd = await sr.json();
+      const ev = (sd.events || [])[parseInt(gameIndex)];
+      if (!ev) return res.status(404).json({ error: 'Scheduled game not found' });
+      const comp = ev.competitions?.[0];
+      const home = comp?.competitors?.find(t => t.homeAway === 'home');
+      const away = comp?.competitors?.find(t => t.homeAway === 'away');
+      game = {
+        home: { name: home?.team?.displayName || 'TBD', abbr: home?.team?.abbreviation || 'TBD', logo: home?.team?.logo || '' },
+        away: { name: away?.team?.displayName || 'TBD', abbr: away?.team?.abbreviation || 'TBD', logo: away?.team?.logo || '' },
+        date: ev.date
+      };
+    } else {
+      const sweepData = getCache() || await runSweep();
+      game = sweepData?.games?.[parseInt(gameIndex)];
+    }
     if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (game.home.abbr === 'TBD' || game.away.abbr === 'TBD') return res.status(400).json({ error: 'TBD matchup' });
 
-    const allTeams = sweepData?.teams || await espn.getTeams();
+    // Parse window sizes
+    const windowDefs = windowsParam.split(',').map(w => {
+      const trimmed = w.trim().toLowerCase();
+      if (trimmed === 'season') return { key: 'season', size: null };
+      if (trimmed === 'playoffs') return { key: 'playoffs', size: null };
+      const n = parseInt(trimmed);
+      return n > 0 ? { key: `L${n}`, size: n } : null;
+    }).filter(Boolean);
+
+    const allTeams = await espn.getTeams();
     const homeTeam = allTeams.find(t => t.abbr === game.home.abbr);
     const awayTeam = allTeams.find(t => t.abbr === game.away.abbr);
+
+    const needsPlayoffs = windowDefs.some(w => w.key === 'playoffs');
 
     const buildLines = async (teamId, teamAbbr) => {
       if (!teamId) return [];
       const roster = await espn.getPlayerStats(teamId);
-      const results = [];
+      const top = roster.slice(0, 12);
+      const gamelogs = await Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id)));
+      const playoffData = needsPlayoffs ? await Promise.allSettled(top.map(p => espn.getPlayerPlayoffStats(p.id))) : null;
 
-      for (const player of roster.slice(0, 12)) {
-        const gl = await espn.getPlayerGamelog(player.id);
-        if (!gl?.games?.length || gl.games.length < 10) continue;
+      const results = [];
+      for (let pi = 0; pi < top.length; pi++) {
+        const player = top[pi];
+        const gl = gamelogs[pi].status === 'fulfilled' ? gamelogs[pi].value : null;
+        const po = playoffData?.[pi]?.status === 'fulfilled' ? playoffData[pi].value : null;
+        if (!gl?.games?.length || gl.games.length < 5) continue;
 
         const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
         for (const key of statKeys) {
           const allVals = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
-          if (allVals.length < 10) continue;
+          if (allVals.length < 5) continue;
 
           const compute = (vals) => {
             const n = vals.length;
             const mean = vals.reduce((a, b) => a + b, 0) / n;
-            if (mean < 1 && key !== 'BLK' && key !== 'STL') return null;
-            const variance = vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
-            const line = Math.floor(mean ) + 0.5;
+            if (mean < 0.3) return null;
+            const variance = n > 1 ? vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
+            const line = Math.floor(mean) + 0.5;
             const poissonOver = 1 - poissonCdfCalc(line, mean);
             const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
             return { mean: +mean.toFixed(1), stdDev: +Math.sqrt(variance).toFixed(1), line, games: n, overProb: +(poissonOver * 100).toFixed(1), overOdds: toAm(poissonOver), underOdds: toAm(1 - poissonOver) };
           };
 
-          const full = compute(allVals);
-          const l20 = allVals.length >= 20 ? compute(allVals.slice(-20)) : null;
-          const l10 = allVals.length >= 10 ? compute(allVals.slice(-10)) : null;
+          const models = {};
+          for (const w of windowDefs) {
+            if (w.key === 'season') {
+              models.season = compute(allVals);
+            } else if (w.key === 'playoffs') {
+              const poVals = (po?.games || []).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+              if (poVals.length >= 3) models.playoffs = compute(poVals);
+            } else if (w.size && allVals.length >= w.size) {
+              models[w.key] = compute(allVals.slice(0, w.size));
+            }
+          }
 
-          if (full) {
+          if (Object.values(models).some(m => m)) {
             results.push({
               player: player.name, playerId: player.id, team: teamAbbr,
               position: player.position, headshot: player.headshot, stat: key,
-              models: { season: full, ...(l20 ? { L20: l20 } : {}), ...(l10 ? { L10: l10 } : {}) }
+              models
             });
           }
         }
@@ -947,15 +996,25 @@ app.get('/api/book/auto-lines/:gameIndex', async (req, res) => {
     ]);
 
     const result = {
-      game: { home: game.home, away: game.away },
+      game: { home: game.home, away: game.away, date: game.date },
+      windows: windowDefs.map(w => w.key),
       lines: [...awayLines, ...homeLines]
     };
 
-    cache.set(ck, result, 5 * 60_000);
+    cache.set(ck, result, 10 * 60_000);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// Backward compat — old auto-lines route
+app.get('/api/book/auto-lines/:gameIndex', async (req, res) => {
+  // Redirect to new route with today source
+  req.params.source = 'today';
+  const handler = app._router.stack.find(r => r.route?.path === '/api/book/auto-lines/:source/:gameIndex');
+  if (handler) return handler.route.stack[0].handle(req, res);
+  res.redirect(`/api/book/auto-lines/today/${req.params.gameIndex}?windows=${req.query.windows || '10,20,season'}`);
 });
 
 // Poisson CDF helper for auto-lines
