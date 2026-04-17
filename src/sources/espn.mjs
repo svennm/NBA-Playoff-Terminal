@@ -385,39 +385,67 @@ export async function getPlayerGamelog(playerId, season = '2026') {
 
 export async function getPlayerPlayoffStats(playerId) {
   // Get career playoff + play-in gamelogs
-  // seasontype: 3 = postseason (playoffs), 5 = play-in tournament
-  const years = [2026, 2025, 2024, 2023, 2022];
-  const seasonTypes = [3, 5]; // playoffs + play-in
+  // Fetch 15 years in parallel (2012-2026) to cover deep playoff histories
+  // LeBron: ~200 games in this range, KD: ~130, Curry: ~120
+  const years = [];
+  for (let y = 2026; y >= 2012; y--) years.push(y);
   const allGames = [];
   const labels = ['MIN','FG','FG%','3PT','3P%','FT','FT%','REB','AST','BLK','STL','PF','TO','PTS'];
   const names = ['minutes','fieldGoalsMade-fieldGoalsAttempted','fieldGoalPct',
     'threePointFieldGoalsMade-threePointFieldGoalsAttempted','threePointPct',
     'freeThrowsMade-freeThrowsAttempted','freeThrowPct',
     'totalRebounds','assists','blocks','steals','fouls','turnovers','points'];
+  const seenEvents = new Set();
 
-  for (const year of years) {
-    for (const stype of seasonTypes) {
-      const data = await safeFetch(
-        `https://site.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${playerId}/gamelog?season=${year}&seasontype=${stype}`,
-        `playoff-gamelog-${playerId}-${year}-st${stype}`,
-        8000
-      );
-      if (!data?.seasonTypes) continue;
-      for (const st of data.seasonTypes) {
-        // Accept Postseason and Play-In season types
-        if (!st.displayName?.includes('Postseason') && !st.displayName?.includes('Play-In') && !st.displayName?.includes('Play In')) continue;
-        for (const cat of st.categories || []) {
-          const round = cat.displayName || (stype === 5 ? 'Play-In' : '');
-          for (const ev of cat.events || []) {
-            // Avoid duplicate events
-            if (allGames.some(g => g.eventId === ev.eventId)) continue;
-            const stats = {};
-            (ev.stats || []).forEach((val, i) => {
-              if (labels[i]) stats[`_${labels[i]}`] = val;
-              if (names[i]) stats[names[i]] = val;
-            });
-            allGames.push({ season: year, round, eventId: ev.eventId, stats, type: stype === 5 ? 'play-in' : 'playoff' });
-          }
+  // Fetch all years in parallel for speed
+  const yearResults = await Promise.allSettled(
+    years.map(year => safeFetch(
+      `https://site.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${playerId}/gamelog?season=${year}&seasontype=3`,
+      `playoff-gamelog-${playerId}-${year}`,
+      8000
+    ))
+  );
+
+  for (let yi = 0; yi < years.length; yi++) {
+    const data = yearResults[yi].status === 'fulfilled' ? yearResults[yi].value : null;
+    if (!data?.seasonTypes) continue;
+    for (const st of data.seasonTypes) {
+      if (!st.displayName?.includes('Postseason') && !st.displayName?.includes('Play-In') && !st.displayName?.includes('Play In')) continue;
+      for (const cat of st.categories || []) {
+        const round = cat.displayName || '';
+        for (const ev of cat.events || []) {
+          if (seenEvents.has(ev.eventId)) continue;
+          seenEvents.add(ev.eventId);
+          const stats = {};
+          (ev.stats || []).forEach((val, i) => {
+            if (labels[i]) stats[`_${labels[i]}`] = val;
+            if (names[i]) stats[names[i]] = val;
+          });
+          allGames.push({ season: years[yi], round, eventId: ev.eventId, stats, type: 'playoff' });
+        }
+      }
+    }
+  }
+
+  // Also fetch current year play-in (seasontype=5) separately
+  const playInData = await safeFetch(
+    `https://site.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${playerId}/gamelog?season=2026&seasontype=5`,
+    `playin-gamelog-${playerId}-2026`,
+    8000
+  );
+  if (playInData?.seasonTypes) {
+    for (const st of playInData.seasonTypes) {
+      if (!st.displayName?.includes('Play-In') && !st.displayName?.includes('Play In')) continue;
+      for (const cat of st.categories || []) {
+        for (const ev of cat.events || []) {
+          if (seenEvents.has(ev.eventId)) continue;
+          seenEvents.add(ev.eventId);
+          const stats = {};
+          (ev.stats || []).forEach((val, i) => {
+            if (labels[i]) stats[`_${labels[i]}`] = val;
+            if (names[i]) stats[names[i]] = val;
+          });
+          allGames.push({ season: 2026, round: 'Play-In', eventId: ev.eventId, stats, type: 'play-in' });
         }
       }
     }

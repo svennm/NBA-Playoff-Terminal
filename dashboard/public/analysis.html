@@ -151,9 +151,9 @@
       </div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
         <span style="font-size:9px;color:var(--dim);">Custom:</span>
-        <input type="number" id="custom-edge-window" placeholder="e.g. 15" min="3" max="82" style="width:70px;font-size:10px;padding:4px 6px;">
+        <input type="number" id="custom-edge-window" placeholder="e.g. 15" min="3" style="width:70px;font-size:10px;padding:4px 6px;">
         <button class="filter-btn" onclick="applyCustomEdgeWindow()" style="font-size:9px;">Apply</button>
-        <span style="font-size:8px;color:var(--dim);">Enter any number (3-82 games)</span>
+        <span style="font-size:8px;color:var(--dim);">Any number of games (3+). Works for regular season + playoff history.</span>
       </div>
     </div>
 
@@ -357,7 +357,7 @@ function setWindow(w, btn) {
 
 function applyCustomEdgeWindow() {
   const val = parseInt($('custom-edge-window').value);
-  if (!val || val < 3 || val > 82) return;
+  if (!val || val < 3) return;
   currentWindow = `L${val}`;
   document.querySelectorAll('#window-tabs button').forEach(b => b.classList.remove('active'));
   analyzeGame();
