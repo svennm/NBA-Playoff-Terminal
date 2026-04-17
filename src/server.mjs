@@ -141,6 +141,125 @@ app.get('/api/schedule', async (req, res) => {
   }
 });
 
+// API: Hypothetical lines for a scheduled/future game
+// Uses Poisson model on historical gamelogs — NO Odds API calls
+app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
+  const ck = `schedule-lines-${req.params.gameIndex}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    // Get schedule
+    const schedRes = await fetch(`http://localhost:${PORT}/api/schedule`);
+    const schedule = await schedRes.json();
+    const game = schedule[parseInt(req.params.gameIndex)];
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+
+    // Get teams list to find IDs
+    const teams = await espn.getTeams();
+    const homeTeam = teams.find(t => t.abbr === game.home.abbr);
+    const awayTeam = teams.find(t => t.abbr === game.away.abbr);
+
+    const poissonCdf = (k, lam) => {
+      let sum = 0;
+      for (let i = 0; i <= Math.floor(k); i++) {
+        let term = Math.exp(-lam);
+        for (let j = 1; j <= i; j++) term *= lam / j;
+        sum += term;
+      }
+      return Math.min(sum, 1);
+    };
+    const toAmerican = (prob) => prob >= 0.5
+      ? Math.round(-100 * prob / (1 - prob))
+      : Math.round(100 * (1 - prob) / prob);
+
+    const analyzeTeam = async (teamId, teamAbbr) => {
+      if (!teamId) return [];
+      const roster = await espn.getPlayerStats(teamId);
+      const top = roster.slice(0, 10);
+      const gamelogs = await Promise.allSettled(
+        top.map(p => espn.getPlayerGamelog(p.id))
+      );
+
+      const rows = [];
+      for (let i = 0; i < top.length; i++) {
+        const player = top[i];
+        const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
+        if (!gl?.games?.length || gl.games.length < 5) continue;
+
+        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+        for (const key of statKeys) {
+          const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+          if (all.length < 5) continue;
+
+          const n = all.length;
+          const mean = all.reduce((a, b) => a + b, 0) / n;
+          if (mean < 0.5) continue;
+          const variance = all.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
+          const stdDev = Math.sqrt(variance);
+          const dispersion = mean > 0 ? variance / mean : 0;
+
+          // Last 10 and last 5 windows
+          const last10 = all.slice(0, Math.min(10, all.length));
+          const last5 = all.slice(0, Math.min(5, all.length));
+          const meanL10 = last10.reduce((a, b) => a + b, 0) / last10.length;
+          const meanL5 = last5.reduce((a, b) => a + b, 0) / last5.length;
+
+          const line = Math.floor(mean) + 0.5;
+          const overProb = 1 - poissonCdf(line, mean);
+          const underProb = poissonCdf(line, mean);
+          const actualOver = all.filter(v => v > line).length;
+
+          let fit = 'Poor';
+          if (Math.abs(dispersion - 1) < 0.5) fit = 'Excellent';
+          else if (Math.abs(dispersion - 1) < 1) fit = 'Good';
+          else if (Math.abs(dispersion - 1) < 2) fit = 'Fair';
+
+          rows.push({
+            player: player.name, playerId: player.id, team: teamAbbr,
+            headshot: player.headshot || '', stat: key, line,
+            mean: +mean.toFixed(1), stdDev: +stdDev.toFixed(1), games: n,
+            meanL10: +meanL10.toFixed(1), meanL5: +meanL5.toFixed(1),
+            trend: +(meanL5 - mean).toFixed(1),
+            modelOverProb: +(overProb * 100).toFixed(1),
+            modelUnderProb: +(underProb * 100).toFixed(1),
+            modelOverOdds: toAmerican(overProb),
+            modelUnderOdds: toAmerican(underProb),
+            actualOverPct: +(actualOver / n * 100).toFixed(1),
+            poissonFit: fit, dispersion: +dispersion.toFixed(3),
+            consistency: stdDev / mean < 0.2 ? 'High' : stdDev / mean < 0.35 ? 'Medium' : 'Low'
+          });
+        }
+      }
+      return rows;
+    };
+
+    const [homeRows, awayRows] = await Promise.all([
+      analyzeTeam(homeTeam?.id, game.home.abbr),
+      analyzeTeam(awayTeam?.id, game.away.abbr)
+    ]);
+
+    const result = {
+      game: {
+        home: game.home, away: game.away,
+        date: game.date, odds: game.odds,
+        broadcast: game.broadcast, note: game.note
+      },
+      rows: [...awayRows, ...homeRows],
+      source: 'Poisson model (ESPN gamelogs)',
+      summary: {
+        total: awayRows.length + homeRows.length,
+        playersAnalyzed: new Set([...awayRows, ...homeRows].map(r => r.playerId)).size
+      }
+    };
+
+    cache.set(ck, result, 30 * 60_000); // 30 min cache — historical data doesn't change fast
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Upcoming UCL schedule
 app.get('/api/soccer/:league/schedule', async (req, res) => {
   const ck = `soccer-schedule-${req.params.league}`;

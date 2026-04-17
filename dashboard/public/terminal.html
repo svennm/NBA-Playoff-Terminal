@@ -628,6 +628,36 @@
     animation: pulse 0.5s infinite;
   }
 
+  /* Future games */
+  .future-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px;border-left:3px solid var(--purple);transition:border-color .2s;}
+  .future-card:hover{border-color:var(--cyan);}
+  .future-date{font-size:9px;color:var(--amber);font-family:'Orbitron',sans-serif;letter-spacing:1px;margin-bottom:4px;}
+  .future-teams{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+  .future-teams .vs{color:var(--dim);font-size:10px;padding:0 8px;}
+  .future-teams .team{display:flex;align-items:center;gap:6px;font-weight:600;font-size:12px;}
+  .future-teams .team img{width:20px;height:20px;object-fit:contain;}
+  .proj-btn{background:rgba(155,89,182,0.1);border:1px solid rgba(155,89,182,0.3);color:var(--purple);padding:4px 10px;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;border-radius:3px;cursor:pointer;transition:all .15s;margin-top:4px;}
+  .proj-btn:hover{background:rgba(155,89,182,0.2);border-color:var(--purple);}
+
+  /* Lines modal */
+  .lines-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(3,5,8,0.92);z-index:200;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;}
+  .lines-overlay.open{display:flex;}
+  .lines-modal{background:var(--panel);border:1px solid var(--border-glow);border-radius:8px;max-width:900px;width:100%;max-height:85vh;overflow-y:auto;}
+  .lines-modal-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--panel);z-index:1;}
+  .lines-modal-header h2{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--purple);letter-spacing:2px;}
+  .lines-modal-close{background:none;border:1px solid var(--border);color:var(--dim);font-size:18px;padding:2px 8px;border-radius:3px;cursor:pointer;}
+  .lines-modal-close:hover{color:var(--red);border-color:var(--red);}
+  .lines-modal-body{padding:12px 16px;}
+  .lines-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .lines-table th{text-align:left;padding:6px 8px;color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel);}
+  .lines-table td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .lines-table tr:hover td{background:rgba(155,89,182,0.04);}
+  .lines-filter{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;}
+  .lines-filter button{background:rgba(155,89,182,0.06);border:1px solid var(--border);color:var(--dim);padding:3px 8px;font-size:9px;font-family:'JetBrains Mono',monospace;border-radius:3px;cursor:pointer;}
+  .lines-filter button:hover,.lines-filter button.active{color:var(--purple);border-color:var(--purple);background:rgba(155,89,182,0.12);}
+  .trend-up{color:var(--green);}
+  .trend-down{color:var(--red);}
+
   /* Responsive */
   @media (max-width: 1200px) {
     .grid { grid-template-columns: 1fr 1fr; }
@@ -756,14 +786,38 @@
     </div>
   </div>
 
-  <!-- News Feed -->
+  <!-- Future Games with Projected Lines -->
   <div class="panel two-col">
+    <div class="panel-header" style="color:var(--purple);">
+      Upcoming Schedule — Projected Lines
+      <span class="count" id="future-count">0</span>
+    </div>
+    <div class="panel-body" id="future-panel" style="max-height:500px;">
+      <div style="color:var(--dim);font-size:10px;">Loading schedule...</div>
+    </div>
+  </div>
+
+  <!-- News Feed -->
+  <div class="panel">
     <div class="panel-header">
       Intel Feed
       <span class="count" id="news-count">0</span>
     </div>
     <div class="panel-body" id="news-panel" style="max-height:400px;">
       <div style="color:var(--dim);font-size:10px;">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Projected Lines Modal -->
+<div class="lines-overlay" id="lines-overlay" onclick="if(event.target===this)closeLinesModal()">
+  <div class="lines-modal">
+    <div class="lines-modal-header">
+      <h2 id="lines-modal-title">Projected Lines</h2>
+      <button class="lines-modal-close" onclick="closeLinesModal()">✕</button>
+    </div>
+    <div class="lines-modal-body" id="lines-modal-body">
+      <div class="loading"><div class="spinner"></div></div>
     </div>
   </div>
 </div>
@@ -1153,8 +1207,162 @@ function renderGauges(data) {
   }).join('');
 }
 
+// Future games
+async function loadFutureGames() {
+  try {
+    const res = await fetch('/api/schedule');
+    const games = await res.json();
+    // Only show games that haven't started yet and are beyond today
+    const now = new Date();
+    const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+    const future = games.filter(g => {
+      const d = new Date(g.date);
+      return d > now && g.status !== 'Final' && g.status !== 'In Progress';
+    });
+
+    $('future-count').textContent = future.length;
+    if (!future.length) {
+      $('future-panel').innerHTML = '<div style="color:var(--dim);text-align:center;padding:16px;">No upcoming games scheduled.</div>';
+      return;
+    }
+
+    // Group by date
+    const byDate = {};
+    future.forEach((g, origIdx) => {
+      // Find original index in the full schedule array
+      const schedIdx = games.indexOf(g);
+      const d = new Date(g.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      if (!byDate[d]) byDate[d] = [];
+      byDate[d].push({ ...g, schedIdx });
+    });
+
+    let html = '';
+    for (const [date, dateGames] of Object.entries(byDate)) {
+      html += `<div style="font-size:9px;color:var(--amber);font-family:'Orbitron',sans-serif;letter-spacing:2px;padding:6px 0 4px;border-bottom:1px solid var(--border);margin-bottom:6px;">${date}</div>`;
+      html += dateGames.map(g => {
+        const time = new Date(g.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const oddsHtml = g.odds ? `<div style="display:flex;gap:4px;margin-top:4px;font-size:9px;"><span style="background:rgba(0,229,255,0.06);padding:2px 6px;border-radius:2px;color:var(--cyan);">SPREAD ${g.odds.spread}</span><span style="background:rgba(0,229,255,0.06);padding:2px 6px;border-radius:2px;color:var(--cyan);">O/U ${g.odds.overUnder}</span></div>` : '';
+        return `
+          <div class="future-card">
+            <div class="future-teams">
+              <div class="team">
+                <img src="${g.away.logo}" alt="" onerror="this.style.display='none'">
+                ${g.away.abbr}
+              </div>
+              <span class="vs">${time}</span>
+              <div class="team">
+                ${g.home.abbr}
+                <img src="${g.home.logo}" alt="" onerror="this.style.display='none'">
+              </div>
+            </div>
+            ${oddsHtml}
+            <div style="display:flex;gap:6px;margin-top:6px;">
+              <button class="proj-btn" onclick="event.stopPropagation();openLinesModal(${g.schedIdx},'${g.away.abbr} @ ${g.home.abbr}')">Projected Player Lines</button>
+              <a href="/matchup.html?a=${g.away.abbr}&b=${g.home.abbr}" class="proj-btn" style="text-decoration:none;" onclick="event.stopPropagation()">Full Matchup</a>
+            </div>
+            ${g.broadcast ? `<div style="font-size:9px;color:var(--dim);margin-top:3px;">${g.broadcast}</div>` : ''}
+          </div>`;
+      }).join('');
+    }
+    $('future-panel').innerHTML = html;
+  } catch (e) {
+    $('future-panel').innerHTML = `<div style="color:var(--red);padding:12px;">Failed: ${e.message}</div>`;
+  }
+}
+
+// Projected Lines Modal
+let currentLinesFilter = 'ALL';
+
+function openLinesModal(gameIndex, title) {
+  const overlay = $('lines-overlay');
+  overlay.classList.add('open');
+  $('lines-modal-title').textContent = `Projected Lines — ${title}`;
+  $('lines-modal-body').innerHTML = '<div class="loading" style="padding:30px;"><div class="spinner"></div><br>Generating Poisson lines from gamelogs...</div>';
+  document.body.style.overflow = 'hidden';
+
+  fetch(`/api/schedule/lines/${gameIndex}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { $('lines-modal-body').innerHTML = `<div style="color:var(--red);">${data.error}</div>`; return; }
+      renderLinesModal(data);
+    })
+    .catch(e => { $('lines-modal-body').innerHTML = `<div style="color:var(--red);">Error: ${e.message}</div>`; });
+}
+
+function closeLinesModal() {
+  $('lines-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function renderLinesModal(data) {
+  const rows = data.rows || [];
+  const stats = [...new Set(rows.map(r => r.stat))];
+
+  const filterHtml = `
+    <div class="lines-filter">
+      <button class="${currentLinesFilter === 'ALL' ? 'active' : ''}" onclick="filterLines('ALL',${JSON.stringify(data).length > 50000 ? 'null' : 'linesData'})">All</button>
+      ${stats.map(s => `<button class="${currentLinesFilter === s ? 'active' : ''}" onclick="filterLines('${s}')">${s}</button>`).join('')}
+    </div>`;
+
+  const filtered = currentLinesFilter === 'ALL' ? rows : rows.filter(r => r.stat === currentLinesFilter);
+
+  // Sort by stat, then by mean descending
+  filtered.sort((a, b) => a.stat.localeCompare(b.stat) || b.mean - a.mean);
+
+  const gameInfo = data.game;
+  const headerHtml = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:8px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;">
+      <div style="font-size:11px;"><strong>${gameInfo.away.abbr}</strong> @ <strong>${gameInfo.home.abbr}</strong></div>
+      <div style="font-size:10px;color:var(--amber);">${new Date(gameInfo.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${new Date(gameInfo.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</div>
+      <div style="font-size:9px;color:var(--dim);">${data.summary.playersAnalyzed} players | ${data.summary.total} lines | ${data.source}</div>
+    </div>`;
+
+  const tableHtml = `
+    <table class="lines-table">
+      <thead><tr>
+        <th>Player</th><th>Team</th><th>Stat</th><th>Line</th>
+        <th>Mean</th><th>L5</th><th>Trend</th>
+        <th>Over %</th><th>Over Odds</th><th>Under Odds</th>
+        <th>Hit Rate</th><th>Fit</th>
+      </tr></thead>
+      <tbody>
+        ${filtered.map(r => {
+          const trendCls = r.trend > 0.5 ? 'trend-up' : r.trend < -0.5 ? 'trend-down' : '';
+          const trendIcon = r.trend > 0.5 ? '▲' : r.trend < -0.5 ? '▼' : '—';
+          const fitColor = r.poissonFit === 'Excellent' ? 'var(--green)' : r.poissonFit === 'Good' ? 'var(--cyan)' : r.poissonFit === 'Fair' ? 'var(--amber)' : 'var(--red)';
+          const overColor = r.modelOverProb > 55 ? 'var(--green)' : r.modelOverProb < 45 ? 'var(--red)' : '';
+          return `<tr>
+            <td style="font-weight:600;">${r.player}</td>
+            <td style="color:var(--dim);">${r.team}</td>
+            <td><span style="background:rgba(155,89,182,0.1);padding:1px 5px;border-radius:2px;font-size:9px;color:var(--purple);">${r.stat}</span></td>
+            <td style="font-weight:700;font-family:'Orbitron',sans-serif;font-size:12px;">${r.line}</td>
+            <td>${r.mean}</td>
+            <td>${r.meanL5}</td>
+            <td class="${trendCls}">${trendIcon} ${r.trend > 0 ? '+' : ''}${r.trend}</td>
+            <td style="font-weight:600;${overColor ? 'color:'+overColor : ''}">${r.modelOverProb}%</td>
+            <td style="color:${r.modelOverOdds > 0 ? 'var(--green)' : 'var(--amber)'};">${r.modelOverOdds > 0 ? '+' : ''}${r.modelOverOdds}</td>
+            <td style="color:${r.modelUnderOdds > 0 ? 'var(--green)' : 'var(--amber)'};">${r.modelUnderOdds > 0 ? '+' : ''}${r.modelUnderOdds}</td>
+            <td>${r.actualOverPct}%</td>
+            <td style="color:${fitColor};font-size:9px;">${r.poissonFit}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  $('lines-modal-body').innerHTML = headerHtml + filterHtml + tableHtml;
+
+  // Store data for filter switching
+  window._linesData = data;
+}
+
+function filterLines(stat) {
+  currentLinesFilter = stat;
+  if (window._linesData) renderLinesModal(window._linesData);
+}
+
 // Init
 fetchSweep().then(setOnline).catch(setOffline);
+loadFutureGames();
 
 // Auto-refresh every 60s
 setInterval(() => fetchSweep().then(setOnline).catch(setOffline), 60000);

@@ -47,8 +47,8 @@ export const TTL = {
   PLAYER_GAMELOG: 60 * 60_000, // 1 hour — historical data
   TEAM_DETAIL: 15 * 60_000,  // 15 min — record can change after games
   TEAM_STATS: 15 * 60_000,   // 15 min
-  GAME_ODDS: 5 * 60_000,     // 5 min — odds move
-  PLAYER_PROPS: 5 * 60_000,  // 5 min — props move
+  GAME_ODDS: 30 * 60_000,    // 30 min — conserve Odds API quota (20K/month)
+  PLAYER_PROPS: 30 * 60_000, // 30 min — conserve Odds API quota
   TEAMS_LIST: 60 * 60_000,   // 1 hour — team list never changes
   PROPS_MERGED: 3 * 60_000,  // 3 min — merged game props
 };

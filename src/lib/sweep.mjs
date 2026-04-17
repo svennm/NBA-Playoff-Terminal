@@ -29,14 +29,16 @@ export async function runSweep(force = false) {
   const start = performance.now();
   const TIMEOUT = IS_VERCEL ? 8000 : 15000;
 
-  // Core ESPN sources — these are fast and reliable
+  // Core ESPN sources — these are fast, reliable, and FREE
+  // NOTE: Odds API removed from sweep to conserve 20K/month quota
+  // ESPN already embeds odds in scoreboard data (spreads, totals, ML)
+  // Odds API only used on-demand for book comparison on analysis page
   const results = await Promise.allSettled([
     withTimeout(espn.getScoreboard(), TIMEOUT, 'scoreboard'),
     withTimeout(espn.getStandings(), TIMEOUT, 'standings'),
     withTimeout(espn.getNews(), TIMEOUT, 'news'),
     withTimeout(espn.getInjuries(), TIMEOUT, 'injuries'),
     withTimeout(espn.getTeams(), TIMEOUT, 'teams'),
-    withTimeout(odds.getOdds(), TIMEOUT, 'odds'),
   ]);
 
   const extract = (i) => results[i].status === 'fulfilled' ? results[i].value : null;
@@ -46,7 +48,7 @@ export async function runSweep(force = false) {
   const news = extract(2) || [];
   const injuries = extract(3) || [];
   const teams = extract(4) || [];
-  const oddsData = extract(5) || { data: [] };
+  const oddsData = { data: [] }; // No longer fetched in sweep
 
   // Log any failures
   results.forEach((r, i) => {
