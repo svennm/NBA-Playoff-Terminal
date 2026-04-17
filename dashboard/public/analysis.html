@@ -115,9 +115,12 @@
 
 <div class="main">
   <!-- Sport toggle -->
-  <div style="display:flex;gap:0;margin-bottom:12px;">
-    <button onclick="setSport('nba')" id="sp-nba" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:4px 0 0 4px;background:rgba(255,179,0,0.1);color:var(--amber);">NBA</button>
-    <button onclick="setSport('ucl')" id="sp-ucl" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">UCL</button>
+  <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+    <div style="display:flex;gap:0;flex:1;">
+      <button onclick="setSport('nba')" id="sp-nba" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:4px 0 0 4px;background:rgba(255,179,0,0.1);color:var(--amber);">NBA</button>
+      <button onclick="setSport('ucl')" id="sp-ucl" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">UCL</button>
+    </div>
+    <button id="odds-toggle" onclick="toggleOddsFormat()" style="padding:6px 12px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;border:1px solid var(--border);cursor:pointer;border-radius:4px;background:var(--panel);color:var(--cyan);min-width:44px;" title="Toggle American/Decimal odds">AM</button>
   </div>
 
   <div class="tab-row">
@@ -249,6 +252,20 @@ let edgeOnly = false;
 let sortEdge = false;
 let currentSport = 'nba';
 let currentWindow = 'season';
+
+// Odds format (synced with slips page via localStorage)
+let oddsFormat = localStorage.getItem('oddsFormat') || 'american';
+function americanToDecimal(am) { return am > 0 ? (am / 100) + 1 : (100 / Math.abs(am)) + 1; }
+function fmtOdds(am) {
+  if (oddsFormat === 'decimal') return americanToDecimal(am).toFixed(2);
+  return (am > 0 ? '+' : '') + am;
+}
+function toggleOddsFormat() {
+  oddsFormat = oddsFormat === 'american' ? 'decimal' : 'american';
+  localStorage.setItem('oddsFormat', oddsFormat);
+  document.getElementById('odds-toggle').textContent = oddsFormat === 'american' ? 'AM' : 'DEC';
+  renderAnalysis();
+}
 
 function setSport(sport) {
   currentSport = sport;
@@ -425,7 +442,7 @@ function renderAnalysis() {
     const bar = `<span class="edge-bar" style="width:${Math.min(Math.abs(e)*3,50)}px;background:${e>0?'var(--green)':'var(--red)'};"></span>`;
     return `<span class="${cls}">${e>0?'+':''}${e}%</span>${bar}`;
   };
-  const fmtOdds = (o) => (o > 0 ? '+' : '') + o;
+  const fmtO = (o) => fmtOdds(o);
 
   const showTrend = currentWindow !== 'season';
   const trendHeader = showTrend ? '<th>Trend</th><th>Szn Avg</th>' : '';
@@ -455,7 +472,7 @@ function renderAnalysis() {
               <td style="color:var(--dim);">${r.mean}±${r.stdDev}</td>
               ${trendCells}
               <td style="color:var(--purple);font-weight:600;">${r.modelOverProb}%</td>
-              <td>${fmtOdds(r.modelOverOdds)}</td>
+              <td>${fmtO(r.modelOverOdds)}</td>
               <td>${fmtEdge(r.overEdge)}</td>
               <td style="color:var(--purple);">${r.modelUnderProb}%</td>
               <td>${fmtEdge(r.underEdge)}</td>
@@ -736,6 +753,7 @@ async function loadAutoBook() {
 
 init();
 loadBook();
+document.getElementById('odds-toggle').textContent = oddsFormat === 'american' ? 'AM' : 'DEC';
 setInterval(loadBook, 30000);
 </script>
 <script src="/slip-widget.js"></script>

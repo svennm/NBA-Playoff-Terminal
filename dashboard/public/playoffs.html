@@ -128,6 +128,10 @@
   <div class="page-title">PLAYOFF PLAYER ANALYSIS</div>
   <div class="page-sub">Stat Windows // Poisson Lines // Playoff History</div>
 
+  <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+    <button id="odds-toggle" onclick="toggleOddsFormat()" style="padding:6px 12px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;border:1px solid var(--border);cursor:pointer;border-radius:4px;background:var(--panel);color:var(--cyan);min-width:44px;" title="Toggle American/Decimal odds">AM</button>
+  </div>
+
   <!-- Team selector -->
   <div id="team-selector" class="team-selector">
     <div class="loading"><div class="spinner"></div></div>
@@ -173,6 +177,21 @@
 
 <script>
 const $ = id => document.getElementById(id);
+
+// Odds format (synced via localStorage)
+let oddsFormat = localStorage.getItem('oddsFormat') || 'american';
+function americanToDecimal(am) { return am > 0 ? (am / 100) + 1 : (100 / Math.abs(am)) + 1; }
+function fmtOdds(am) {
+  if (oddsFormat === 'decimal') return americanToDecimal(am).toFixed(2);
+  return (am > 0 ? '+' : '') + am;
+}
+function toggleOddsFormat() {
+  oddsFormat = oddsFormat === 'american' ? 'decimal' : 'american';
+  localStorage.setItem('oddsFormat', oddsFormat);
+  $('odds-toggle').textContent = oddsFormat === 'american' ? 'AM' : 'DEC';
+  if (playersData) renderPlayers();
+}
+
 let currentTeam = null;
 let currentTeamAbbr = null;
 let currentStat = 'ALL';
@@ -332,7 +351,7 @@ function renderPlayerCard(player) {
               <div class="wlabel">${getLabel(w)}</div>
               <div class="wmean ${trendCls}">${d.mean} ${trendIcon}</div>
               <div class="wline">L: ${d.line} (${d.games}g)</div>
-              <div class="wodds">O <span style="color:${oddsColor}">${d.overOdds > 0 ? '+' : ''}${d.overOdds}</span> | ${d.overProb}%</div>
+              <div class="wodds">O <span style="color:${oddsColor}">${fmtOdds(d.overOdds)}</span> | ${d.overProb}%</div>
               <div style="font-size:8px;color:var(--dim);">Hit: ${d.hitRate}%</div>
             </div>`;
           }).join('')}
@@ -357,6 +376,7 @@ function renderPlayerCard(player) {
 }
 
 init();
+$('odds-toggle').textContent = oddsFormat === 'american' ? 'AM' : 'DEC';
 </script>
 </body>
 </html>

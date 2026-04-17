@@ -826,6 +826,14 @@
 <script>
 const $ = id => document.getElementById(id);
 
+// Odds format (synced via localStorage)
+let oddsFormat = localStorage.getItem('oddsFormat') || 'american';
+function americanToDecimal(am) { return am > 0 ? (am / 100) + 1 : (100 / Math.abs(am)) + 1; }
+function fmtOdds(am) {
+  if (oddsFormat === 'decimal') return americanToDecimal(am).toFixed(2);
+  return (am > 0 ? '+' : '') + am;
+}
+
 // Clock
 function updateClock() {
   const now = new Date();
@@ -1341,8 +1349,8 @@ function renderLinesModal(data) {
             <td>${r.meanL5}</td>
             <td class="${trendCls}">${trendIcon} ${r.trend > 0 ? '+' : ''}${r.trend}</td>
             <td style="font-weight:600;${overColor ? 'color:'+overColor : ''}">${r.modelOverProb}%</td>
-            <td style="color:${r.modelOverOdds > 0 ? 'var(--green)' : 'var(--amber)'};">${r.modelOverOdds > 0 ? '+' : ''}${r.modelOverOdds}</td>
-            <td style="color:${r.modelUnderOdds > 0 ? 'var(--green)' : 'var(--amber)'};">${r.modelUnderOdds > 0 ? '+' : ''}${r.modelUnderOdds}</td>
+            <td style="color:${r.modelOverOdds > 0 ? 'var(--green)' : 'var(--amber)'};">${fmtOdds(r.modelOverOdds)}</td>
+            <td style="color:${r.modelUnderOdds > 0 ? 'var(--green)' : 'var(--amber)'};">${fmtOdds(r.modelUnderOdds)}</td>
             <td>${r.actualOverPct}%</td>
             <td style="color:${fitColor};font-size:9px;">${r.poissonFit}</td>
           </tr>`;
