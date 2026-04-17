@@ -144,16 +144,36 @@ app.get('/api/schedule', async (req, res) => {
 // API: Hypothetical lines for a scheduled/future game
 // Uses Poisson model on historical gamelogs — NO Odds API calls
 app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
-  const ck = `schedule-lines-${req.params.gameIndex}`;
+  const window = req.query.window || 'season';
+  const ck = `schedule-lines-${req.params.gameIndex}-${window}`;
   const cached = cache.get(ck);
   if (cached) return res.json(cached);
 
   try {
-    // Get schedule
-    const schedRes = await fetch(`http://localhost:${PORT}/api/schedule`);
-    const schedule = await schedRes.json();
+    // Get schedule directly from ESPN
+    const today = new Date();
+    const end = new Date(today); end.setDate(end.getDate() + 7);
+    const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const schedUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
+    const schedFetch = await fetch(schedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const schedData = await schedFetch.json();
+    const schedule = (schedData.events || []).map(ev => {
+      const comp = ev.competitions?.[0];
+      const teams = comp?.competitors || [];
+      const home = teams.find(t => t.homeAway === 'home');
+      const away = teams.find(t => t.homeAway === 'away');
+      return {
+        id: ev.id, date: ev.date, status: comp?.status?.type?.description || 'Scheduled',
+        home: { name: home?.team?.displayName || 'TBD', abbr: home?.team?.abbreviation || 'TBD', logo: home?.team?.logo || '' },
+        away: { name: away?.team?.displayName || 'TBD', abbr: away?.team?.abbreviation || 'TBD', logo: away?.team?.logo || '' },
+        odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0, provider: comp.odds[0].provider?.name || '' } : null,
+        broadcast: comp?.broadcasts?.[0]?.names?.join(', ') || ''
+      };
+    });
+
     const game = schedule[parseInt(req.params.gameIndex)];
-    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (!game) return res.status(404).json({ error: 'Game not found at index ' + req.params.gameIndex });
+    if (game.home.abbr === 'TBD' || game.away.abbr === 'TBD') return res.status(400).json({ error: 'TBD matchup — teams not yet determined' });
 
     // Get teams list to find IDs
     const teams = await espn.getTeams();
@@ -173,6 +193,8 @@ app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
       ? Math.round(-100 * prob / (1 - prob))
       : Math.round(100 * (1 - prob) / prob);
 
+    const isPlayoffWindow = window === 'playoffs' || window === 'playoffs2026';
+
     const analyzeTeam = async (teamId, teamAbbr) => {
       if (!teamId) return [];
       const roster = await espn.getPlayerStats(teamId);
@@ -180,35 +202,54 @@ app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
       const gamelogs = await Promise.allSettled(
         top.map(p => espn.getPlayerGamelog(p.id))
       );
+      const playoffData = isPlayoffWindow ? await Promise.allSettled(
+        top.map(p => espn.getPlayerPlayoffStats(p.id))
+      ) : null;
 
       const rows = [];
       for (let i = 0; i < top.length; i++) {
         const player = top[i];
         const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
-        if (!gl?.games?.length || gl.games.length < 5) continue;
+        const po = playoffData?.[i]?.status === 'fulfilled' ? playoffData[i].value : null;
 
         const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
         for (const key of statKeys) {
-          const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
-          if (all.length < 5) continue;
+          let values;
+          let seasonMean = null;
 
-          const n = all.length;
-          const mean = all.reduce((a, b) => a + b, 0) / n;
-          if (mean < 0.5) continue;
-          const variance = all.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1);
+          if (window === 'playoffs') {
+            values = (po?.games || []).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            if (values.length < 3) continue;
+          } else if (window === 'playoffs2026') {
+            values = (po?.games || []).filter(g => g.season === 2026).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            if (values.length < 2) continue;
+          } else {
+            if (!gl?.games?.length) continue;
+            const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            if (all.length < 5) continue;
+            const windowSize = window === 'season' ? all.length : window === 'L5' ? 5 : window === 'L10' ? 10 : window === 'L20' ? 20 : window === 'L50' ? 50 : all.length;
+            values = all.slice(0, Math.min(windowSize, all.length));
+            if (values.length < 3) continue;
+            seasonMean = +(all.reduce((a, b) => a + b, 0) / all.length).toFixed(1);
+          }
+
+          // Also get season baseline for non-season windows
+          if (!seasonMean && gl?.games?.length && window !== 'season') {
+            const sv = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            if (sv.length >= 5) seasonMean = +(sv.reduce((a, b) => a + b, 0) / sv.length).toFixed(1);
+          }
+
+          const n = values.length;
+          const mean = values.reduce((a, b) => a + b, 0) / n;
+          if (mean < 0.3) continue;
+          const variance = n > 1 ? values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
           const stdDev = Math.sqrt(variance);
           const dispersion = mean > 0 ? variance / mean : 0;
-
-          // Last 10 and last 5 windows
-          const last10 = all.slice(0, Math.min(10, all.length));
-          const last5 = all.slice(0, Math.min(5, all.length));
-          const meanL10 = last10.reduce((a, b) => a + b, 0) / last10.length;
-          const meanL5 = last5.reduce((a, b) => a + b, 0) / last5.length;
 
           const line = Math.floor(mean) + 0.5;
           const overProb = 1 - poissonCdf(line, mean);
           const underProb = poissonCdf(line, mean);
-          const actualOver = all.filter(v => v > line).length;
+          const actualOver = values.filter(v => v > line).length;
 
           let fit = 'Poor';
           if (Math.abs(dispersion - 1) < 0.5) fit = 'Excellent';
@@ -219,8 +260,8 @@ app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
             player: player.name, playerId: player.id, team: teamAbbr,
             headshot: player.headshot || '', stat: key, line,
             mean: +mean.toFixed(1), stdDev: +stdDev.toFixed(1), games: n,
-            meanL10: +meanL10.toFixed(1), meanL5: +meanL5.toFixed(1),
-            trend: +(meanL5 - mean).toFixed(1),
+            seasonMean,
+            trend: seasonMean ? +(mean - seasonMean).toFixed(1) : null,
             modelOverProb: +(overProb * 100).toFixed(1),
             modelUnderProb: +(underProb * 100).toFixed(1),
             modelOverOdds: toAmerican(overProb),
@@ -245,6 +286,7 @@ app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
         date: game.date, odds: game.odds,
         broadcast: game.broadcast, note: game.note
       },
+      window,
       rows: [...awayRows, ...homeRows],
       source: 'Poisson model (ESPN gamelogs)',
       summary: {

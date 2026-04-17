@@ -271,9 +271,14 @@ async function init() {
       fetch('/api/schedule').then(r => r.json()).catch(() => [])
     ]);
     games = sweepRes.games || [];
-    // Schedule: only future games not in today's scoreboard
+    // Schedule: only future games not in today's scoreboard, skip TBD matchups
     const todayIds = new Set(games.map(g => g.id));
-    scheduleGames = (schedRes || []).filter(g => !todayIds.has(g.id) && g.status !== 'Final');
+    const fullSchedule = schedRes || [];
+    // Keep original index for API calls, but only show valid future games
+    scheduleGames = fullSchedule
+      .map((g, origIdx) => ({ ...g, _schedIdx: origIdx }))
+      .filter(g => !todayIds.has(g.id) && g.status !== 'Final')
+      .filter(g => g.home.abbr !== 'TBD' && g.away.abbr !== 'TBD' && !g.away.name.includes('/'));
   }
 
   const sel = $('game-select');
@@ -291,10 +296,10 @@ async function init() {
   }
 
   if (scheduleGames.length) {
-    html += `<optgroup label="Upcoming (Schedule)">`;
-    html += scheduleGames.map((g, i) => {
+    html += `<optgroup label="Upcoming Games">`;
+    html += scheduleGames.map(g => {
       const t = new Date(g.date).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-      return `<option value="sched:${i}">${g.away.abbr} @ ${g.home.abbr} — ${t}</option>`;
+      return `<option value="sched:${g._schedIdx}">${g.away.abbr} @ ${g.home.abbr} — ${t}</option>`;
     }).join('');
     html += `</optgroup>`;
   }
@@ -337,7 +342,7 @@ async function analyzeGame() {
   if (currentSport === 'ucl') {
     endpoint = `/api/soccer/uefa.champions/analysis/${idx}`;
   } else if (source === 'sched') {
-    endpoint = `/api/schedule/lines/${idx}`;
+    endpoint = `/api/schedule/lines/${idx}?window=${currentWindow}`;
   } else {
     endpoint = `/api/analysis/game/${idx}?window=${currentWindow}`;
   }
