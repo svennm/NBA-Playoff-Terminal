@@ -147,13 +147,15 @@
         <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:50px;" id="w-L20" onclick="setWindow('L20',this)">L20</button>
         <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:50px;" id="w-L50" onclick="setWindow('L50',this)">L50</button>
         <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:70px;color:var(--amber);" id="w-playoffs" onclick="setWindow('playoffs',this)">PO Career</button>
+        <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:55px;color:var(--amber);" id="w-PL10" onclick="setWindow('PL10',this)">PO L10</button>
+        <button class="filter-btn" style="border:none;border-right:1px solid var(--border);border-radius:0;flex:1;min-width:55px;color:var(--amber);" id="w-PL30" onclick="setWindow('PL30',this)">PO L30</button>
         <button class="filter-btn" style="border:none;border-radius:0;flex:1;min-width:70px;color:var(--amber);" id="w-playoffs2026" onclick="setWindow('playoffs2026',this)">PO '26</button>
       </div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
         <span style="font-size:9px;color:var(--dim);">Custom:</span>
         <input type="number" id="custom-edge-window" placeholder="e.g. 15" min="3" style="width:70px;font-size:10px;padding:4px 6px;">
         <button class="filter-btn" onclick="applyCustomEdgeWindow()" style="font-size:9px;">Apply</button>
-        <span style="font-size:8px;color:var(--dim);">Any number of games (3+). Works for regular season + playoff history.</span>
+        <span style="font-size:8px;color:var(--dim);">Regular season: type number. Playoff: type PL then number (e.g. PL15).</span>
       </div>
     </div>
 
@@ -230,6 +232,7 @@
       <button class="filter-btn" onclick="setAutoWindows('5,15,30,season',this)">L5 / L15 / L30 / Season</button>
       <button class="filter-btn" onclick="setAutoWindows('10,25,50,season',this)">L10 / L25 / L50 / Season</button>
       <button class="filter-btn" style="color:var(--amber);" onclick="setAutoWindows('10,20,season,playoffs',this)">L10 / L20 / Season / Playoffs</button>
+      <button class="filter-btn" style="color:var(--amber);" onclick="setAutoWindows('PL5,PL10,PL30,playoffs',this)">PO L5 / L10 / L30 / Career</button>
       <span style="color:var(--dim);font-size:8px;">|</span>
       <span style="font-size:9px;color:var(--dim);">Custom:</span>
       <input type="text" id="custom-windows" placeholder="e.g. 7,15,40,season" style="width:160px;font-size:10px;padding:4px 8px;">
@@ -362,9 +365,18 @@ function setWindow(w, btn) {
 }
 
 function applyCustomEdgeWindow() {
-  const val = parseInt($('custom-edge-window').value);
-  if (!val || val < 3) return;
-  currentWindow = `L${val}`;
+  const raw = $('custom-edge-window').value.trim();
+  if (!raw) return;
+  // Support PL prefix for playoff windows
+  if (raw.toUpperCase().startsWith('PL')) {
+    const n = parseInt(raw.slice(2));
+    if (!n || n < 2) return;
+    currentWindow = `PL${n}`;
+  } else {
+    const n = parseInt(raw);
+    if (!n || n < 3) return;
+    currentWindow = `L${n}`;
+  }
   document.querySelectorAll('#window-tabs button').forEach(b => b.classList.remove('active'));
   analyzeGame();
 }

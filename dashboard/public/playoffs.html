@@ -147,12 +147,14 @@
       <button class="team-btn" onclick="setWindows('L10,L25,L50,season',this)">L10/L25/L50/Season</button>
       <button class="team-btn" onclick="setWindows('L5,L10,season,playoffs2026,playoffsCareer',this)" style="color:var(--amber);">All + Playoffs</button>
       <button class="team-btn" onclick="setWindows('playoffs2026,playoffsCareer',this)" style="color:var(--amber);">Playoffs Only</button>
+      <button class="team-btn" onclick="setWindows('PL5,PL10,PL30,playoffsCareer',this)" style="color:var(--amber);">PO L5/L10/L30/Career</button>
+      <button class="team-btn" onclick="setWindows('L10,season,PL10,playoffsCareer',this)" style="color:var(--amber);">Season vs Playoffs</button>
     </div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
       <span style="font-size:9px;color:var(--dim);">Custom:</span>
       <input type="text" id="custom-windows" placeholder="e.g. L7,L15,L40,season,playoffs2026" style="width:250px;font-size:10px;padding:4px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:'JetBrains Mono',monospace;">
       <button class="team-btn" onclick="applyCustomWindows()">Apply</button>
-      <span style="font-size:8px;color:var(--dim);">Options: L3+, season, playoffs2026, playoffsCareer (no max — LeBron has 280+ playoff games)</span>
+      <span style="font-size:8px;color:var(--dim);">Regular: L10, season. Playoff: PL5, PL10, PL30, playoffs2026, playoffsCareer</span>
     </div>
   </div>
 

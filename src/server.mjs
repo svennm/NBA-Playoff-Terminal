@@ -193,7 +193,7 @@ app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
       ? Math.round(-100 * prob / (1 - prob))
       : Math.round(100 * (1 - prob) / prob);
 
-    const isPlayoffWindow = window === 'playoffs' || window === 'playoffs2026';
+    const isPlayoffWindow = window === 'playoffs' || window === 'playoffs2026' || window.startsWith('PL');
 
     const analyzeTeam = async (teamId, teamAbbr) => {
       if (!teamId) return [];
@@ -223,11 +223,16 @@ app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
           } else if (window === 'playoffs2026') {
             values = (po?.games || []).filter(g => g.season === 2026).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
             if (values.length < 2) continue;
+          } else if (window.startsWith('PL')) {
+            const plSize = parseInt(window.slice(2));
+            const allPo = (po?.games || []).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            values = allPo.slice(0, Math.min(plSize, allPo.length));
+            if (values.length < 2) continue;
           } else {
             if (!gl?.games?.length) continue;
             const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
             if (all.length < 5) continue;
-            const windowSize = window === 'season' ? all.length : window === 'L5' ? 5 : window === 'L10' ? 10 : window === 'L20' ? 20 : window === 'L50' ? 50 : all.length;
+            const windowSize = window === 'season' ? all.length : window.startsWith('L') ? parseInt(window.slice(1)) || all.length : all.length;
             values = all.slice(0, Math.min(windowSize, all.length));
             if (values.length < 3) continue;
             seasonMean = +(all.reduce((a, b) => a + b, 0) / all.length).toFixed(1);
@@ -585,7 +590,7 @@ app.get('/api/players/:id/playoffs', async (req, res) => {
 
 // API: Full edge analysis for a game — fetches all player gamelogs + Poisson vs book lines
 app.get('/api/analysis/game/:gameIndex', async (req, res) => {
-  // ?window=season|L5|L10|L20|L50|playoffs|playoffs2026
+  // ?window=season|L5|L10|L20|L50|playoffs|playoffs2026|PL5|PL10|PL30 (playoff last N)
   const window = req.query.window || 'season';
   const cacheKey = `analysis-game-${req.params.gameIndex}-${window}`;
   const cached = cache.get(cacheKey);
@@ -640,7 +645,8 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
       };
     };
 
-    const isPlayoffWindow = window === 'playoffs' || window === 'playoffs2026';
+    // PL prefix = playoff last N (e.g. PL10 = last 10 playoff games)
+    const isPlayoffWindow = window === 'playoffs' || window === 'playoffs2026' || window.startsWith('PL');
 
     const fetchTeamAnalysis = async (teamId, teamAbbr) => {
       if (!teamId) return [];
@@ -650,7 +656,6 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
       const gamelogs = await Promise.allSettled(
         top.map(p => espn.getPlayerGamelog(p.id))
       );
-      // Only fetch playoff data if needed
       const playoffData = isPlayoffWindow ? await Promise.allSettled(
         top.map(p => espn.getPlayerPlayoffStats(p.id))
       ) : null;
@@ -667,24 +672,28 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
           let values;
 
           if (window === 'playoffs') {
-            // All career playoff games
             const poGames = po?.games || [];
             values = poGames.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
             if (values.length < 3) continue;
           } else if (window === 'playoffs2026') {
-            // Current year playoff games only
             const poGames = (po?.games || []).filter(g => g.season === 2026);
             values = poGames.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
             if (values.length < 2) continue;
+          } else if (window.startsWith('PL')) {
+            // Playoff last N — e.g. PL10 = last 10 career playoff games
+            const plSize = parseInt(window.slice(2));
+            const poGames = po?.games || [];
+            const allPo = poGames.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            values = allPo.slice(0, Math.min(plSize, allPo.length));
+            if (values.length < 2) continue;
           } else {
-            // Regular season windows
+            // Regular season windows (L5, L10, L20, L50, season, or custom LN)
             if (!gl?.games?.length) continue;
             const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
             if (all.length < 5) continue;
 
             const windowSize = window === 'season' ? all.length :
-              window === 'L5' ? 5 : window === 'L10' ? 10 :
-              window === 'L20' ? 20 : window === 'L50' ? 50 : all.length;
+              window.startsWith('L') ? parseInt(window.slice(1)) || all.length : all.length;
             values = all.slice(0, Math.min(windowSize, all.length));
             if (values.length < 3) continue;
           }
@@ -748,7 +757,7 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
 
     // Parse requested windows
     const windowDefs = windowsParam.split(',').map(w => w.trim());
-    const needsPlayoffs = windowDefs.some(w => w.includes('playoff'));
+    const needsPlayoffs = windowDefs.some(w => w.includes('playoff') || w.startsWith('PL'));
 
     const [gamelogs, playoffStats] = await Promise.all([
       Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id))),
@@ -809,6 +818,13 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
           if (w === 'season') windows.season = computeWindow(all);
           else if (w === 'playoffs2026') windows.playoffs2026 = poVals.length >= 2 ? computeWindow(poVals) : null;
           else if (w === 'playoffsCareer') windows.playoffsCareer = poCareerVals.length >= 3 ? computeWindow(poCareerVals) : null;
+          else if (w.startsWith('PL')) {
+            // Playoff last N — e.g. PL10 = last 10 career playoff games
+            const plN = parseInt(w.slice(2));
+            if (plN > 0 && poCareerVals.length >= 2) {
+              windows[w] = computeWindow(poCareerVals.slice(0, Math.min(plN, poCareerVals.length)));
+            }
+          }
           else if (w.startsWith('L')) {
             const n = parseInt(w.slice(1));
             if (n > 0 && all.length >= n) windows[w] = computeWindow(all.slice(0, n));
@@ -953,20 +969,26 @@ app.get('/api/book/auto-lines/:source/:gameIndex', async (req, res) => {
     if (!game) return res.status(404).json({ error: 'Game not found' });
     if (game.home.abbr === 'TBD' || game.away.abbr === 'TBD') return res.status(400).json({ error: 'TBD matchup' });
 
-    // Parse window sizes
+    // Parse window sizes — supports: season, playoffs, PL10 (playoff last N), 10 (regular L10)
     const windowDefs = windowsParam.split(',').map(w => {
-      const trimmed = w.trim().toLowerCase();
-      if (trimmed === 'season') return { key: 'season', size: null };
-      if (trimmed === 'playoffs') return { key: 'playoffs', size: null };
+      const trimmed = w.trim();
+      const lower = trimmed.toLowerCase();
+      if (lower === 'season') return { key: 'season', size: null, type: 'regular' };
+      if (lower === 'playoffs' || lower === 'playoffscareer') return { key: 'playoffs', size: null, type: 'playoff' };
+      if (lower === 'playoffs2026') return { key: 'playoffs2026', size: null, type: 'playoff' };
+      if (lower.startsWith('pl')) {
+        const n = parseInt(lower.slice(2));
+        return n > 0 ? { key: `PL${n}`, size: n, type: 'playoff' } : null;
+      }
       const n = parseInt(trimmed);
-      return n > 0 ? { key: `L${n}`, size: n } : null;
+      return n > 0 ? { key: `L${n}`, size: n, type: 'regular' } : null;
     }).filter(Boolean);
 
     const allTeams = await espn.getTeams();
     const homeTeam = allTeams.find(t => t.abbr === game.home.abbr);
     const awayTeam = allTeams.find(t => t.abbr === game.away.abbr);
 
-    const needsPlayoffs = windowDefs.some(w => w.key === 'playoffs');
+    const needsPlayoffs = windowDefs.some(w => w.type === 'playoff');
 
     const buildLines = async (teamId, teamAbbr) => {
       if (!teamId) return [];
@@ -1005,8 +1027,15 @@ app.get('/api/book/auto-lines/:source/:gameIndex', async (req, res) => {
             } else if (w.key === 'playoffs') {
               const poVals = (po?.games || []).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
               if (poVals.length >= 3) models.playoffs = compute(poVals);
-            } else if (w.size && allVals.length >= w.size) {
-              models[w.key] = compute(allVals.slice(0, w.size));
+            } else if (w.key === 'playoffs2026') {
+              const poVals26 = (po?.games || []).filter(g => g.season === 2026).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+              if (poVals26.length >= 2) models.playoffs2026 = compute(poVals26);
+            } else if (w.type === 'playoff' && w.size) {
+              // PL10, PL20 etc — playoff last N
+              const poVals = (po?.games || []).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+              if (poVals.length >= 2) models[w.key] = compute(poVals.slice(0, Math.min(w.size, poVals.length)));
+            } else if (w.size && allVals.length >= Math.min(w.size, 3)) {
+              models[w.key] = compute(allVals.slice(0, Math.min(w.size, allVals.length)));
             }
           }
 
