@@ -133,6 +133,25 @@
     <div class="loading"><div class="spinner"></div></div>
   </div>
 
+  <!-- Window presets -->
+  <div style="margin-bottom:10px;" id="window-controls">
+    <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">Game Windows</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;" id="window-presets">
+      <button class="team-btn active" onclick="setWindows('season,L5,L10,playoffs2026,playoffsCareer',this)">Default</button>
+      <button class="team-btn" onclick="setWindows('L5,L10,L20,season',this)">L5/L10/L20/Season</button>
+      <button class="team-btn" onclick="setWindows('L3,L7,L15,season',this)">L3/L7/L15/Season</button>
+      <button class="team-btn" onclick="setWindows('L10,L25,L50,season',this)">L10/L25/L50/Season</button>
+      <button class="team-btn" onclick="setWindows('L5,L10,season,playoffs2026,playoffsCareer',this)" style="color:var(--amber);">All + Playoffs</button>
+      <button class="team-btn" onclick="setWindows('playoffs2026,playoffsCareer',this)" style="color:var(--amber);">Playoffs Only</button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <span style="font-size:9px;color:var(--dim);">Custom:</span>
+      <input type="text" id="custom-windows" placeholder="e.g. L7,L15,L40,season,playoffs2026" style="width:250px;font-size:10px;padding:4px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-family:'JetBrains Mono',monospace;">
+      <button class="team-btn" onclick="applyCustomWindows()">Apply</button>
+      <span style="font-size:8px;color:var(--dim);">Options: L3-L82, season, playoffs2026, playoffsCareer</span>
+    </div>
+  </div>
+
   <!-- Stat filter -->
   <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
     <div class="window-tabs" id="stat-tabs">
@@ -155,9 +174,27 @@
 <script>
 const $ = id => document.getElementById(id);
 let currentTeam = null;
+let currentTeamAbbr = null;
 let currentStat = 'ALL';
+let currentWindows = 'season,L5,L10,playoffs2026,playoffsCareer';
 let teamsData = [];
 let playersData = null;
+
+function setWindows(w, btn) {
+  currentWindows = w;
+  document.querySelectorAll('#window-presets .team-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  $('custom-windows').value = '';
+  if (currentTeam) loadTeam(currentTeam, currentTeamAbbr);
+}
+
+function applyCustomWindows() {
+  const val = $('custom-windows').value.trim();
+  if (!val) return;
+  currentWindows = val;
+  document.querySelectorAll('#window-presets .team-btn').forEach(b => b.classList.remove('active'));
+  if (currentTeam) loadTeam(currentTeam, currentTeamAbbr);
+}
 
 async function init() {
   try {
@@ -216,15 +253,16 @@ async function init() {
 async function loadTeam(teamId, abbr) {
   if (!teamId) return;
   currentTeam = teamId;
+  currentTeamAbbr = abbr;
 
-  // Highlight button
-  document.querySelectorAll('.team-btn').forEach(b => b.classList.remove('active'));
+  // Highlight team button (not window buttons)
+  document.querySelectorAll('.team-btn[data-id]').forEach(b => b.classList.remove('active'));
   document.querySelector(`.team-btn[data-id="${teamId}"]`)?.classList.add('active');
 
-  $('players-area').innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading gamelogs + playoff history...</div>';
+  $('players-area').innerHTML = `<div class="loading"><div class="spinner"></div><br>Loading gamelogs + playoff history (${currentWindows})...</div>`;
 
   try {
-    const res = await fetch(`/api/playoffs/team/${teamId}`);
+    const res = await fetch(`/api/playoffs/team/${teamId}?windows=${encodeURIComponent(currentWindows)}`);
     playersData = await res.json();
     renderPlayers();
   } catch (e) {
@@ -259,34 +297,39 @@ function renderPlayerCard(player) {
     ? `<span class="player-playoff-badge" style="background:rgba(212,168,37,0.12);color:var(--gold);">${player.playoffGamesCareer} career PO games</span>`
     : `<span class="player-playoff-badge" style="background:rgba(255,61,61,0.08);color:var(--red);">No playoff history</span>`;
 
-  // Season history chips
   const seasonHtml = Object.keys(player.bySeason || {}).length > 0
     ? `<div class="season-row">${Object.entries(player.bySeason).map(([yr, s]) => `
         <div class="season-chip"><span class="yr">${yr}</span> ${s.gp}G ${s.ppg}p ${s.rpg}r ${s.apg}a | FG ${s.fgPct}% 3P ${s.tpPct}%</div>
       `).join('')}</div>`
     : '';
 
+  // Use dynamic windows from API response
+  const windowDefs = playersData?.windows || ['season','L5','L10','playoffs2026','playoffsCareer'];
+  const windowLabels = {
+    season: 'Season', playoffs2026: "PO '26", playoffsCareer: 'PO Career'
+  };
+  const getLabel = (w) => windowLabels[w] || w;
+
   const statRows = statKeys.map(key => {
     const s = stats[key];
-    const windows = ['season', 'L10', 'L5', 'playoffs2026', 'playoffsCareer'];
-    const windowLabels = ['Season', 'L10', 'L5', 'PO \'26', 'PO Career'];
 
     return `
       <div style="margin-bottom:10px;">
         <div style="margin-bottom:4px;"><span class="stat-badge stat-${key}">${key}</span></div>
-        <div class="window-grid">
-          ${windows.map((w, i) => {
+        <div class="window-grid" style="grid-template-columns:repeat(${Math.min(windowDefs.length, 5)},1fr);">
+          ${windowDefs.map(w => {
             const d = s[w];
-            if (!d) return `<div class="window-cell no-data"><div class="wlabel">${windowLabels[i]}</div><div style="font-size:9px;">—</div></div>`;
+            if (!d) return `<div class="window-cell no-data"><div class="wlabel">${getLabel(w)}</div><div style="font-size:9px;">—</div></div>`;
 
-            const seasonMean = s.season?.mean || 0;
+            const seasonMean = s.season?.mean || s[windowDefs[windowDefs.length-1]]?.mean || 0;
             const diff = d.mean - seasonMean;
-            const trendCls = w !== 'season' && Math.abs(diff) > 0.5 ? (diff > 0 ? 'trend-up' : 'trend-down') : '';
-            const trendIcon = w !== 'season' && Math.abs(diff) > 0.5 ? (diff > 0 ? '▲' : '▼') : '';
+            const isBaseline = w === 'season' || (windowDefs.indexOf(w) === windowDefs.length - 1 && !windowDefs.includes('season'));
+            const trendCls = !isBaseline && Math.abs(diff) > 0.5 ? (diff > 0 ? 'trend-up' : 'trend-down') : '';
+            const trendIcon = !isBaseline && Math.abs(diff) > 0.5 ? (diff > 0 ? '▲' : '▼') : '';
 
             const oddsColor = d.overOdds > 0 ? 'var(--green)' : 'var(--amber)';
             return `<div class="window-cell">
-              <div class="wlabel">${windowLabels[i]}</div>
+              <div class="wlabel">${getLabel(w)}</div>
               <div class="wmean ${trendCls}">${d.mean} ${trendIcon}</div>
               <div class="wline">L: ${d.line} (${d.games}g)</div>
               <div class="wodds">O <span style="color:${oddsColor}">${d.overOdds > 0 ? '+' : ''}${d.overOdds}</span> | ${d.overProb}%</div>

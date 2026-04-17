@@ -734,8 +734,11 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
 });
 
 // API: Playoff roster analysis — all stat windows for a team's players
+// ?windows=season,L5,L10,playoffs2026,playoffsCareer (default)
+// Supports any custom window: L7,L15,L25,L40 etc + playoffs + playoffsCareer
 app.get('/api/playoffs/team/:teamId', async (req, res) => {
-  const ck = `playoff-team-${req.params.teamId}`;
+  const windowsParam = req.query.windows || 'season,L5,L10,playoffs2026,playoffsCareer';
+  const ck = `playoff-team-${req.params.teamId}-${windowsParam}`;
   const cached = cache.get(ck);
   if (cached) return res.json(cached);
 
@@ -743,10 +746,13 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
     const roster = await espn.getPlayerStats(req.params.teamId);
     const top = roster.slice(0, 12);
 
-    // Fetch gamelogs + playoff stats in parallel
+    // Parse requested windows
+    const windowDefs = windowsParam.split(',').map(w => w.trim());
+    const needsPlayoffs = windowDefs.some(w => w.includes('playoff'));
+
     const [gamelogs, playoffStats] = await Promise.all([
       Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id))),
-      Promise.allSettled(top.map(p => espn.getPlayerPlayoffStats(p.id)))
+      needsPlayoffs ? Promise.allSettled(top.map(p => espn.getPlayerPlayoffStats(p.id))) : Promise.resolve(top.map(() => ({ status: 'fulfilled', value: null })))
     ]);
 
     const poissonCdf = (k, lam) => {
@@ -783,7 +789,7 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
     for (let i = 0; i < top.length; i++) {
       const player = top[i];
       const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
-      const po = playoffStats[i].status === 'fulfilled' ? playoffStats[i].value : null;
+      const po = playoffStats[i]?.status === 'fulfilled' ? playoffStats[i].value : null;
       if (!gl?.games?.length) continue;
 
       const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
@@ -793,22 +799,24 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
         const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
         if (all.length < 5) continue;
 
-        const last5 = all.slice(0, Math.min(5, all.length));
-        const last10 = all.slice(0, Math.min(10, all.length));
-
-        // Current season playoff games from playoff data
         const poGames2026 = (po?.games || []).filter(g => g.season === 2026);
         const poAll = po?.games || [];
         const poVals = poGames2026.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
         const poCareerVals = poAll.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
 
-        statLines[key] = {
-          season: computeWindow(all),
-          L10: computeWindow(last10),
-          L5: computeWindow(last5),
-          playoffs2026: poVals.length >= 2 ? computeWindow(poVals) : null,
-          playoffsCareer: poCareerVals.length >= 3 ? computeWindow(poCareerVals) : null
-        };
+        const windows = {};
+        for (const w of windowDefs) {
+          if (w === 'season') windows.season = computeWindow(all);
+          else if (w === 'playoffs2026') windows.playoffs2026 = poVals.length >= 2 ? computeWindow(poVals) : null;
+          else if (w === 'playoffsCareer') windows.playoffsCareer = poCareerVals.length >= 3 ? computeWindow(poCareerVals) : null;
+          else if (w.startsWith('L')) {
+            const n = parseInt(w.slice(1));
+            if (n > 0 && all.length >= n) windows[w] = computeWindow(all.slice(0, n));
+            else if (n > 0 && all.length >= 3) windows[w] = computeWindow(all.slice(0, Math.min(n, all.length)));
+          }
+        }
+
+        if (Object.values(windows).some(v => v)) statLines[key] = windows;
       }
 
       if (Object.keys(statLines).length) {
@@ -824,7 +832,7 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
       }
     }
 
-    const result = { teamId: req.params.teamId, players, source: 'ESPN gamelogs + playoff history' };
+    const result = { teamId: req.params.teamId, windows: windowDefs, players, source: 'ESPN gamelogs + playoff history' };
     cache.set(ck, result, 20 * 60_000);
     res.json(result);
   } catch (e) {
