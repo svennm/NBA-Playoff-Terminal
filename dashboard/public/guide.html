@@ -12,17 +12,16 @@
   body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(212,168,37,0.01) 2px,rgba(212,168,37,0.01) 4px);pointer-events:none;z-index:9999;}
 
   .header{background:linear-gradient(180deg,#0a1520,var(--bg));border-bottom:1px solid var(--border-glow);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
-  .logo{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
   .back{color:var(--dim);text-decoration:none;font-size:11px;font-family:'Orbitron',sans-serif;letter-spacing:2px;padding:5px 12px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
   .back:hover{color:var(--gold);border-color:var(--gold);}
 
   .content{max-width:800px;margin:0 auto;padding:30px 20px;}
-  h1{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;letter-spacing:4px;color:var(--gold);margin-bottom:8px;}
+  h1{font-family:'Orbitron',sans-serif;font-size:22px;font-weight:900;letter-spacing:4px;color:var(--gold);margin-bottom:8px;}
   h2{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;letter-spacing:3px;color:var(--cyan);margin:30px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--border);}
   h3{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:600;letter-spacing:2px;color:var(--amber);margin:20px 0 8px;}
   p{margin-bottom:12px;color:var(--text);}
   .dim{color:var(--dim);}
-  .highlight{color:var(--cyan);font-weight:600;}
+  .hl{color:var(--cyan);font-weight:600;}
   .gold{color:var(--gold);font-weight:600;}
   .green{color:var(--green);font-weight:600;}
   .amber{color:var(--amber);font-weight:600;}
@@ -35,298 +34,418 @@
   .step-title{font-weight:700;font-size:14px;margin-bottom:6px;color:var(--text);}
 
   .feature-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;}
-  .feature{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}
+  .feature{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;transition:border-color .2s;}
+  .feature:hover{border-color:var(--border-glow);}
   .feature .icon{font-size:28px;margin-bottom:6px;}
   .feature .name{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:var(--cyan);margin-bottom:4px;}
   .feature .desc{font-size:11px;color:var(--dim);line-height:1.4;}
 
-  .tip{background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.2);border-radius:6px;padding:12px 16px;margin:12px 0;font-size:12px;}
-  .tip::before{content:'TIP';font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:var(--cyan);letter-spacing:2px;display:block;margin-bottom:4px;}
+  .tip{background:rgba(0,255,136,0.04);border:1px solid rgba(0,255,136,0.2);border-radius:6px;padding:12px 16px;margin:12px 0;font-size:12px;}
+  .tip::before{content:'TIP';font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:var(--green);letter-spacing:2px;display:block;margin-bottom:4px;}
 
-  .warning{background:rgba(255,179,0,0.05);border:1px solid rgba(255,179,0,0.2);border-radius:6px;padding:12px 16px;margin:12px 0;font-size:12px;}
-  .warning::before{content:'NOTE';font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:var(--amber);letter-spacing:2px;display:block;margin-bottom:4px;}
+  .warning{background:rgba(255,179,0,0.04);border:1px solid rgba(255,179,0,0.2);border-radius:6px;padding:12px 16px;margin:12px 0;font-size:12px;}
+  .warning::before{content:'IMPORTANT';font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;color:var(--amber);letter-spacing:2px;display:block;margin-bottom:4px;}
 
   .path{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:12px;flex-wrap:wrap;}
   .path span{background:rgba(0,229,255,0.08);color:var(--cyan);padding:3px 8px;border-radius:3px;font-size:11px;}
-  .path .arrow{color:var(--dim);font-size:14px;}
-
-  .key-bind{display:inline-block;background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:3px;padding:2px 8px;font-size:11px;color:var(--text);}
+  .path .arrow{color:var(--dim);font-size:14px;background:none;}
 
   .stat-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:11px;}
   .stat-table th{text-align:left;padding:6px 8px;color:var(--cyan);font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:1px;border-bottom:1px solid var(--border);}
   .stat-table td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.03);}
 
   .toc{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px 20px;margin-bottom:24px;}
-  .toc a{color:var(--cyan);text-decoration:none;display:block;padding:4px 0;font-size:12px;}
+  .toc a{color:var(--cyan);text-decoration:none;display:block;padding:4px 0;font-size:12px;transition:color .15s;}
   .toc a:hover{color:var(--gold);}
 
-  @media(max-width:600px){.feature-grid{grid-template-columns:1fr;}.content{padding:20px 12px;}}
+  .nav-map{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:16px 0;}
+  .nav-item{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:10px;text-decoration:none;color:var(--text);transition:all .2s;text-align:center;}
+  .nav-item:hover{border-color:var(--gold);transform:translateY(-1px);}
+  .nav-item .nm{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--gold);margin-bottom:3px;}
+  .nav-item .nd{font-size:9px;color:var(--dim);}
+
+  @media(max-width:600px){.feature-grid,.nav-map{grid-template-columns:1fr;}.content{padding:20px 12px;}}
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div class="logo">HxM Guide</div>
+  <a href="/" style="text-decoration:none;">
+    <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">HxM</div>
+    <div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div>
+  </a>
   <a href="/" class="back">Home</a>
 </div>
 
 <div class="content">
 
-<h1>How to Use HunterxMafia</h1>
-<p class="dim">Your crew's distributed betting platform — NBA + Champions League with real book lines, Poisson modeling, and fake-money parlays.</p>
+<h1>How to Use HxM</h1>
+<p class="dim">Demo betting platform for NBA Playoffs + Champions League. Fake money, real data, real analytics.</p>
+
+<div class="warning">This is a demo platform using fake money ($1,000 starting bankroll). No real gambling. All data comes from ESPN — lines are generated by our Poisson statistical model, not actual sportsbooks.</div>
 
 <div class="toc">
-  <div style="font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:8px;">TABLE OF CONTENTS</div>
-  <a href="#getting-started">1. Getting Started</a>
-  <a href="#making-slips">2. Making Betting Slips</a>
-  <a href="#reading-stats">3. Reading Player Stats & Distributions</a>
-  <a href="#understanding-odds">4. Understanding Odds & Implied Probability</a>
-  <a href="#matchup-analysis">5. Matchup Analysis</a>
-  <a href="#line-analysis">6. Line Analysis & Edge Finding</a>
-  <a href="#in-house-book">7. In-House Bookmaker</a>
-  <a href="#resolving-bets">8. How Bets Get Resolved</a>
-  <a href="#leaderboard">9. Leaderboard & History</a>
-  <a href="#themes">10. Themes & Settings</a>
+  <div style="font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;color:var(--gold);margin-bottom:8px;">SECTIONS</div>
+  <a href="#pages">1. Page Map — What's Where</a>
+  <a href="#quickstart">2. Quick Start — Your First Bet in 2 Minutes</a>
+  <a href="#scores">3. Scores Page — Live, Upcoming, Completed</a>
+  <a href="#slips">4. Betting Slips — Building & Placing Bets</a>
+  <a href="#matchup">5. Matchup — Head-to-Head Team & Player Analysis</a>
+  <a href="#analysis">6. Analysis — Edge Finder, Auto Book, Custom Windows</a>
+  <a href="#playoffs">7. Playoffs — Player Stat Windows for Postseason</a>
+  <a href="#odds">8. Understanding Odds & Lines</a>
+  <a href="#poisson">9. How Our Lines Are Made (Poisson Model)</a>
+  <a href="#resolving">10. How Bets Get Resolved</a>
+  <a href="#principles">11. Sharp Betting Principles</a>
 </div>
 
-<!-- 1. GETTING STARTED -->
-<h2 id="getting-started">1. Getting Started</h2>
+<!-- 1. PAGE MAP -->
+<h2 id="pages">1. Page Map — What's Where</h2>
+
+<p>Every page is accessible from the top nav bar. On mobile, tap the <span class="hl">hamburger menu</span> (three lines). The <span class="gold">HxM logo</span> always takes you home.</p>
+
+<div class="nav-map">
+  <a href="/terminal.html" class="nav-item"><div class="nm">Scores</div><div class="nd">Live games, upcoming schedule, projected lines for future games</div></a>
+  <a href="/matchup.html" class="nav-item"><div class="nm">Matchup</div><div class="nd">Pick two teams, compare stats, deep dive into any player</div></a>
+  <a href="/bracket.html" class="nav-item"><div class="nm">Bracket</div><div class="nd">NBA playoff bracket visualization</div></a>
+  <a href="/playoffs.html" class="nav-item"><div class="nm">Playoffs</div><div class="nd">Playoff team rosters with multi-window Poisson lines</div></a>
+  <a href="/slips.html" class="nav-item"><div class="nm">Slips</div><div class="nd">Build bets, track bankroll, leaderboard, bet history</div></a>
+  <a href="/analysis.html" class="nav-item"><div class="nm">Analysis</div><div class="nd">Edge Finder, Auto Book, In-House Book, custom windows</div></a>
+  <a href="/soccer.html" class="nav-item"><div class="nm">UCL Scores</div><div class="nd">Champions League scores, standings, team rosters with stats</div></a>
+  <a href="/principles.html" class="nav-item"><div class="nm">Principles</div><div class="nd">Sharp betting framework with EV calculator and Kelly sizing</div></a>
+</div>
+
+<!-- 2. QUICK START -->
+<h2 id="quickstart">2. Quick Start — Your First Bet in 2 Minutes</h2>
 
 <div class="step">
   <div class="step-num">1</div>
-  <div class="step-title">Create Your Account</div>
-  <p>Go to <span class="highlight">Slips</span> page. You'll see a login screen. Pick a <span class="gold">username</span> and <span class="gold">password</span> (4+ characters). Click <span class="green">SIGN UP</span>.</p>
-  <p>You start with <span class="amber">$1,000</span> fake bankroll. Your session stays logged in across browser restarts.</p>
+  <div class="step-title">Create an account</div>
+  <p>Go to <span class="hl">Slips</span>. Enter a <span class="gold">username</span> and <span class="gold">password</span> (4+ characters). Click <span class="green">SIGN UP</span>. You get <span class="amber">$1,000</span> fake bankroll.</p>
 </div>
 
 <div class="step">
   <div class="step-num">2</div>
-  <div class="step-title">Pick Your Sport</div>
-  <p>From the home page, click <span class="amber">NBA</span> or <span class="highlight">UCL</span> to go to that sport's live scores. You can also use the top navigation bar on any page — it shows both sports.</p>
-  <div class="path">
-    <span>Home</span><span class="arrow">→</span>
-    <span>NBA Scores</span><span class="arrow">or</span>
-    <span>UCL Scores</span>
-  </div>
+  <div class="step-title">Pick a game and player</div>
+  <p>On the Slips page, select a game from the dropdown. Then select a player. Their prop lines appear — things like <span class="hl">Points Over/Under 22.5</span>.</p>
 </div>
 
 <div class="step">
   <div class="step-num">3</div>
-  <div class="step-title">Explore a Game</div>
-  <p><span class="highlight">Click any game card</span> on the scores page to open the full matchup breakdown with team stats, rosters, player comparisons, and injury reports.</p>
-</div>
-
-<!-- 2. MAKING SLIPS -->
-<h2 id="making-slips">2. Making Betting Slips</h2>
-
-<div class="step">
-  <div class="step-num">1</div>
-  <div class="step-title">Go to Slips Page</div>
-  <p>Click <span class="highlight">Slips</span> in the nav bar. Toggle between <span class="amber">NBA</span> and <span class="highlight">UCL</span> at the top.</p>
-</div>
-
-<div class="step">
-  <div class="step-num">2</div>
-  <div class="step-title">Select a Game</div>
-  <p>Pick an upcoming game from the dropdown. Only <span class="green">scheduled</span> and <span class="green">live</span> games show — finished games are filtered out. Games show the day, time, and spread/total if available.</p>
-</div>
-
-<div class="step">
-  <div class="step-num">3</div>
-  <div class="step-title">Select a Player</div>
-  <p>Use the <span class="highlight">player dropdown</span> to pick a player. Their available betting lines appear below — grouped by stat with the primary line shown and alternate lines in a dropdown.</p>
-  <p>Click <span class="purple">Analysis</span> to see their full statistical breakdown (distributions, Poisson model, trends) without leaving the page.</p>
+  <div class="step-title">Add to slip and bet</div>
+  <p>Click <span class="green">Over</span> or <span class="red">Under</span> on any line. It adds to your slip. Set a wager amount and hit <span class="green">LOCK IT IN</span>. You can add multiple legs for a parlay.</p>
 </div>
 
 <div class="step">
   <div class="step-num">4</div>
-  <div class="step-title">Add Legs to Your Slip</div>
-  <p>Click <span class="green">Over</span> or <span class="red">Under</span> on any line to add it to your slip. Each button shows:</p>
-  <table class="stat-table">
-    <tr><td class="highlight">Line</td><td>The threshold (e.g. Over 22.5 points)</td></tr>
-    <tr><td class="amber">Odds</td><td>American odds from the book (-115, +145, etc.)</td></tr>
-    <tr><td class="purple">Implied %</td><td>How likely the book thinks this is</td></tr>
-    <tr><td class="green">Book</td><td>Which sportsbook (DraftKings, FanDuel, Model)</td></tr>
-  </table>
+  <div class="step-title">Wait for the game to finish</div>
+  <p>Bets resolve automatically after games end. The system pulls box scores from ESPN, compares actual stats to your lines, and updates your bankroll.</p>
 </div>
 
-<div class="step">
-  <div class="step-num">5</div>
-  <div class="step-title">Set Your Wager & Submit</div>
-  <p>Your slip preview shows all legs, combined odds, <span class="purple">implied probability</span>, and a <span class="highlight">parlay distribution chart</span> showing P(0 hit), P(1 hit)... P(all hit).</p>
-  <p>Set your wager amount and click <span class="green">LOCK IT IN</span>.</p>
-</div>
+<div class="tip">Before placing a bet, check the <span class="hl">Analysis</span> page to see if our Poisson model finds any edge on the line you're looking at.</div>
 
-<div class="tip">You can also add props from the <span class="highlight">Matchup</span> page — click the <span class="green">+O</span> or <span class="red">+U</span> buttons next to any O/U line in the player analysis. A floating slip widget appears in the bottom-right corner. Navigate to Slips to finalize.</div>
+<!-- 3. SCORES -->
+<h2 id="scores">3. Scores Page — Live, Upcoming, Completed</h2>
 
-<!-- 3. READING STATS -->
-<h2 id="reading-stats">3. Reading Player Stats & Distributions</h2>
+<p>The <span class="hl">Scores</span> page (terminal) shows all NBA games grouped into three sections:</p>
 
-<h3>NBA Player Stats</h3>
-<p>When you click a player (on Matchup or Slips page), you see:</p>
 <table class="stat-table">
-  <tr><th>Section</th><th>What It Shows</th></tr>
-  <tr><td class="highlight">Season Averages</td><td>PTS, REB, AST, FGM, FGA, FG%, 3PM, 3PA, 3P%, FTM, FTA, FT%, STL, BLK per game</td></tr>
-  <tr><td class="purple">Distributions</td><td>Histogram of each stat across all games, showing how consistent the player is</td></tr>
-  <tr><td class="amber">Mean / Median / StdDev</td><td>Average, middle value, and how spread out the data is</td></tr>
-  <tr><td class="green">L10 Trend</td><td>Last 10 games vs season average — positive means trending up</td></tr>
-  <tr><td class="cyan">Poisson Model</td><td>Lambda (rate), dispersion, fit quality, and model-predicted O/U probabilities</td></tr>
-  <tr><td class="gold">Playoff History</td><td>Career playoff stats, season-by-season, home/away splits with full shooting data</td></tr>
+  <tr><td class="green">LIVE NOW</td><td>Green pulsing dot. Shows quarter, clock, and live score. Updates every 60 seconds.</td></tr>
+  <tr><td class="amber">UPCOMING</td><td>Amber dot. Shows game time. Odds (spread + O/U) shown if available from ESPN.</td></tr>
+  <tr><td class="dim">COMPLETED</td><td>Dimmed. Winner's score highlighted green. Loser dimmed.</td></tr>
 </table>
 
-<h3>UCL Player Stats</h3>
+<p>Play-in tournament games appear alongside regular games and are labeled <span class="amber">[PLAY-IN]</span>.</p>
+
+<h3>Future Games Panel</h3>
+<p>Below the scores you'll see <span class="purple">Upcoming Schedule — Projected Lines</span>. This shows games for the next 7 days grouped by date. Each game has two buttons:</p>
 <table class="stat-table">
-  <tr><th>Section</th><th>What It Shows</th></tr>
-  <tr><td class="highlight">Competition Splits</td><td>Stats broken down by Champions League, La Liga, Copa del Rey, etc.</td></tr>
-  <tr><td class="green">Per-Game Averages</td><td>Goals/G, Assists/G, Shots/G, SOT/G from their primary competition</td></tr>
-  <tr><td class="purple">CL vs League</td><td>Side-by-side comparison — does the player perform better in UCL or domestic league?</td></tr>
-  <tr><td class="amber">Last 5 Matches</td><td>Game-by-game: Goals, Assists, Shots, SOT, Fouls, Cards</td></tr>
+  <tr><td class="purple">Projected Player Lines</td><td>Opens a modal with Poisson-generated lines for every player on both teams. Filter by stat (PTS, REB, AST, etc). Shows mean, line, over/under odds, trend vs season, and hit rate.</td></tr>
+  <tr><td class="hl">Full Matchup</td><td>Opens the Matchup page for those two teams.</td></tr>
 </table>
 
-<div class="warning">All stats are from ESPN. NBA gamelogs give per-game data for full distributions. UCL uses season totals with Poisson modeling since ESPN doesn't provide per-game soccer gamelogs.</div>
+<p>Click any game card to jump to its matchup breakdown.</p>
 
-<!-- 4. UNDERSTANDING ODDS -->
-<h2 id="understanding-odds">4. Understanding Odds & Implied Probability</h2>
-
-<h3>American Odds</h3>
-<table class="stat-table">
-  <tr><td class="green">-110</td><td>Bet $110 to win $100. Implied: 52.4%. Slight favorite.</td></tr>
-  <tr><td class="green">-200</td><td>Bet $200 to win $100. Implied: 66.7%. Strong favorite.</td></tr>
-  <tr><td class="amber">+150</td><td>Bet $100 to win $150. Implied: 40%. Underdog.</td></tr>
-  <tr><td class="red">+500</td><td>Bet $100 to win $500. Implied: 16.7%. Big underdog.</td></tr>
-</table>
-
-<h3>Decimal Odds</h3>
-<p>Click the <span class="key-bind">AM</span> / <span class="key-bind">DEC</span> toggle on the Slips page to switch. Decimal odds = total return per $1 bet. Example: 2.50 means $2.50 back on a $1 bet ($1.50 profit).</p>
-
-<h3>Parlay Math</h3>
-<p>A parlay multiplies the odds of each leg. A 3-leg parlay at -115 each:</p>
-<p class="dim">Decimal: 1.87 x 1.87 x 1.87 = 6.54x → <span class="green">$100 bet wins $554</span></p>
-<p class="dim">Implied probability: 53.5% x 53.5% x 53.5% = <span class="purple">15.3%</span> chance all hit</p>
-
-<!-- 5. MATCHUP ANALYSIS -->
-<h2 id="matchup-analysis">5. Matchup Analysis</h2>
+<!-- 4. SLIPS -->
+<h2 id="slips">4. Betting Slips — Building & Placing Bets</h2>
 
 <div class="step">
   <div class="step-num">1</div>
-  <div class="step-title">Select Two Teams</div>
-  <p>Go to <span class="highlight">Matchup</span> page. Toggle <span class="amber">NBA</span> / <span class="highlight">UCL</span> at the top. Pick two teams from the dropdowns.</p>
+  <div class="step-title">Select a game</div>
+  <p>Use the dropdown at the top. Only upcoming and live games appear. Toggle between <span class="amber">NBA</span> and <span class="hl">UCL</span>.</p>
 </div>
 
 <div class="step">
   <div class="step-num">2</div>
-  <div class="step-title">Team Comparison</div>
-  <p>See head-to-head stat bars — who wins each category. For NBA, use the <span class="amber">window slider</span> to compare L5, L10, L15, L20, L30, Home, or Away splits.</p>
+  <div class="step-title">Browse player lines</div>
+  <p>Select a player. Their available lines appear, grouped by stat. Each line shows:</p>
+  <table class="stat-table">
+    <tr><td class="hl">Line</td><td>The threshold — e.g. "22.5" means over or under 22.5 points</td></tr>
+    <tr><td class="amber">Odds</td><td>American odds (-115, +145, etc.) — what you'd get paid</td></tr>
+    <tr><td class="purple">Source</td><td>Where the line comes from (Model = our Poisson, or a sportsbook name)</td></tr>
+  </table>
 </div>
 
 <div class="step">
   <div class="step-num">3</div>
-  <div class="step-title">Player Deep Dive</div>
-  <p>Click any player in the roster to see their full statistical profile. Add props to your slip with the <span class="green">+O</span> / <span class="red">+U</span> buttons.</p>
+  <div class="step-title">Build your slip</div>
+  <p>Click <span class="green">Over</span> or <span class="red">Under</span> to add a leg. Add up to 10 legs for a parlay. Your slip preview shows combined odds and the probability of each outcome.</p>
 </div>
 
-<!-- 6. LINE ANALYSIS -->
-<h2 id="line-analysis">6. Line Analysis & Edge Finding</h2>
+<div class="step">
+  <div class="step-num">4</div>
+  <div class="step-title">Set wager and submit</div>
+  <p>Enter amount or use the quick-pick buttons ($5, $10, $25, $50, $100). Hit <span class="green">LOCK IT IN</span>. Your bankroll deducts immediately.</p>
+</div>
 
-<p>Go to <span class="highlight">Analysis</span> page. Three tabs:</p>
+<h3>Your Bet History</h3>
+<p>All placed slips appear in the feed. Each shows status (<span class="green">Won</span>, <span class="red">Lost</span>, <span class="amber">Active</span>), legs, odds, wager, and payout. The leaderboard ranks all users by bankroll.</p>
+
+<!-- 5. MATCHUP -->
+<h2 id="matchup">5. Matchup — Head-to-Head Analysis</h2>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-title">Pick two teams</div>
+  <p>Go to <span class="hl">Matchup</span>. Toggle <span class="amber">NBA</span> / <span class="hl">UCL</span> at the top. Select teams from both dropdowns. Or click a game card on the Scores page to auto-load both teams.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-title">Compare teams</div>
+  <p>The comparison panel shows head-to-head stats with visual bars. For NBA, use the <span class="amber">game window slider</span> to compare using Last 5, 10, 15, 20, 30 games, or Home/Away splits.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-title">Deep dive into players</div>
+  <p>Click any player in either roster. Their full profile opens:</p>
+  <table class="stat-table">
+    <tr><td class="hl">Season Stats</td><td>PTS, REB, AST, shooting splits, per-game averages</td></tr>
+    <tr><td class="purple">Distributions</td><td>Histogram of each stat — see how consistent they are</td></tr>
+    <tr><td class="amber">Poisson Model</td><td>Lambda, dispersion, fit quality, predicted over/under probabilities</td></tr>
+    <tr><td class="gold">Playoff History</td><td>Career playoff stats broken down by season with shooting percentages</td></tr>
+    <tr><td class="green">Trends</td><td>Last 10 vs season — shows if player is hot or cold</td></tr>
+  </table>
+</div>
+
+<div class="tip">You can add props directly to your slip from the Matchup page. Click the <span class="green">+O</span> or <span class="red">+U</span> buttons next to any line. A floating slip widget appears in the corner.</div>
+
+<!-- 6. ANALYSIS -->
+<h2 id="analysis">6. Analysis — Edge Finder, Auto Book, Custom Windows</h2>
+
+<p>The <span class="hl">Analysis</span> page has three tabs:</p>
 
 <div class="feature-grid">
   <div class="feature">
     <div class="icon">&#128200;</div>
     <div class="name">Edge Finder</div>
-    <div class="desc">Compares our Poisson model probability vs book implied probability. Positive edge = the book is giving you a better price than the true odds.</div>
+    <div class="desc">Runs our Poisson model on every player in a game. Compares model probability vs -115 book odds. Positive edge = value bet.</div>
+  </div>
+  <div class="feature">
+    <div class="icon">&#128202;</div>
+    <div class="name">Auto Book</div>
+    <div class="desc">Generates lines from multiple time windows side by side. See how lines shift based on recent form vs season average.</div>
   </div>
   <div class="feature">
     <div class="icon">&#127970;</div>
     <div class="name">In-House Book</div>
-    <div class="desc">Create your own lines. Pick a player, stat, set your odds. Friends can bet against you. You're the house.</div>
-  </div>
-  <div class="feature">
-    <div class="icon">&#128202;</div>
-    <div class="name">Auto Book (3 Models)</div>
-    <div class="desc">See lines from 3 time windows: Last 10 games, Last 20, and Full Season. The "Spread" column shows if a player is trending up or down.</div>
+    <div class="desc">Create your own lines. Set the player, stat, odds, and max wager. Friends bet against you — you're the house.</div>
   </div>
 </div>
 
-<div class="tip">The <span class="green">Edges Only</span> filter shows only props where our model finds 3%+ edge over the book. Sort by edge to find the best value bets.</div>
+<h3>Game Selection</h3>
+<p>The game dropdown shows two groups: <span class="green">Today's Games</span> (live + scheduled) and <span class="amber">Upcoming Games</span> (next 7 days). You can analyze any future game — not just today.</p>
 
-<!-- 7. IN-HOUSE BOOK -->
-<h2 id="in-house-book">7. In-House Bookmaker</h2>
+<h3>Stat Windows (Edge Finder)</h3>
+<p>Click the window tabs to change what data the Poisson model uses:</p>
+<table class="stat-table">
+  <tr><th>Window</th><th>What It Uses</th><th>Best For</th></tr>
+  <tr><td class="hl">Season</td><td>All regular season games</td><td>Most stable baseline</td></tr>
+  <tr><td class="green">L5</td><td>Last 5 games</td><td>Detecting hot/cold streaks</td></tr>
+  <tr><td class="green">L10</td><td>Last 10 games</td><td>Recent form, less noise than L5</td></tr>
+  <tr><td class="green">L20</td><td>Last 20 games</td><td>~1 month trend</td></tr>
+  <tr><td class="green">L50</td><td>Last 50 games</td><td>Half-season view</td></tr>
+  <tr><td class="amber">PO Career</td><td>All career playoff games (2022-2026)</td><td>Does player elevate in playoffs?</td></tr>
+  <tr><td class="amber">PO '26</td><td>This year's playoff games only</td><td>Current postseason performance</td></tr>
+  <tr><td class="purple">Custom</td><td>Type any number (3-82)</td><td>Exact window you want (e.g. L15, L35)</td></tr>
+</table>
+
+<p>When using any window other than Season, a <span class="green">Trend</span> column appears showing how the player's window average compares to their season average.</p>
+
+<h3>Auto Book Windows</h3>
+<p>Auto Book shows multiple windows side by side in one table. Choose a preset or type custom:</p>
+<table class="stat-table">
+  <tr><td class="hl">L5 / L10 / Season</td><td>Recent form vs full season</td></tr>
+  <tr><td class="hl">L10 / L20 / Season</td><td>Standard medium-range view</td></tr>
+  <tr><td class="hl">L5 / L15 / L30 / Season</td><td>Multi-range analysis</td></tr>
+  <tr><td class="amber">L10 / L20 / Season / Playoffs</td><td>Regular season + career playoff overlay</td></tr>
+  <tr><td class="purple">Custom</td><td>Type any combo: "7,15,40,season,playoffs"</td></tr>
+</table>
+
+<p>The <span class="hl">Spread</span> column at the end shows the difference between the first and last window — positive means trending up.</p>
+
+<!-- 7. PLAYOFFS -->
+<h2 id="playoffs">7. Playoffs — Player Stat Windows for Postseason</h2>
 
 <div class="step">
   <div class="step-num">1</div>
-  <div class="step-title">Create a Line</div>
-  <p>On the Analysis page, click <span class="amber">In-House Book</span> tab. Enter a player name, stat, line (must be a .5 number), and set your Over/Under odds. Set a max wager.</p>
+  <div class="step-title">Select a playoff team</div>
+  <p>Go to <span class="hl">Playoffs</span>. Teams are listed by seed — <span class="green">green seeds (1-6)</span> are locked playoff teams, <span class="amber">amber seeds (7-10)</span> are play-in teams.</p>
 </div>
 
 <div class="step">
   <div class="step-num">2</div>
-  <div class="step-title">Friends Bet Against You</div>
-  <p>Your line appears in the Open Lines feed. Friends click Over or Under and enter their wager amount. You're the house — if they win, you pay. If they lose, you keep the wager.</p>
+  <div class="step-title">Choose your windows</div>
+  <p>Use the window presets or type a custom combo. Each player card shows Poisson lines for every selected window.</p>
+  <table class="stat-table">
+    <tr><td class="hl">Default</td><td>Season / L5 / L10 / PO '26 / PO Career</td></tr>
+    <tr><td>L3/L7/L15/Season</td><td>Micro windows for streaks</td></tr>
+    <tr><td>Playoffs Only</td><td>Just PO '26 + PO Career</td></tr>
+    <tr><td class="purple">Custom</td><td>Type anything: "L7,L15,L40,season,playoffs2026"</td></tr>
+  </table>
 </div>
 
-<!-- 8. RESOLVING BETS -->
-<h2 id="resolving-bets">8. How Bets Get Resolved</h2>
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-title">Read the player cards</div>
+  <p>Each player shows every stat (PTS, REB, AST, 3PM, STL, BLK) with a grid of windows. For each window you see:</p>
+  <table class="stat-table">
+    <tr><td class="gold">Mean</td><td>Average per game in that window</td></tr>
+    <tr><td class="hl">Line</td><td>Poisson-generated O/U line (floor of mean + 0.5)</td></tr>
+    <tr><td class="green">Over Odds</td><td>American odds for the over</td></tr>
+    <tr><td class="amber">Over %</td><td>Model's estimated probability the over hits</td></tr>
+    <tr><td class="dim">Hit Rate</td><td>How often the over actually hit in that sample</td></tr>
+    <tr><td class="green">Trend arrow</td><td>Comparing this window to season — up arrow means above average</td></tr>
+  </table>
+</div>
 
-<p>Bets are resolved <span class="green">automatically every 5 minutes</span> after games finish. The system:</p>
+<p>Below the stat windows, you'll see <span class="gold">playoff history chips</span> for each season the player made the postseason — showing games played, PPG, RPG, APG, and shooting percentages.</p>
 
+<div class="tip">Use "Playoffs Only" window to compare a player's current playoff stats against their career playoff stats. Some players consistently perform better (or worse) in the postseason.</div>
+
+<!-- 8. ODDS -->
+<h2 id="odds">8. Understanding Odds & Lines</h2>
+
+<h3>What is a Line?</h3>
+<p>A line is a number set on a player stat. Example: <span class="hl">LeBron James Points O/U 25.5</span>. You bet whether he'll score over or under 25.5 points. The .5 eliminates ties.</p>
+
+<h3>American Odds</h3>
 <table class="stat-table">
-  <tr><td class="highlight">1.</td><td>Fetches box scores from ESPN for all finished NBA + UCL games</td></tr>
-  <tr><td class="highlight">2.</td><td>Matches each slip leg to the correct player's actual stats</td></tr>
-  <tr><td class="highlight">3.</td><td>Compares actual stat vs the line (e.g. player scored 28, line was 22.5 → <span class="green">Over hits</span>)</td></tr>
-  <tr><td class="highlight">4.</td><td>Grades the full slip: all legs must hit for a parlay to win</td></tr>
-  <tr><td class="highlight">5.</td><td>Updates your bankroll and W/L record</td></tr>
+  <tr><th>Odds</th><th>What It Means</th><th>Implied Probability</th></tr>
+  <tr><td class="green">-110</td><td>Bet $110 to win $100</td><td>52.4% — standard line</td></tr>
+  <tr><td class="green">-150</td><td>Bet $150 to win $100</td><td>60.0% — moderate favorite</td></tr>
+  <tr><td class="green">-200</td><td>Bet $200 to win $100</td><td>66.7% — strong favorite</td></tr>
+  <tr><td class="amber">+100</td><td>Bet $100 to win $100</td><td>50.0% — even money</td></tr>
+  <tr><td class="amber">+150</td><td>Bet $100 to win $150</td><td>40.0% — underdog</td></tr>
+  <tr><td class="red">+300</td><td>Bet $100 to win $300</td><td>25.0% — long shot</td></tr>
 </table>
 
-<h3>What Gets Resolved</h3>
+<p><strong>Quick formula:</strong> Negative odds → probability = |odds| / (|odds| + 100). Positive odds → probability = 100 / (odds + 100).</p>
+
+<h3>Parlay Math</h3>
+<p>A parlay combines multiple bets. ALL legs must hit to win. The odds multiply together.</p>
+<p>Example: 3-leg parlay, each at -115 (implied 53.5%):</p>
+<p class="dim">Combined probability: 53.5% x 53.5% x 53.5% = <span class="purple">15.3%</span></p>
+<p class="dim">Payout: 1.87 x 1.87 x 1.87 = <span class="green">6.54x your bet</span></p>
+
+<h3>What is Edge?</h3>
+<p>Edge = the difference between what you think the probability is and what the odds imply. If our model says Over is 58% likely, but the book odds imply only 52% — that's a <span class="green">+6% edge</span>. Positive edge means the bet is profitable long-term.</p>
+
+<!-- 9. POISSON -->
+<h2 id="poisson">9. How Our Lines Are Made (Poisson Model)</h2>
+
+<p>Every line on this platform is generated using the <span class="hl">Poisson distribution</span> — a statistical model for counting how many times something happens.</p>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-title">Get the average (mean)</div>
+  <p>Pull a player's game log for the selected window. Example: Jayson Tatum averaged <span class="gold">27.3 PTS</span> over his last 10 games.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-title">Set the line</div>
+  <p>Line = floor(mean) + 0.5. So 27.3 becomes <span class="hl">27.5</span>. This is the over/under number.</p>
+</div>
+
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-title">Calculate probabilities</div>
+  <p>The Poisson formula calculates the probability of scoring 0, 1, 2... up to the line. Sum those up = probability of Under. The rest = probability of Over.</p>
+  <p>If mean = 27.3 and line = 27.5:</p>
+  <p class="dim">P(Under 27.5) = P(scoring 0) + P(scoring 1) + ... + P(scoring 27) = <span class="purple">~53%</span></p>
+  <p class="dim">P(Over 27.5) = 100% - 53% = <span class="green">~47%</span></p>
+</div>
+
+<div class="step">
+  <div class="step-num">4</div>
+  <div class="step-title">Convert to odds</div>
+  <p>53% Under becomes <span class="amber">-113</span> odds. 47% Over becomes <span class="green">+113</span> odds.</p>
+</div>
+
+<h3>Fit Quality</h3>
+<p>Poisson works best when variance roughly equals the mean. The platform checks this and labels each line:</p>
 <table class="stat-table">
-  <tr><th>Bet Type</th><th>How It's Graded</th></tr>
-  <tr><td>Player Props (PTS, REB, AST, etc.)</td><td>Actual stat vs line from box score</td></tr>
-  <tr><td>3PM, FGM, Shots, SOT</td><td>Parsed from box score shooting data</td></tr>
-  <tr><td>Double-Double / Triple-Double</td><td>Checks if player hit 10+ in 2/3 categories</td></tr>
-  <tr><td>Moneyline</td><td>Which team won the game</td></tr>
-  <tr><td>Spread</td><td>Final margin + spread value</td></tr>
-  <tr><td>Total (O/U)</td><td>Combined final score vs line</td></tr>
-  <tr><td>Anytime Goal (Soccer)</td><td>Did the player score?</td></tr>
-  <tr><td>Yellow Cards, Fouls (Soccer)</td><td>From match rosters data</td></tr>
+  <tr><td class="green">Excellent</td><td>Variance is very close to the mean — model is reliable</td></tr>
+  <tr><td class="hl">Good</td><td>Decent fit — usable for analysis</td></tr>
+  <tr><td class="amber">Fair</td><td>Some divergence — use with caution</td></tr>
+  <tr><td class="red">Poor</td><td>Variance is far from mean — model may be unreliable for this stat</td></tr>
 </table>
 
-<p>You can also click <span class="green">Resolve</span> on the slip feed to trigger manual resolution.</p>
+<p>Rebounds and assists tend to fit Poisson well. Points are more variable (scored 2-3 at a time, not one-by-one) so the fit is usually "Good" not "Excellent".</p>
 
-<!-- 9. LEADERBOARD -->
-<h2 id="leaderboard">9. Leaderboard & History</h2>
-
-<p>The <span class="highlight">Leaderboard</span> on the Slips page ranks all users by bankroll. Everyone starts at $1,000.</p>
-
-<p>Your <span class="purple">Betting History</span> section shows:</p>
+<h3>Why Different Windows Give Different Lines</h3>
+<p>A player's average changes based on sample size. Example:</p>
 <table class="stat-table">
-  <tr><td class="green">Won / Lost / Active</td><td>Count of each</td></tr>
-  <tr><td class="amber">Total Wagered</td><td>Sum of all your bets</td></tr>
-  <tr><td class="highlight">P&L</td><td>Profit/Loss in dollars</td></tr>
-  <tr><td class="purple">ROI %</td><td>Return on investment</td></tr>
+  <tr><th>Window</th><th>Mean PTS</th><th>Line</th><th>Over Odds</th></tr>
+  <tr><td>Season (72 games)</td><td>24.8</td><td>24.5</td><td>+108</td></tr>
+  <tr><td>Last 10</td><td>28.1</td><td>28.5</td><td>-112</td></tr>
+  <tr><td>Last 5</td><td>31.4</td><td>31.5</td><td>-103</td></tr>
 </table>
+<p>This player is heating up. If a sportsbook still has their line at 24.5, the L5 data suggests the Over is much more likely than the season-based model predicts.</p>
 
-<p>Click any slip in the feed to expand it and see the <span class="purple">parlay distribution</span> — probability of hitting 0, 1, 2... all legs.</p>
+<!-- 10. RESOLVING -->
+<h2 id="resolving">10. How Bets Get Resolved</h2>
 
-<!-- 10. THEMES -->
-<h2 id="themes">10. Themes & Settings</h2>
-
-<p>Five color dots in the <span class="dim">bottom-left corner</span> of every page:</p>
+<p>After a game finishes, bets resolve automatically. Here's the process:</p>
 
 <table class="stat-table">
-  <tr><td style="color:#00e5ff;">&#9679;</td><td>Default — dark terminal with cyan/green</td></tr>
-  <tr><td style="color:#00ffff;">&#9679;</td><td>Bright — higher contrast colors</td></tr>
-  <tr><td style="color:#39ff14;">&#9679;</td><td>Neon — vivid neon on deep black</td></tr>
-  <tr><td style="color:#f5d442;">&#9679;</td><td>Gold — warm HxM gold/amber theme</td></tr>
-  <tr><td style="color:#0088cc;">&#9679;</td><td>Light — light background for daytime</td></tr>
+  <tr><td class="hl">1</td><td>System checks ESPN box scores for all finished games (every 5 minutes)</td></tr>
+  <tr><td class="hl">2</td><td>Matches each bet leg to the player's actual stats</td></tr>
+  <tr><td class="hl">3</td><td>Compares actual stat vs line (e.g. scored 28, line was 22.5 = <span class="green">Over hits</span>)</td></tr>
+  <tr><td class="hl">4</td><td>For parlays: ALL legs must hit. One miss = entire bet loses</td></tr>
+  <tr><td class="hl">5</td><td>Updates bankroll and W/L record</td></tr>
 </table>
 
-<p>Theme persists across all pages via localStorage.</p>
+<h3>What Stats Get Graded</h3>
+<table class="stat-table">
+  <tr><th>NBA</th><th>UCL</th></tr>
+  <tr><td>Points, Rebounds, Assists, 3PM, Steals, Blocks, Turnovers</td><td>Goals, Assists, Shots, Shots on Target, Fouls, Yellow Cards</td></tr>
+  <tr><td>Double-Double, Triple-Double</td><td>Goal or Assist, Clean Sheet (GK)</td></tr>
+  <tr><td>Moneyline, Spread, Total</td><td>Moneyline</td></tr>
+</table>
 
-<div class="tip">Use the <span class="key-bind">AM</span>/<span class="key-bind">DEC</span> button on the Slips page to toggle between American and Decimal odds display.</div>
+<!-- 11. PRINCIPLES -->
+<h2 id="principles">11. Sharp Betting Principles</h2>
+
+<p>The <span class="hl">Principles</span> page has a complete guide based on Stanford Wong's "Sharp Sports Betting". Key sections:</p>
+
+<table class="stat-table">
+  <tr><td class="gold">Core Rules</td><td>Only bet with an edge, know your break-even, size by Kelly Criterion</td></tr>
+  <tr><td class="green">EV Calculator</td><td>Interactive tool — enter your probability and odds to see expected value</td></tr>
+  <tr><td class="hl">Kelly Sizer</td><td>Enter your edge, bankroll, and MinEdge to get optimal bet size</td></tr>
+  <tr><td class="red">Red Flags</td><td>8 conditions that should kill any bet (big favorites, no articulated edge, etc.)</td></tr>
+  <tr><td class="amber">NFL Key Numbers</td><td>Push frequencies on 3 and 7, teaser strategy, buying half-points</td></tr>
+  <tr><td class="purple">Poisson Props</td><td>Quick reference table for prop analysis using Poisson distribution</td></tr>
+</table>
+
+<div class="tip">Before placing any bet, ask yourself: "What is my edge and can I explain it in one sentence?" If you can't, the bet isn't worth making.</div>
 
 <div style="text-align:center;margin-top:40px;padding-top:20px;border-top:1px solid var(--border);">
-  <div style="font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;">HxM</div>
+  <a href="/" style="text-decoration:none;">
+    <div style="font-family:'Orbitron',sans-serif;font-size:24px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;">HxM</div>
+  </a>
   <p class="dim" style="font-size:10px;">HunterxMafia Distributed Betting Platform</p>
   <a href="/" class="back" style="margin-top:12px;display:inline-block;">Back to Home</a>
 </div>
