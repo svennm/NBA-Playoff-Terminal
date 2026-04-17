@@ -256,24 +256,54 @@ function setTab(tab, el) {
 }
 
 // === EDGE FINDER ===
+let gameSource = 'today'; // 'today' or 'schedule'
+
 async function init() {
   let games = [];
+  let scheduleGames = [];
+
   if (currentSport === 'ucl') {
     const res = await fetch('/api/soccer/uefa.champions/scoreboard');
     games = await res.json();
   } else {
-    const res = await fetch('/api/sweep');
-    const data = await res.json();
-    games = data.games || [];
+    const [sweepRes, schedRes] = await Promise.all([
+      fetch('/api/sweep').then(r => r.json()),
+      fetch('/api/schedule').then(r => r.json()).catch(() => [])
+    ]);
+    games = sweepRes.games || [];
+    // Schedule: only future games not in today's scoreboard
+    const todayIds = new Set(games.map(g => g.id));
+    scheduleGames = (schedRes || []).filter(g => !todayIds.has(g.id) && g.status !== 'Final');
   }
 
   const sel = $('game-select');
   const label = currentSport === 'ucl' ? 'UCL' : 'NBA';
-  sel.innerHTML = `<option value="">-- Pick a ${label} game --</option>` +
-    games.map((g, i) => {
+  let html = `<option value="">-- Pick a ${label} game --</option>`;
+
+  if (games.length) {
+    html += `<optgroup label="Today's Games">`;
+    html += games.map((g, i) => {
       const t = new Date(g.date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
-      return `<option value="${i}">${g.away.abbr} @ ${g.home.abbr} — ${t}</option>`;
+      const playIn = g.isPlayIn ? ' [PLAY-IN]' : '';
+      return `<option value="today:${i}">${g.away.abbr} @ ${g.home.abbr}${playIn} — ${t}</option>`;
     }).join('');
+    html += `</optgroup>`;
+  }
+
+  if (scheduleGames.length) {
+    html += `<optgroup label="Upcoming (Schedule)">`;
+    html += scheduleGames.map((g, i) => {
+      const t = new Date(g.date).toLocaleString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+      return `<option value="sched:${i}">${g.away.abbr} @ ${g.home.abbr} — ${t}</option>`;
+    }).join('');
+    html += `</optgroup>`;
+  }
+
+  sel.innerHTML = html;
+
+  // Store for later reference
+  window._todayGames = games;
+  window._schedGames = scheduleGames;
 }
 
 function setWindow(w, btn) {
@@ -285,24 +315,33 @@ function setWindow(w, btn) {
 }
 
 async function analyzeGame() {
-  const idx = $('game-select').value;
-  if (!idx) return;
+  const raw = $('game-select').value;
+  if (!raw) return;
+
+  // Parse source:index
+  const [source, idx] = raw.includes(':') ? raw.split(':') : ['today', raw];
 
   // Show window tabs
   $('window-tabs').style.display = currentSport === 'nba' ? '' : 'none';
-  // Highlight active window button
   document.querySelectorAll('#window-tabs button').forEach(b => b.classList.remove('active'));
   document.getElementById('w-' + currentWindow)?.classList.add('active');
 
   const windowLabel = { season:'Season', L5:'Last 5', L10:'Last 10', L20:'Last 20', L50:'Last 50', playoffs:'Playoff Career', playoffs2026:"Playoffs '26" }[currentWindow] || currentWindow;
+  const sourceLabel = source === 'sched' ? ' (Scheduled)' : '';
 
-  $('results').innerHTML = `<div class="loading"><div class="spinner"></div><br>Running Poisson model (${windowLabel})...<br><span style="font-size:10px;color:var(--dim);">Fetching gamelogs for both rosters</span></div>`;
+  $('results').innerHTML = `<div class="loading"><div class="spinner"></div><br>Running Poisson model (${windowLabel}${sourceLabel})...<br><span style="font-size:10px;color:var(--dim);">Fetching gamelogs for both rosters</span></div>`;
   $('summary').style.display = 'none';
   $('filters').style.display = 'none';
 
-  const endpoint = currentSport === 'ucl'
-    ? `/api/soccer/uefa.champions/analysis/${idx}`
-    : `/api/analysis/game/${idx}?window=${currentWindow}`;
+  let endpoint;
+  if (currentSport === 'ucl') {
+    endpoint = `/api/soccer/uefa.champions/analysis/${idx}`;
+  } else if (source === 'sched') {
+    endpoint = `/api/schedule/lines/${idx}`;
+  } else {
+    endpoint = `/api/analysis/game/${idx}?window=${currentWindow}`;
+  }
+
   const res = await fetch(endpoint);
   const data = await res.json();
 

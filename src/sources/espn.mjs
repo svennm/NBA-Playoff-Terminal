@@ -72,6 +72,45 @@ export async function getScoreboard() {
   });
 }
 
+export async function getPlayInScoreboard() {
+  const data = await safeFetch(`${BASE}/scoreboard?seasontype=5`, 'playin-scoreboard');
+  if (!data?.events) return [];
+  return data.events.map(ev => {
+    const comp = ev.competitions?.[0];
+    const teams = comp?.competitors || [];
+    const home = teams.find(t => t.homeAway === 'home');
+    const away = teams.find(t => t.homeAway === 'away');
+    return {
+      id: ev.id, name: ev.name, shortName: ev.shortName, date: ev.date,
+      status: comp?.status?.type?.description || 'Unknown',
+      statusDetail: comp?.status?.type?.detail || '',
+      clock: comp?.status?.displayClock || '',
+      period: comp?.status?.period || 0,
+      isPlayIn: true,
+      home: {
+        name: home?.team?.displayName || '', abbr: home?.team?.abbreviation || '',
+        logo: home?.team?.logo || '', score: home?.score || '0',
+        record: home?.records?.[0]?.summary || '', seed: home?.curatedRank?.current || 0
+      },
+      away: {
+        name: away?.team?.displayName || '', abbr: away?.team?.abbreviation || '',
+        logo: away?.team?.logo || '', score: away?.score || '0',
+        record: away?.records?.[0]?.summary || '', seed: away?.curatedRank?.current || 0
+      },
+      broadcast: comp?.broadcasts?.[0]?.names?.join(', ') || '',
+      venue: comp?.venue?.fullName || '',
+      odds: comp?.odds?.[0] ? {
+        spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0,
+        provider: comp.odds[0].provider?.name || ''
+      } : null,
+      leaders: (comp?.leaders || []).map(l => ({
+        category: l.name,
+        leader: l.leaders?.[0] ? { name: l.leaders[0].athlete?.displayName || '', value: l.leaders[0].displayValue || '' } : null
+      }))
+    };
+  });
+}
+
 export async function getStandings() {
   const data = await safeFetch(
     'https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=2026&type=1',
@@ -345,9 +384,10 @@ export async function getPlayerGamelog(playerId, season = '2026') {
 }
 
 export async function getPlayerPlayoffStats(playerId) {
-  // Get career playoff splits (current season type 3 = postseason)
-  // Try multiple recent seasons to build playoff history
+  // Get career playoff + play-in gamelogs
+  // seasontype: 3 = postseason (playoffs), 5 = play-in tournament
   const years = [2026, 2025, 2024, 2023, 2022];
+  const seasonTypes = [3, 5]; // playoffs + play-in
   const allGames = [];
   const labels = ['MIN','FG','FG%','3PT','3P%','FT','FT%','REB','AST','BLK','STL','PF','TO','PTS'];
   const names = ['minutes','fieldGoalsMade-fieldGoalsAttempted','fieldGoalPct',
@@ -356,23 +396,28 @@ export async function getPlayerPlayoffStats(playerId) {
     'totalRebounds','assists','blocks','steals','fouls','turnovers','points'];
 
   for (const year of years) {
-    const data = await safeFetch(
-      `https://site.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${playerId}/gamelog?season=${year}&seasontype=3`,
-      `playoff-gamelog-${playerId}-${year}`,
-      8000
-    );
-    if (!data?.seasonTypes) continue;
-    for (const st of data.seasonTypes) {
-      if (!st.displayName?.includes('Postseason')) continue;
-      for (const cat of st.categories || []) {
-        const round = cat.displayName || '';
-        for (const ev of cat.events || []) {
-          const stats = {};
-          (ev.stats || []).forEach((val, i) => {
-            if (labels[i]) stats[`_${labels[i]}`] = val;
-            if (names[i]) stats[names[i]] = val;
-          });
-          allGames.push({ season: year, round, eventId: ev.eventId, stats });
+    for (const stype of seasonTypes) {
+      const data = await safeFetch(
+        `https://site.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/${playerId}/gamelog?season=${year}&seasontype=${stype}`,
+        `playoff-gamelog-${playerId}-${year}-st${stype}`,
+        8000
+      );
+      if (!data?.seasonTypes) continue;
+      for (const st of data.seasonTypes) {
+        // Accept Postseason and Play-In season types
+        if (!st.displayName?.includes('Postseason') && !st.displayName?.includes('Play-In') && !st.displayName?.includes('Play In')) continue;
+        for (const cat of st.categories || []) {
+          const round = cat.displayName || (stype === 5 ? 'Play-In' : '');
+          for (const ev of cat.events || []) {
+            // Avoid duplicate events
+            if (allGames.some(g => g.eventId === ev.eventId)) continue;
+            const stats = {};
+            (ev.stats || []).forEach((val, i) => {
+              if (labels[i]) stats[`_${labels[i]}`] = val;
+              if (names[i]) stats[names[i]] = val;
+            });
+            allGames.push({ season: year, round, eventId: ev.eventId, stats, type: stype === 5 ? 'play-in' : 'playoff' });
+          }
         }
       }
     }
@@ -435,6 +480,7 @@ export async function getTeamSchedule(teamId, season = '2026') {
 
 export default {
   getScoreboard,
+  getPlayInScoreboard,
   getStandings,
   getNews,
   getTeams,

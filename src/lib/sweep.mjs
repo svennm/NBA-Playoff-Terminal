@@ -39,11 +39,17 @@ export async function runSweep(force = false) {
     withTimeout(espn.getNews(), TIMEOUT, 'news'),
     withTimeout(espn.getInjuries(), TIMEOUT, 'injuries'),
     withTimeout(espn.getTeams(), TIMEOUT, 'teams'),
+    withTimeout(espn.getPlayInScoreboard(), TIMEOUT, 'playin'),
   ]);
 
   const extract = (i) => results[i].status === 'fulfilled' ? results[i].value : null;
 
-  const scoreboard = extract(0) || [];
+  const regularGames = extract(0) || [];
+  const playInGames = extract(5) || [];
+  // Merge play-in games (avoid duplicates by event ID)
+  const existingIds = new Set(regularGames.map(g => g.id));
+  const uniquePlayIn = playInGames.filter(g => !existingIds.has(g.id));
+  const scoreboard = [...regularGames, ...uniquePlayIn];
   const standings = extract(1) || { east: [], west: [] };
   const news = extract(2) || [];
   const injuries = extract(3) || [];
