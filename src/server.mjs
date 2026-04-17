@@ -847,8 +847,32 @@ app.get('/api/soccer/:league/analysis/:gameIndex', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
+    // Try scoreboard first, fall back to schedule for future games
     const scores = await soccer.getScoreboard(req.params.league);
-    const game = scores[parseInt(req.params.gameIndex)];
+    let game = scores[parseInt(req.params.gameIndex)];
+
+    if (!game) {
+      const today = new Date();
+      const end = new Date(today); end.setDate(end.getDate() + 14);
+      const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+      const schedUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${req.params.league}/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
+      const schedRes = await fetch(schedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      const schedData = await schedRes.json();
+      const schedGames = (schedData.events || []).map(ev => {
+        const comp = ev.competitions?.[0];
+        const ts = comp?.competitors || [];
+        const home = ts.find(t => t.homeAway === 'home');
+        const away = ts.find(t => t.homeAway === 'away');
+        return {
+          home: { name: home?.team?.displayName || '', abbr: home?.team?.abbreviation || '', logo: home?.team?.logo || '' },
+          away: { name: away?.team?.displayName || '', abbr: away?.team?.abbreviation || '', logo: away?.team?.logo || '' },
+          date: ev.date,
+          odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0 } : null
+        };
+      });
+      game = schedGames[parseInt(req.params.gameIndex)];
+    }
+
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
     const teams = await soccer.getTeams(req.params.league);
@@ -1486,8 +1510,34 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
+    // Try scoreboard first (today's games), then fall back to schedule (future games)
     const scores = await soccer.getScoreboard(req.params.league);
-    const game = scores[parseInt(req.params.gameIndex)];
+    let game = scores[parseInt(req.params.gameIndex)];
+
+    if (!game) {
+      // Fall back to schedule — slips page uses schedule indexes
+      const today = new Date();
+      const end = new Date(today); end.setDate(end.getDate() + 14);
+      const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+      const schedUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${req.params.league}/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
+      const schedRes = await fetch(schedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      const schedData = await schedRes.json();
+      const schedGames = (schedData.events || []).map(ev => {
+        const comp = ev.competitions?.[0];
+        const teams = comp?.competitors || [];
+        const home = teams.find(t => t.homeAway === 'home');
+        const away = teams.find(t => t.homeAway === 'away');
+        return {
+          id: ev.id, name: ev.name, date: ev.date,
+          status: comp?.status?.type?.description || 'Unknown',
+          home: { name: home?.team?.displayName || '', abbr: home?.team?.abbreviation || '', logo: home?.team?.logo || '' },
+          away: { name: away?.team?.displayName || '', abbr: away?.team?.abbreviation || '', logo: away?.team?.logo || '' },
+          odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0, provider: comp.odds[0].provider?.name || '' } : null
+        };
+      });
+      game = schedGames[parseInt(req.params.gameIndex)];
+    }
+
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
     const teams = await soccer.getTeams(req.params.league);

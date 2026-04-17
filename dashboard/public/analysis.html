@@ -298,8 +298,12 @@ async function init() {
   let scheduleGames = [];
 
   if (currentSport === 'ucl') {
-    const res = await fetch('/api/soccer/uefa.champions/scoreboard');
-    games = await res.json();
+    const res = await fetch('/api/soccer/uefa.champions/schedule');
+    const allUCL = await res.json() || [];
+    // Keep original index for API, filter out completed
+    games = allUCL
+      .map((g, origIdx) => ({ ...g, _origIdx: origIdx }))
+      .filter(g => g.status !== 'Final');
   } else {
     const [sweepRes, schedRes] = await Promise.all([
       fetch('/api/sweep').then(r => r.json()),
@@ -321,11 +325,13 @@ async function init() {
   let html = `<option value="">-- Pick a ${label} game --</option>`;
 
   if (games.length) {
-    html += `<optgroup label="Today's Games">`;
+    const groupLabel = currentSport === 'ucl' ? 'UCL Matches' : "Today's Games";
+    html += `<optgroup label="${groupLabel}">`;
     html += games.map((g, i) => {
       const t = new Date(g.date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
       const playIn = g.isPlayIn ? ' [PLAY-IN]' : '';
-      return `<option value="today:${i}">${g.away.abbr} @ ${g.home.abbr}${playIn} — ${t}</option>`;
+      const idx = g._origIdx !== undefined ? g._origIdx : i;
+      return `<option value="today:${idx}">${g.away?.abbr || g.away?.name} @ ${g.home?.abbr || g.home?.name}${playIn} — ${t}</option>`;
     }).join('');
     html += `</optgroup>`;
   }
