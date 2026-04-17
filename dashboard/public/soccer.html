@@ -21,7 +21,7 @@
   .hamburger:hover{color:var(--cyan);border-color:var(--border-glow);}
   @media(max-width:768px){
     .hamburger{display:block;}
-    .nav-links{display:none;position:absolute;top:100%;right:0;left:0;background:var(--panel);border-bottom:1px solid var(--border-glow);padding:10px 16px;flex-direction:column;gap:6px;z-index:99;}
+    .nav-links{display:none;position:absolute;top:100%;right:0;left:0;background:var(--bg);border-bottom:2px solid var(--border-glow);padding:10px 16px;flex-direction:column;gap:6px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,0.6);}
     .nav-links.open{display:flex;}
     .nav-links a{width:100%;text-align:center;padding:8px 10px;}
     .nav-links span{text-align:center;padding:4px 0;}
@@ -102,7 +102,7 @@
 <div class="header">
   <div style="display:flex;align-items:center;gap:12px;">
     <div>
-      <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div>
+      <a href="/" style="text-decoration:none;"><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div></a>
     </div>
     <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
   </div>
