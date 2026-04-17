@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PLAYOFF PLAYER ANALYSIS</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root{--bg:#030508;--panel:#0a0e14;--panel2:#0d1219;--border:#1a2a3a;--border-glow:#3a2a0f;--gold:#d4a825;--gold2:#f5d442;--cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--red:#ff3d3d;--text:#c8d6e5;--dim:#4a5568;--blue:#3498db;--purple:#9b59b6;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;min-height:100vh;}
+  body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(212,168,37,0.01) 2px,rgba(212,168,37,0.01) 4px);pointer-events:none;z-index:9999;}
+
+  .header{background:linear-gradient(180deg,#0a1520,var(--bg));border-bottom:1px solid var(--border-glow);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+  .nav-links{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+  .nav-links a{color:var(--dim);text-decoration:none;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
+  .nav-links a:hover,.nav-links a.active{color:var(--gold);border-color:var(--border-glow);background:rgba(212,168,37,0.05);}
+  .hamburger{display:none;background:none;border:1px solid var(--border);color:var(--dim);font-size:20px;padding:4px 8px;border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  @media(max-width:768px){
+    .hamburger{display:block;}
+    .header{padding:8px 12px;}
+    .nav-links{display:none;position:absolute;top:100%;right:0;left:0;background:var(--bg);border-bottom:2px solid var(--border-glow);padding:10px 16px;flex-direction:column;gap:6px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,0.6);}
+    .nav-links.open{display:flex;}
+    .nav-links a{width:100%;text-align:center;padding:8px 10px;}
+  }
+
+  .main{max-width:1400px;margin:0 auto;padding:16px 12px;}
+  .page-title{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,var(--gold),var(--gold2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;margin-bottom:4px;}
+  .page-sub{text-align:center;font-size:10px;color:var(--dim);letter-spacing:3px;margin-bottom:20px;}
+
+  /* Team selector */
+  .team-selector{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:16px;}
+  .team-btn{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:6px 10px;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);}
+  .team-btn:hover{border-color:var(--gold);color:var(--text);}
+  .team-btn.active{border-color:var(--gold);background:rgba(212,168,37,0.08);color:var(--gold);}
+  .team-btn img{width:20px;height:20px;object-fit:contain;}
+  .team-btn .seed{font-family:'Orbitron',sans-serif;font-size:8px;color:var(--amber);min-width:14px;text-align:center;}
+  .conf-label{font-family:'Orbitron',sans-serif;font-size:9px;color:var(--dim);letter-spacing:2px;width:100%;text-align:center;margin:8px 0 4px;}
+
+  /* Stat window tabs */
+  .window-tabs{display:flex;gap:0;border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:12px;max-width:600px;}
+  .window-tab{flex:1;text-align:center;padding:8px 6px;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;color:var(--dim);cursor:pointer;border-right:1px solid var(--border);transition:all .15s;background:var(--panel);}
+  .window-tab:last-child{border-right:none;}
+  .window-tab:hover{color:var(--text);background:rgba(212,168,37,0.04);}
+  .window-tab.active{color:var(--gold);background:rgba(212,168,37,0.1);font-weight:700;}
+
+  /* Player cards */
+  .player-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;}
+  .player-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;overflow:hidden;transition:border-color .2s;}
+  .player-card:hover{border-color:var(--border-glow);}
+  .player-header{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);background:rgba(0,0,0,0.2);}
+  .player-header img{width:40px;height:40px;border-radius:50%;object-fit:cover;background:rgba(255,255,255,0.05);}
+  .player-name{font-weight:700;font-size:13px;}
+  .player-meta{font-size:9px;color:var(--dim);}
+  .player-playoff-badge{font-size:8px;padding:2px 6px;border-radius:2px;font-family:'Orbitron',sans-serif;letter-spacing:1px;}
+  .player-body{padding:10px 12px;}
+
+  /* Stat lines table */
+  .stat-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .stat-table th{text-align:left;padding:4px 6px;color:var(--dim);font-size:8px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);}
+  .stat-table td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .stat-table tr:hover td{background:rgba(212,168,37,0.03);}
+  .stat-badge{display:inline-block;padding:1px 5px;border-radius:2px;font-size:9px;font-weight:600;}
+  .stat-PTS{background:rgba(0,229,255,0.12);color:var(--cyan);}
+  .stat-REB{background:rgba(0,255,136,0.1);color:var(--green);}
+  .stat-AST{background:rgba(155,89,182,0.12);color:var(--purple);}
+  .stat-3PM{background:rgba(255,179,0,0.12);color:var(--amber);}
+  .stat-BLK{background:rgba(255,61,61,0.1);color:var(--red);}
+  .stat-STL{background:rgba(52,152,219,0.12);color:var(--blue);}
+
+  /* Window comparison */
+  .window-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:8px;}
+  .window-cell{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:3px;padding:6px;text-align:center;font-size:10px;}
+  .window-cell.active-window{border-color:var(--gold);background:rgba(212,168,37,0.06);}
+  .window-cell .wlabel{font-size:7px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;}
+  .window-cell .wmean{font-family:'Orbitron',sans-serif;font-size:14px;font-weight:700;}
+  .window-cell .wline{font-size:9px;color:var(--dim);}
+  .window-cell .wodds{font-size:9px;margin-top:2px;}
+  .window-cell.no-data{opacity:0.3;}
+
+  .trend-up{color:var(--green);}
+  .trend-down{color:var(--red);}
+
+  /* Season history */
+  .season-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  .season-chip{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:3px;padding:4px 8px;font-size:9px;color:var(--dim);}
+  .season-chip .yr{color:var(--gold);font-weight:600;}
+
+  .loading{text-align:center;padding:40px;color:var(--dim);}
+  .spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .empty{text-align:center;padding:30px;color:var(--dim);font-size:11px;}
+
+  @media(max-width:768px){
+    .player-grid{grid-template-columns:1fr;}
+    .window-grid{grid-template-columns:repeat(3,1fr);}
+    .team-selector{gap:4px;}
+    .team-btn{padding:4px 6px;font-size:9px;}
+    .team-btn img{width:16px;height:16px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <a href="/" style="text-decoration:none;">
+      <div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">HxM</div>
+      <div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div>
+    </a>
+    <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
+  </div>
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/terminal.html">Scores</a>
+    <a href="/matchup.html">Matchup</a>
+    <a href="/bracket.html">Bracket</a>
+    <a href="/playoffs.html" class="active">Playoffs</a>
+    <span style="color:#4a5568;font-size:8px;">|</span>
+    <a href="/slips.html">Slips</a>
+    <a href="/analysis.html">Analysis</a>
+    <a href="/principles.html">Principles</a>
+  </div>
+</div>
+
+<div class="main">
+  <div class="page-title">PLAYOFF PLAYER ANALYSIS</div>
+  <div class="page-sub">Stat Windows // Poisson Lines // Playoff History</div>
+
+  <!-- Team selector -->
+  <div id="team-selector" class="team-selector">
+    <div class="loading"><div class="spinner"></div></div>
+  </div>
+
+  <!-- Stat filter -->
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+    <div class="window-tabs" id="stat-tabs">
+      <div class="window-tab active" onclick="setStat('ALL')">All</div>
+      <div class="window-tab" onclick="setStat('PTS')">PTS</div>
+      <div class="window-tab" onclick="setStat('REB')">REB</div>
+      <div class="window-tab" onclick="setStat('AST')">AST</div>
+      <div class="window-tab" onclick="setStat('3PM')">3PM</div>
+      <div class="window-tab" onclick="setStat('STL')">STL</div>
+      <div class="window-tab" onclick="setStat('BLK')">BLK</div>
+    </div>
+  </div>
+
+  <!-- Players -->
+  <div id="players-area">
+    <div class="empty">Select a playoff team above to view player analysis</div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let currentTeam = null;
+let currentStat = 'ALL';
+let teamsData = [];
+let playersData = null;
+
+async function init() {
+  try {
+    const [standingsRes, teamsRes] = await Promise.all([
+      fetch('/api/standings'),
+      fetch('/api/sweep').then(r => r.json()).then(d => d.teams || [])
+    ]);
+    const standings = await standingsRes.json();
+
+    // Get playoff + play-in teams (seeds 1-10)
+    const east = (standings.east || []).slice(0, 10);
+    const west = (standings.west || []).slice(0, 10);
+
+    // Match with team IDs
+    const allTeams = teamsRes;
+    const enrichTeam = (t) => {
+      const match = allTeams.find(at => at.abbr === t.abbr);
+      return { ...t, id: match?.id || null };
+    };
+
+    const eastTeams = east.map(enrichTeam);
+    const westTeams = west.map(enrichTeam);
+    teamsData = [...eastTeams, ...westTeams];
+
+    let html = '';
+    html += '<div class="conf-label">EASTERN CONFERENCE</div>';
+    html += eastTeams.map(t => {
+      const seed = parseInt(t.seed) || 0;
+      const cls = seed <= 6 ? 'color:var(--green)' : 'color:var(--amber)';
+      const label = seed <= 6 ? '' : seed <= 10 ? ' (Play-In)' : '';
+      return `<button class="team-btn" onclick="loadTeam('${t.id}','${t.abbr}')" data-id="${t.id}">
+        <span class="seed" style="${cls}">${seed}</span>
+        <img src="${t.logo}" alt="" onerror="this.style.display='none'">
+        <span>${t.abbr}${label}</span>
+      </button>`;
+    }).join('');
+
+    html += '<div class="conf-label">WESTERN CONFERENCE</div>';
+    html += westTeams.map(t => {
+      const seed = parseInt(t.seed) || 0;
+      const cls = seed <= 6 ? 'color:var(--green)' : 'color:var(--amber)';
+      const label = seed <= 6 ? '' : seed <= 10 ? ' (Play-In)' : '';
+      return `<button class="team-btn" onclick="loadTeam('${t.id}','${t.abbr}')" data-id="${t.id}">
+        <span class="seed" style="${cls}">${seed}</span>
+        <img src="${t.logo}" alt="" onerror="this.style.display='none'">
+        <span>${t.abbr}${label}</span>
+      </button>`;
+    }).join('');
+
+    $('team-selector').innerHTML = html;
+  } catch (e) {
+    $('team-selector').innerHTML = `<div style="color:var(--red);">Failed to load teams: ${e.message}</div>`;
+  }
+}
+
+async function loadTeam(teamId, abbr) {
+  if (!teamId) return;
+  currentTeam = teamId;
+
+  // Highlight button
+  document.querySelectorAll('.team-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.team-btn[data-id="${teamId}"]`)?.classList.add('active');
+
+  $('players-area').innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading gamelogs + playoff history...</div>';
+
+  try {
+    const res = await fetch(`/api/playoffs/team/${teamId}`);
+    playersData = await res.json();
+    renderPlayers();
+  } catch (e) {
+    $('players-area').innerHTML = `<div style="color:var(--red);">Error: ${e.message}</div>`;
+  }
+}
+
+function setStat(stat) {
+  currentStat = stat;
+  document.querySelectorAll('.window-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  if (playersData) renderPlayers();
+}
+
+function renderPlayers() {
+  const players = playersData?.players || [];
+  if (!players.length) {
+    $('players-area').innerHTML = '<div class="empty">No player data available</div>';
+    return;
+  }
+
+  $('players-area').innerHTML = `<div class="player-grid">${players.map(p => renderPlayerCard(p)).join('')}</div>`;
+}
+
+function renderPlayerCard(player) {
+  const stats = player.stats || {};
+  const statKeys = currentStat === 'ALL' ? Object.keys(stats) : (stats[currentStat] ? [currentStat] : []);
+
+  if (!statKeys.length) return '';
+
+  const playoffBadge = player.playoffGamesCareer > 0
+    ? `<span class="player-playoff-badge" style="background:rgba(212,168,37,0.12);color:var(--gold);">${player.playoffGamesCareer} career PO games</span>`
+    : `<span class="player-playoff-badge" style="background:rgba(255,61,61,0.08);color:var(--red);">No playoff history</span>`;
+
+  // Season history chips
+  const seasonHtml = Object.keys(player.bySeason || {}).length > 0
+    ? `<div class="season-row">${Object.entries(player.bySeason).map(([yr, s]) => `
+        <div class="season-chip"><span class="yr">${yr}</span> ${s.gp}G ${s.ppg}p ${s.rpg}r ${s.apg}a | FG ${s.fgPct}% 3P ${s.tpPct}%</div>
+      `).join('')}</div>`
+    : '';
+
+  const statRows = statKeys.map(key => {
+    const s = stats[key];
+    const windows = ['season', 'L10', 'L5', 'playoffs2026', 'playoffsCareer'];
+    const windowLabels = ['Season', 'L10', 'L5', 'PO \'26', 'PO Career'];
+
+    return `
+      <div style="margin-bottom:10px;">
+        <div style="margin-bottom:4px;"><span class="stat-badge stat-${key}">${key}</span></div>
+        <div class="window-grid">
+          ${windows.map((w, i) => {
+            const d = s[w];
+            if (!d) return `<div class="window-cell no-data"><div class="wlabel">${windowLabels[i]}</div><div style="font-size:9px;">—</div></div>`;
+
+            const seasonMean = s.season?.mean || 0;
+            const diff = d.mean - seasonMean;
+            const trendCls = w !== 'season' && Math.abs(diff) > 0.5 ? (diff > 0 ? 'trend-up' : 'trend-down') : '';
+            const trendIcon = w !== 'season' && Math.abs(diff) > 0.5 ? (diff > 0 ? '▲' : '▼') : '';
+
+            const oddsColor = d.overOdds > 0 ? 'var(--green)' : 'var(--amber)';
+            return `<div class="window-cell">
+              <div class="wlabel">${windowLabels[i]}</div>
+              <div class="wmean ${trendCls}">${d.mean} ${trendIcon}</div>
+              <div class="wline">L: ${d.line} (${d.games}g)</div>
+              <div class="wodds">O <span style="color:${oddsColor}">${d.overOdds > 0 ? '+' : ''}${d.overOdds}</span> | ${d.overProb}%</div>
+              <div style="font-size:8px;color:var(--dim);">Hit: ${d.hitRate}%</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="player-card">
+      <div class="player-header">
+        ${player.headshot ? `<img src="${player.headshot}" alt="" onerror="this.style.display='none'">` : '<div style="width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.05);"></div>'}
+        <div style="flex:1;">
+          <div class="player-name">${player.name}</div>
+          <div class="player-meta">#${player.jersey} ${player.position} ${playoffBadge}</div>
+        </div>
+      </div>
+      <div class="player-body">
+        ${statRows}
+        ${seasonHtml}
+      </div>
+    </div>`;
+}
+
+init();
+</script>
+</body>
+</html>

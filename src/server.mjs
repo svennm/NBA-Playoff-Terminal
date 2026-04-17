@@ -673,6 +673,105 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
   }
 });
 
+// API: Playoff roster analysis — all stat windows for a team's players
+app.get('/api/playoffs/team/:teamId', async (req, res) => {
+  const ck = `playoff-team-${req.params.teamId}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const roster = await espn.getPlayerStats(req.params.teamId);
+    const top = roster.slice(0, 12);
+
+    // Fetch gamelogs + playoff stats in parallel
+    const [gamelogs, playoffStats] = await Promise.all([
+      Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id))),
+      Promise.allSettled(top.map(p => espn.getPlayerPlayoffStats(p.id)))
+    ]);
+
+    const poissonCdf = (k, lam) => {
+      let sum = 0;
+      for (let i = 0; i <= Math.floor(k); i++) {
+        let term = Math.exp(-lam);
+        for (let j = 1; j <= i; j++) term *= lam / j;
+        sum += term;
+      }
+      return Math.min(sum, 1);
+    };
+    const toAmerican = (prob) => prob >= 0.5
+      ? Math.round(-100 * prob / (1 - prob))
+      : Math.round(100 * (1 - prob) / prob);
+
+    const computeWindow = (values) => {
+      if (!values.length) return null;
+      const n = values.length;
+      const mean = values.reduce((a, b) => a + b, 0) / n;
+      if (mean < 0.3) return null;
+      const variance = n > 1 ? values.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
+      const stdDev = Math.sqrt(variance);
+      const line = Math.floor(mean) + 0.5;
+      const overProb = 1 - poissonCdf(line, mean);
+      return {
+        mean: +mean.toFixed(1), stdDev: +stdDev.toFixed(1), games: n,
+        line, overProb: +(overProb * 100).toFixed(1), underProb: +((1 - overProb) * 100).toFixed(1),
+        overOdds: toAmerican(overProb), underOdds: toAmerican(1 - overProb),
+        hitRate: +(values.filter(v => v > line).length / n * 100).toFixed(1)
+      };
+    };
+
+    const players = [];
+    for (let i = 0; i < top.length; i++) {
+      const player = top[i];
+      const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
+      const po = playoffStats[i].status === 'fulfilled' ? playoffStats[i].value : null;
+      if (!gl?.games?.length) continue;
+
+      const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+      const statLines = {};
+
+      for (const key of statKeys) {
+        const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+        if (all.length < 5) continue;
+
+        const last5 = all.slice(0, Math.min(5, all.length));
+        const last10 = all.slice(0, Math.min(10, all.length));
+
+        // Current season playoff games from playoff data
+        const poGames2026 = (po?.games || []).filter(g => g.season === 2026);
+        const poAll = po?.games || [];
+        const poVals = poGames2026.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+        const poCareerVals = poAll.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+
+        statLines[key] = {
+          season: computeWindow(all),
+          L10: computeWindow(last10),
+          L5: computeWindow(last5),
+          playoffs2026: poVals.length >= 2 ? computeWindow(poVals) : null,
+          playoffsCareer: poCareerVals.length >= 3 ? computeWindow(poCareerVals) : null
+        };
+      }
+
+      if (Object.keys(statLines).length) {
+        players.push({
+          id: player.id, name: player.name, headshot: player.headshot || '',
+          position: player.position || '', jersey: player.jersey || '',
+          seasonAvg: player.seasonAvg || {},
+          playoffGames2026: (po?.games || []).filter(g => g.season === 2026).length,
+          playoffGamesCareer: po?.totalGames || 0,
+          bySeason: po?.bySeason || {},
+          stats: statLines
+        });
+      }
+    }
+
+    const result = { teamId: req.params.teamId, players, source: 'ESPN gamelogs + playoff history' };
+    cache.set(ck, result, 20 * 60_000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Soccer edge analysis for a game
 app.get('/api/soccer/:league/analysis/:gameIndex', async (req, res) => {
   const ck = `soccer-analysis-${req.params.league}-${req.params.gameIndex}`;
