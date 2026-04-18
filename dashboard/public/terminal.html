@@ -895,19 +895,29 @@ function setOffline() {
 }
 
 // Fetch initial data
+let sweepRetries = 0;
 async function fetchSweep() {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
     const res = await fetch('/api/sweep', { signal: controller.signal });
     clearTimeout(timeout);
-    if (!res.ok) throw new Error(res.status);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    sweepRetries = 0;
     renderAll(data);
   } catch (e) {
-    console.error('Sweep fetch failed:', e);
-    $('games-panel').innerHTML = '<div style="color:var(--amber);text-align:center;padding:20px;">API loading — first request may take a few seconds on serverless.<br><span style="font-size:10px;color:var(--dim);">Auto-retrying...</span></div>';
+    sweepRetries++;
+    console.error(`Sweep failed (attempt ${sweepRetries}):`, e.message);
+    $('games-panel').innerHTML = `<div style="color:var(--amber);text-align:center;padding:20px;">
+      API loading — attempt ${sweepRetries}...<br>
+      <span style="font-size:10px;color:var(--dim);">${e.message === 'The user aborted a request.' ? 'Server starting up (cold start)' : e.message}</span><br>
+      <span style="font-size:10px;color:var(--dim);">Retrying in ${sweepRetries <= 3 ? '5' : '15'} seconds</span>
+    </div>`;
     setOffline();
+    // Faster retries for first 3 attempts, then slow down
+    const retryMs = sweepRetries <= 3 ? 5000 : 15000;
+    setTimeout(() => fetchSweep().then(setOnline).catch(setOffline), retryMs);
   }
 }
 
