@@ -1092,6 +1092,220 @@ app.get('/api/soccer/:league/analysis/:gameIndex', async (req, res) => {
 
 // API: Auto-generate bookmaker lines with 3 models (NBA)
 // Uses L10, L20, and full season windows
+// === MODEL UTILITIES ===
+
+// Poisson CDF (shared)
+function poissonCdfCalc(k, lam) {
+  let sum = 0;
+  for (let i = 0; i <= Math.floor(k); i++) {
+    let term = Math.exp(-lam);
+    for (let j = 1; j <= i; j++) term *= lam / j;
+    sum += term;
+  }
+  return Math.min(sum, 1);
+}
+
+// Bayesian conjugate model for player props
+// Uses Normal-Normal conjugate prior: prior N(mu0, sigma0^2), data N(mean, sigma^2/n)
+// Posterior: N(mu_post, sigma_post^2)
+function bayesianUpdate(values, priorMean = null, priorWeight = 5) {
+  if (!values.length) return null;
+  const n = values.length;
+  const dataMean = values.reduce((a, b) => a + b, 0) / n;
+  const dataVar = n > 1 ? values.reduce((a, b) => a + (b - dataMean) ** 2, 0) / (n - 1) : dataMean;
+  const dataSigma = Math.sqrt(dataVar);
+
+  // Prior: use overall mean if not provided, with priorWeight pseudo-observations
+  const mu0 = priorMean !== null ? priorMean : dataMean;
+  const sigma0 = dataSigma; // prior uncertainty = data uncertainty
+
+  // Posterior parameters (Normal-Normal conjugate)
+  const priorPrec = priorWeight / (sigma0 * sigma0 + 0.01);
+  const dataPrec = n / (dataVar + 0.01);
+  const postPrec = priorPrec + dataPrec;
+  const postMean = (priorPrec * mu0 + dataPrec * dataMean) / postPrec;
+  const postVar = 1 / postPrec;
+  const postSigma = Math.sqrt(postVar);
+
+  // 90% credible interval
+  const ci90Low = postMean - 1.645 * postSigma;
+  const ci90High = postMean + 1.645 * postSigma;
+
+  // Poisson line from posterior mean
+  const line = Math.floor(postMean) + 0.5;
+  const overProb = 1 - poissonCdfCalc(line, postMean);
+  const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
+
+  return {
+    mean: +postMean.toFixed(1), sigma: +postSigma.toFixed(2),
+    ci90: [+ci90Low.toFixed(1), +ci90High.toFixed(1)],
+    line, games: n, priorMean: +mu0.toFixed(1),
+    overProb: +(overProb * 100).toFixed(1),
+    overOdds: toAm(overProb), underOdds: toAm(1 - overProb),
+    shrinkage: +((1 - dataPrec / postPrec) * 100).toFixed(1) // how much prior pulls the estimate
+  };
+}
+
+// Market-implied: remove vig from book odds to get true probability
+function removeVig(overOdds, underOdds) {
+  const implOver = overOdds < 0 ? Math.abs(overOdds) / (Math.abs(overOdds) + 100) : 100 / (overOdds + 100);
+  const implUnder = underOdds < 0 ? Math.abs(underOdds) / (Math.abs(underOdds) + 100) : 100 / (underOdds + 100);
+  const totalImpl = implOver + implUnder; // > 1.0 due to vig
+  const vig = +((totalImpl - 1) * 100).toFixed(2);
+  // Remove vig proportionally
+  const trueOver = implOver / totalImpl;
+  const trueUnder = implUnder / totalImpl;
+  const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
+  return {
+    rawOverImpl: +(implOver * 100).toFixed(1),
+    rawUnderImpl: +(implUnder * 100).toFixed(1),
+    vig,
+    trueOverProb: +(trueOver * 100).toFixed(1),
+    trueUnderProb: +(trueUnder * 100).toFixed(1),
+    fairOverOdds: toAm(trueOver),
+    fairUnderOdds: toAm(trueUnder)
+  };
+}
+
+// API: Multi-model comparison for a game
+// Returns Poisson, Bayesian, and Market-Implied lines for each player
+app.get('/api/models/game/:gameIndex', async (req, res) => {
+  const ck = `models-game-${req.params.gameIndex}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    // Get game from sweep or schedule
+    const sweepCache = getCache();
+    let game = sweepCache?.games?.[parseInt(req.params.gameIndex)];
+    if (!game) {
+      const today = new Date(); const end = new Date(today); end.setDate(end.getDate() + 7);
+      const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+      const sr = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${fmt(today)}-${fmt(end)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      const sd = await sr.json();
+      const sched = (sd.events || []).map(ev => {
+        const comp = ev.competitions?.[0]; const ts = comp?.competitors || [];
+        const home = ts.find(t => t.homeAway === 'home'); const away = ts.find(t => t.homeAway === 'away');
+        return { id: ev.id, date: ev.date, home: { name: home?.team?.displayName||'',abbr:home?.team?.abbreviation||'' }, away: { name: away?.team?.displayName||'',abbr:away?.team?.abbreviation||'' } };
+      });
+      game = sched[parseInt(req.params.gameIndex)];
+    }
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+
+    const teams = sweepCache?.teams || await espn.getTeams();
+    const homeTeam = teams.find(t => t.abbr === game.home.abbr);
+    const awayTeam = teams.find(t => t.abbr === game.away.abbr);
+
+    // Try to get real book odds for market-implied
+    let bookOddsMap = {};
+    if (odds.isConfigured()) {
+      try {
+        const events = await odds.getEvents();
+        const matchEvent = events.data?.find(e => {
+          const h = e.home_team?.toLowerCase(); const gh = game.home.name.toLowerCase();
+          return h?.includes(gh.split(' ').pop()) || gh.includes(h?.split(' ').pop());
+        });
+        if (matchEvent) {
+          const propsResult = await odds.getPlayerProps(matchEvent.id);
+          if (propsResult.data) {
+            for (const p of propsResult.data) {
+              bookOddsMap[p.name.toLowerCase()] = {};
+              for (const l of p.lines) {
+                bookOddsMap[p.name.toLowerCase()][l.stat] = {
+                  line: l.line, overOdds: l.bestOver?.odds || l.over?.odds, underOdds: l.bestUnder?.odds || l.under?.odds,
+                  book: l.bestOver?.book || l.over?.book || 'Best'
+                };
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const analyzeTeam = async (teamId, teamAbbr) => {
+      if (!teamId) return [];
+      const roster = await espn.getPlayerStats(teamId);
+      const top = roster.slice(0, 10);
+      const gamelogs = await Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id)));
+      const players = [];
+
+      for (let i = 0; i < top.length; i++) {
+        const player = top[i];
+        const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
+        if (!gl?.games?.length || gl.games.length < 5) continue;
+
+        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'FGM', 'FTM', 'STL', 'BLK'];
+        const models = {};
+
+        for (const key of statKeys) {
+          const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+          if (all.length < 5) continue;
+          const mean = all.reduce((a, b) => a + b, 0) / all.length;
+          if (mean < 0.5) continue;
+
+          const last10 = all.slice(0, Math.min(10, all.length));
+
+          // 1. Poisson (season)
+          const poissonLine = Math.floor(mean) + 0.5;
+          const poissonOver = 1 - poissonCdfCalc(poissonLine, mean);
+          const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
+
+          // 2. Bayesian (L10 data, season prior)
+          const bayesian = bayesianUpdate(last10, mean, 5);
+
+          // 3. Market-Implied (if book odds available)
+          const bookKey = player.name.toLowerCase();
+          const statMap = { 'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': '3PM', 'STL': 'STL', 'BLK': 'BLK' };
+          const bookLine = bookOddsMap[bookKey]?.[statMap[key] || key];
+          const market = bookLine && bookLine.overOdds && bookLine.underOdds
+            ? removeVig(bookLine.overOdds, bookLine.underOdds)
+            : null;
+
+          models[key] = {
+            poisson: {
+              mean: +mean.toFixed(1), line: poissonLine, games: all.length,
+              overProb: +(poissonOver * 100).toFixed(1),
+              overOdds: toAm(poissonOver), underOdds: toAm(1 - poissonOver)
+            },
+            bayesian,
+            market: market ? {
+              ...market,
+              line: bookLine.line, book: bookLine.book,
+              bookOverOdds: bookLine.overOdds, bookUnderOdds: bookLine.underOdds
+            } : null,
+            // Edge: Bayesian vs Market
+            edge: market && bayesian ? {
+              overEdge: +(bayesian.overProb - market.trueOverProb).toFixed(1),
+              underEdge: +((100 - bayesian.overProb) - market.trueUnderProb).toFixed(1)
+            } : null
+          };
+        }
+
+        if (Object.keys(models).length) {
+          players.push({ name: player.name, id: player.id, team: teamAbbr, headshot: player.headshot, position: player.position, models });
+        }
+      }
+      return players;
+    };
+
+    const [homePlayers, awayPlayers] = await Promise.all([
+      analyzeTeam(homeTeam?.id, game.home.abbr),
+      analyzeTeam(awayTeam?.id, game.away.abbr)
+    ]);
+
+    const result = {
+      game: { home: game.home, away: game.away, date: game.date },
+      players: [...awayPlayers, ...homePlayers],
+      hasMarketData: Object.keys(bookOddsMap).length > 0
+    };
+
+    cache.set(ck, result, 15 * 60_000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // source: 'today' (sweep) or 'sched' (schedule)
 // ?windows=5,10,20 for custom windows (default: 10,20,season)
 app.get('/api/book/auto-lines/:source/:gameIndex', async (req, res) => {
@@ -1236,16 +1450,7 @@ app.get('/api/book/auto-lines/:gameIndex', async (req, res) => {
   res.redirect(`/api/book/auto-lines/today/${req.params.gameIndex}?windows=${req.query.windows || '10,20,season'}`);
 });
 
-// Poisson CDF helper for auto-lines
-function poissonCdfCalc(k, lam) {
-  let sum = 0;
-  for (let i = 0; i <= Math.floor(k); i++) {
-    let term = Math.exp(-lam);
-    for (let j = 1; j <= i; j++) term *= lam / j;
-    sum += term;
-  }
-  return Math.min(sum, 1);
-}
+// poissonCdfCalc defined in MODEL UTILITIES section above
 
 // API: Player gamelog + statistical analysis (cached 1hr)
 app.get('/api/players/:id/gamelog', async (req, res) => {

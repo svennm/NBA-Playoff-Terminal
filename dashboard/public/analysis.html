@@ -127,8 +127,9 @@
 
   <div class="tab-row">
     <div class="tab active" onclick="setTab('analysis',this)">Edge Finder</div>
+    <div class="tab" onclick="setTab('models',this)">Model Compare</div>
     <div class="tab" onclick="setTab('book',this)">In-House Book</div>
-    <div class="tab" onclick="setTab('autobook',this)">Auto Book (3 Models)</div>
+    <div class="tab" onclick="setTab('autobook',this)">Auto Book</div>
   </div>
 
   <!-- ANALYSIS TAB -->
@@ -221,6 +222,24 @@
   </div>
 
   <!-- AUTO BOOK TAB -->
+  <!-- MODELS TAB — Poisson vs Bayesian vs Market-Implied -->
+  <div id="tab-models" style="display:none;">
+    <div style="margin:12px 0;">
+      <select id="models-game" onchange="loadModels()">
+        <option value="">-- Pick a game for model comparison --</option>
+      </select>
+    </div>
+    <div style="margin-bottom:8px;padding:8px 10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--dim);">
+      <strong style="color:var(--cyan);">3 Models Compared:</strong>
+      <span style="color:var(--green);">Poisson</span> (season gamelog) |
+      <span style="color:var(--amber);">Bayesian</span> (L10 data + season prior, shrinkage-adjusted) |
+      <span style="color:var(--purple);">Market-Implied</span> (book odds with vig removed = true probability)
+    </div>
+    <div id="models-body">
+      <div class="panel"><div class="panel-body" style="text-align:center;color:var(--dim);padding:30px;">Select a game to compare Poisson, Bayesian, and Market-Implied models side by side</div></div>
+    </div>
+  </div>
+
   <div id="tab-autobook" style="display:none;">
     <div style="margin:12px 0;">
       <select id="autobook-game" onchange="loadAutoBook()">
@@ -294,10 +313,12 @@ function setTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   $('tab-analysis').style.display = tab === 'analysis' ? '' : 'none';
+  $('tab-models').style.display = tab === 'models' ? '' : 'none';
   $('tab-book').style.display = tab === 'book' ? '' : 'none';
   $('tab-autobook').style.display = tab === 'autobook' ? '' : 'none';
   if (tab === 'book') loadBook();
   if (tab === 'autobook') initAutoBook();
+  if (tab === 'models') initModels();
 }
 
 // === EDGE FINDER ===
@@ -615,6 +636,114 @@ function betLine(lineId, side, el) {
     else loadBook();
     el.classList.remove('selected');
   });
+}
+
+// === MODEL COMPARE (Poisson vs Bayesian vs Market) ===
+async function initModels() {
+  // Same game loader as edge finder
+  const sel = $('models-game');
+  if (window._todayGames?.length || window._schedGames?.length) {
+    let html = '<option value="">-- Pick a game --</option>';
+    if (window._todayGames?.length) {
+      html += '<optgroup label="Today\'s Games">';
+      html += window._todayGames.map((g, i) => {
+        const t = new Date(g.date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+        return `<option value="${i}">${g.away?.abbr} @ ${g.home?.abbr} — ${t}</option>`;
+      }).join('');
+      html += '</optgroup>';
+    }
+    sel.innerHTML = html;
+  } else {
+    // Fallback: load from sweep
+    const res = await fetch('/api/sweep').then(r => r.json());
+    const games = res.games || [];
+    sel.innerHTML = '<option value="">-- Pick a game --</option>' +
+      games.map((g, i) => `<option value="${i}">${g.away?.abbr} @ ${g.home?.abbr}</option>`).join('');
+  }
+}
+
+async function loadModels() {
+  const idx = $('models-game').value;
+  if (!idx) return;
+  const body = $('models-body');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div><br>Running 3 models on all players...</div>';
+
+  const res = await fetch(`/api/models/game/${idx}`);
+  const data = await res.json();
+  if (data.error) { body.innerHTML = `<div style="color:var(--red);">${data.error}</div>`; return; }
+
+  const players = data.players || [];
+  const fmtO = (o) => fmtOdds(o);
+
+  body.innerHTML = `
+    <div class="panel">
+      <div class="panel-header">
+        Poisson vs Bayesian vs Market — ${data.game?.away?.abbr} @ ${data.game?.home?.abbr}
+        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;">${players.length} players${data.hasMarketData ? ' | LIVE BOOK ODDS' : ' | NO BOOK DATA'}</span>
+      </div>
+      <div class="panel-body" style="overflow-x:auto;">
+        ${players.map(p => `
+          <div style="margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              ${p.headshot ? `<img src="${p.headshot}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;" onerror="this.style.display='none'">` : ''}
+              <span style="font-weight:700;font-size:13px;">${p.name}</span>
+              <span style="color:var(--dim);font-size:10px;">${p.team}</span>
+            </div>
+            <table class="edge-table" style="min-width:900px;">
+              <thead><tr>
+                <th>Stat</th>
+                <th colspan="3" style="text-align:center;color:var(--green);">Poisson (Season)</th>
+                <th colspan="4" style="text-align:center;color:var(--amber);">Bayesian (L10 + Prior)</th>
+                <th colspan="4" style="text-align:center;color:var(--purple);">Market-Implied (No-Vig)</th>
+                <th>Edge</th>
+              </tr>
+              <tr style="font-size:7px;color:var(--dim);">
+                <th></th>
+                <th>Line</th><th>Mean</th><th>O%</th>
+                <th>Line</th><th>Mean</th><th>O%</th><th>CI 90%</th>
+                <th>Line</th><th>Fair O%</th><th>Vig</th><th>Book</th>
+                <th></th>
+              </tr></thead>
+              <tbody>
+                ${Object.entries(p.models).map(([stat, m]) => {
+                  const po = m.poisson;
+                  const bay = m.bayesian;
+                  const mkt = m.market;
+                  const edge = m.edge;
+                  const edgeVal = edge ? edge.overEdge : null;
+                  const edgeColor = edgeVal > 3 ? 'var(--green)' : edgeVal < -3 ? 'var(--red)' : 'var(--dim)';
+
+                  return `<tr>
+                    <td><span class="stat-badge stat-${stat}">${stat}</span></td>
+                    <td style="font-weight:600;">${po.line}</td>
+                    <td style="color:var(--dim);">${po.mean}</td>
+                    <td style="color:var(--green);">${po.overProb}%</td>
+                    <td style="font-weight:600;">${bay ? bay.line : '-'}</td>
+                    <td style="color:var(--dim);">${bay ? bay.mean : '-'}</td>
+                    <td style="color:var(--amber);">${bay ? bay.overProb + '%' : '-'}</td>
+                    <td style="font-size:9px;color:var(--dim);">${bay ? bay.ci90[0] + '–' + bay.ci90[1] : '-'}</td>
+                    <td style="font-weight:600;">${mkt ? mkt.line : '-'}</td>
+                    <td style="color:var(--purple);">${mkt ? mkt.trueOverProb + '%' : '-'}</td>
+                    <td style="color:var(--red);font-size:9px;">${mkt ? mkt.vig + '%' : '-'}</td>
+                    <td style="color:var(--dim);font-size:9px;">${mkt ? mkt.book : '-'}</td>
+                    <td style="color:${edgeColor};font-weight:700;">${edgeVal !== null ? (edgeVal > 0 ? '+' : '') + edgeVal + '%' : '-'}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `).join('')}
+        <div style="margin-top:12px;padding:10px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;font-size:10px;">
+          <div style="color:var(--cyan);font-weight:600;margin-bottom:4px;">How to Read:</div>
+          <div style="color:var(--dim);line-height:1.6;">
+            <span style="color:var(--green);">Poisson</span> — pure statistical model from season gamelog. Mean = average, line = floor(mean)+0.5.<br>
+            <span style="color:var(--amber);">Bayesian</span> — uses last 10 games with season as prior. Shrinks toward season mean when sample is small. CI = 90% credible interval.<br>
+            <span style="color:var(--purple);">Market-Implied</span> — book odds with vig removed. Vig% shows how much the book overcharges. Fair O% = true probability.<br>
+            <strong>Edge</strong> = Bayesian O% minus Market Fair O%. Positive = model thinks Over is more likely than the market.
+          </div>
+        </div>
+      </div>
+    </div>`;
 }
 
 // === AUTO BOOK (Custom Windows) ===

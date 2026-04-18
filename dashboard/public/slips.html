@@ -836,6 +836,25 @@ function showPlayerStats() {
                 <div style="font-size:7px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Poisson Fair Lines</div>
                 ${model.map((l, i) => renderLine(l, `ps-${idx}-${stat}-po-${l.line}`, isBinary)).join('')}
               ` : ''}
+              ${hasBoth ? (() => {
+                // Show vig removal comparison
+                const bk = book[0];
+                const md = model[0];
+                const bkOverImpl = americanToImplied(bk.overOdds || -115);
+                const bkUnderImpl = americanToImplied(bk.underOdds || -115);
+                const totalImpl = bkOverImpl + bkUnderImpl;
+                const vig = ((totalImpl - 100)).toFixed(1);
+                const fairOver = (bkOverImpl / totalImpl * 100).toFixed(1);
+                const fairUnder = (bkUnderImpl / totalImpl * 100).toFixed(1);
+                const modelOver = md.overProb || americanToImplied(md.overOdds || -115).toFixed(1);
+                return `<div style="margin-top:4px;padding:6px 8px;background:rgba(155,89,182,0.06);border:1px solid rgba(155,89,182,0.15);border-radius:3px;font-size:9px;">
+                  <span style="color:var(--purple);font-weight:600;">Market vs Model:</span>
+                  Book vig: <span style="color:var(--red);">${vig}%</span> |
+                  Fair O%: <span style="color:var(--purple);">${fairOver}%</span> |
+                  Poisson O%: <span style="color:var(--amber);">${typeof modelOver === 'number' ? modelOver.toFixed(1) : modelOver}%</span> |
+                  Edge: <span style="color:${parseFloat(modelOver) > parseFloat(fairOver) ? 'var(--green)' : 'var(--red)'};">${(parseFloat(modelOver) - parseFloat(fairOver)).toFixed(1)}%</span>
+                </div>`;
+              })() : ''}
             </div>`;
         }).join('')}
       </div>
