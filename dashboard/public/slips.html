@@ -179,7 +179,7 @@
     <div>
       <a href="/" style="text-decoration:none;"><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div></a>
     </div>
-    <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
+    <button class="hamburger" onclick="document.querySelector('.hxm-nav,.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
   </div>
   <div class="nav-links">
     <a href="/" style="color:var(--dim);text-decoration:none;font-size:11px;font-weight:600;font-family:'Orbitron',sans-serif;letter-spacing:1px;padding:5px 10px;border:1px solid var(--border);border-radius:3px;">Home</a>
@@ -210,6 +210,7 @@
         <div style="display:flex;gap:6px;margin-bottom:6px;">
           <button class="filter-btn active" id="sport-nba" onclick="setSport('nba',this)" style="background:rgba(255,179,0,0.1);border:1px solid var(--border);color:var(--amber);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">NBA</button>
           <button class="filter-btn" id="sport-ucl" onclick="setSport('ucl',this)" style="background:var(--panel);border:1px solid var(--border);color:var(--dim);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">UCL</button>
+          <button class="filter-btn" id="sport-prem" onclick="setSport('prem',this)" style="background:var(--panel);border:1px solid var(--border);color:var(--dim);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">PREM</button>
         </div>
         <label style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Select a Game</label>
         <select id="game-select" onchange="loadGameProps()" style="margin-top:4px;">
@@ -465,11 +466,14 @@ function showLoggedIn() {
 }
 
 // === Games ===
+const SLIPS_LEAGUES = { ucl: 'uefa.champions', prem: 'eng.1' };
+
 function setSport(sport, btn) {
   currentSport = sport;
-  document.querySelectorAll('#sport-nba,#sport-ucl').forEach(b => { b.style.background = 'var(--panel)'; b.style.color = 'var(--dim)'; b.classList.remove('active'); });
-  btn.style.background = sport === 'nba' ? 'rgba(255,179,0,0.1)' : 'rgba(26,115,232,0.1)';
-  btn.style.color = sport === 'nba' ? 'var(--amber)' : '#1a73e8';
+  document.querySelectorAll('#sport-nba,#sport-ucl,#sport-prem').forEach(b => { b.style.background = 'var(--panel)'; b.style.color = 'var(--dim)'; b.classList.remove('active'); });
+  const colors = { nba: ['rgba(255,179,0,0.1)','var(--amber)'], ucl: ['rgba(26,115,232,0.1)','#1a73e8'], prem: ['rgba(55,0,60,0.2)','#37003c'] };
+  btn.style.background = colors[sport]?.[0] || 'var(--panel)';
+  btn.style.color = colors[sport]?.[1] || 'var(--dim)';
   btn.classList.add('active');
   $('props-area').innerHTML = '<div class="empty">Loading games...</div>';
   loadGames();
@@ -502,24 +506,27 @@ async function loadGames() {
         return `<option value="nba-${origIdx}" ${isTBD ? 'disabled' : ''}>${prefix}${g.away.abbr} @ ${g.home.abbr} — ${time}${odds}${note}</option>`;
       }).join('');
   } else {
-    // Load upcoming UCL schedule (14 days)
-    const res = await fetch('/api/soccer/uefa.champions/schedule');
+    // Load upcoming soccer schedule (UCL or Prem)
+    const league = SLIPS_LEAGUES[currentSport] || 'uefa.champions';
+    const label = currentSport === 'prem' ? 'PREM' : 'UCL';
+    const sportKey = currentSport === 'prem' ? 'prem' : 'ucl';
+    const res = await fetch(`/api/soccer/${league}/schedule`);
     soccerGames = await res.json();
     allGames = [];
 
     if (!soccerGames.length) {
-      sel.innerHTML = '<option value="">No upcoming UCL matches</option>';
+      sel.innerHTML = `<option value="">No upcoming ${label} matches</option>`;
       return;
     }
-    const upcomingUCL = soccerGames.filter(g => g.status !== 'Final');
-    sel.innerHTML = '<option value="">-- Pick a UCL match --</option>' +
-      upcomingUCL.map(g => {
+    const upcomingSoccer = soccerGames.filter(g => g.status !== 'Final');
+    sel.innerHTML = `<option value="">-- Pick a ${label} match --</option>` +
+      upcomingSoccer.map(g => {
         const origIdx = soccerGames.indexOf(g);
         const time = new Date(g.date).toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
         const agg = g.aggregate ? ` [${g.aggregate}]` : '';
         const isLive = g.status === 'In Progress' || g.status === 'Second Half' || g.status === 'First Half';
         const prefix = isLive ? 'LIVE ' : '';
-        return `<option value="ucl-${origIdx}">${prefix}${g.away.abbr || g.away.name} vs ${g.home.abbr || g.home.name} — ${time}${agg}</option>`;
+        return `<option value="${sportKey}-${origIdx}">${prefix}${g.away.abbr || g.away.name} vs ${g.home.abbr || g.home.name} — ${time}${agg}</option>`;
       }).join('');
   }
 }
@@ -541,8 +548,9 @@ async function loadGameProps() {
   // Fetch props based on sport
   const window = $('poisson-window')?.value || 'L10';
   let res;
-  if (sport === 'ucl') {
-    res = await fetch(`/api/soccer/uefa.champions/props/${idx}`);
+  if (sport === 'ucl' || sport === 'prem') {
+    const league = sport === 'prem' ? 'eng.1' : 'uefa.champions';
+    res = await fetch(`/api/soccer/${league}/props/${idx}`);
   } else {
     res = await fetch(`/api/props/game/${idx}?window=${window}`);
   }
@@ -1429,6 +1437,7 @@ boot();
 </script>
 <style>@keyframes spin{to{transform:rotate(360deg);}}</style>
 <script src="/slip-widget.js"></script>
+<script src="/nav.js"></script>
 <script src="/theme.js"></script>
 </body>
 </html>

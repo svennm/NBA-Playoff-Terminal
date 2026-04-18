@@ -93,7 +93,7 @@
     <div>
       <a href="/" style="text-decoration:none;"><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div></a>
     </div>
-    <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
+    <button class="hamburger" onclick="document.querySelector('.hxm-nav,.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
   </div>
   <div class="nav-links">
     <a href="/" style="color:var(--dim);text-decoration:none;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;">Home</a>
@@ -118,7 +118,8 @@
   <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
     <div style="display:flex;gap:0;flex:1;">
       <button onclick="setSport('nba')" id="sp-nba" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:4px 0 0 4px;background:rgba(255,179,0,0.1);color:var(--amber);">NBA</button>
-      <button onclick="setSport('ucl')" id="sp-ucl" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">UCL</button>
+      <button onclick="setSport('ucl')" id="sp-ucl" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0;background:var(--panel);color:var(--dim);">UCL</button>
+      <button onclick="setSport('prem')" id="sp-prem" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">PREM</button>
     </div>
     <button id="odds-toggle" onclick="toggleOddsFormat()" style="padding:6px 12px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;border:1px solid var(--border);cursor:pointer;border-radius:4px;background:var(--panel);color:var(--cyan);min-width:44px;" title="Toggle American/Decimal odds">AM</button>
   </div>
@@ -270,12 +271,16 @@ function toggleOddsFormat() {
   renderAnalysis();
 }
 
+const ANALYSIS_LEAGUES = { ucl: 'uefa.champions', prem: 'eng.1' };
+
 function setSport(sport) {
   currentSport = sport;
   $('sp-nba').style.background = sport === 'nba' ? 'rgba(255,179,0,0.1)' : 'var(--panel)';
   $('sp-nba').style.color = sport === 'nba' ? 'var(--amber)' : 'var(--dim)';
   $('sp-ucl').style.background = sport === 'ucl' ? 'rgba(26,115,232,0.1)' : 'var(--panel)';
   $('sp-ucl').style.color = sport === 'ucl' ? '#1a73e8' : 'var(--dim)';
+  $('sp-prem').style.background = sport === 'prem' ? 'rgba(55,0,60,0.2)' : 'var(--panel)';
+  $('sp-prem').style.color = sport === 'prem' ? '#37003c' : 'var(--dim)';
   allRows = [];
   $('results').innerHTML = '';
   $('summary').style.display = 'none';
@@ -300,8 +305,9 @@ async function init() {
   let games = [];
   let scheduleGames = [];
 
-  if (currentSport === 'ucl') {
-    const res = await fetch('/api/soccer/uefa.champions/schedule');
+  if (currentSport === 'ucl' || currentSport === 'prem') {
+    const league = ANALYSIS_LEAGUES[currentSport] || 'uefa.champions';
+    const res = await fetch(`/api/soccer/${league}/schedule`);
     const allUCL = await res.json() || [];
     // Keep original index for API, filter out completed
     games = allUCL
@@ -402,7 +408,8 @@ async function analyzeGame() {
 
   let endpoint;
   if (currentSport === 'ucl') {
-    endpoint = `/api/soccer/uefa.champions/analysis/${idx}`;
+    const league = ANALYSIS_LEAGUES[currentSport] || 'uefa.champions';
+    endpoint = `/api/soccer/${league}/analysis/${idx}`;
   } else if (source === 'sched') {
     endpoint = `/api/schedule/lines/${idx}?window=${currentWindow}`;
   } else {
@@ -775,6 +782,7 @@ document.getElementById('odds-toggle').textContent = oddsFormat === 'american' ?
 setInterval(loadBook, 30000);
 </script>
 <script src="/slip-widget.js"></script>
+<script src="/nav.js"></script>
 <script src="/theme.js"></script>
 </body>
 </html>

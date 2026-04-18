@@ -13,11 +13,12 @@
   .sub{font-size:10px;color:var(--dim);letter-spacing:4px;text-transform:uppercase;text-align:center;margin-bottom:30px;}
 
   /* Sport cards with integrated nav */
-  .sports{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:640px;width:100%;}
+  .sports{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;max-width:900px;width:100%;}
   .sport-block{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;transition:all .2s;}
   .sport-block:hover{border-color:var(--gold);box-shadow:0 4px 20px rgba(212,168,37,0.1);}
   .sport-block.nba{border-top:3px solid var(--amber);}
   .sport-block.ucl{border-top:3px solid var(--gold);}
+  .sport-block.prem{border-top:3px solid #37003c;}
 
   .sport-main{display:flex;align-items:center;gap:12px;padding:20px 16px;text-decoration:none;color:var(--text);cursor:pointer;transition:background .15s;}
   .sport-main:hover{background:rgba(212,168,37,0.03);}
@@ -35,7 +36,7 @@
   .tools a{color:var(--dim);text-decoration:none;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:2px;text-transform:uppercase;padding:6px 14px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
   .tools a:hover{color:var(--gold);border-color:var(--gold);background:rgba(212,168,37,0.05);}
 
-  @media(max-width:520px){
+  @media(max-width:700px){
     .sports{grid-template-columns:1fr;gap:12px;max-width:360px;}
     .sport-main{padding:16px 14px;}
     .sport-links a{padding:8px 4px;font-size:8px;letter-spacing:0.5px;}
@@ -78,9 +79,23 @@
       <a href="/matchup.html?sport=soccer">Matchup</a>
     </div>
   </div>
+
+  <div class="sport-block prem">
+    <a href="/prem.html" class="sport-main">
+      <div class="icon">&#9917;</div>
+      <div>
+        <div class="name" style="color:#37003c;">PREM</div>
+        <div class="desc">Premier League // Table // Teams</div>
+      </div>
+    </a>
+    <div class="sport-links">
+      <a href="/prem.html">Scores</a>
+      <a href="/matchup.html?sport=prem">Matchup</a>
+    </div>
+  </div>
 </div>
 
-<a href="/guide.html" style="display:block;max-width:640px;width:100%;margin-top:24px;background:rgba(212,168,37,0.06);border:1px solid var(--gold);border-radius:6px;padding:14px 20px;text-decoration:none;text-align:center;transition:all .2s;" onmouseover="this.style.background='rgba(212,168,37,0.12)'" onmouseout="this.style.background='rgba(212,168,37,0.06)'">
+<a href="/guide.html" style="display:block;max-width:900px;width:100%;margin-top:24px;background:rgba(212,168,37,0.06);border:1px solid var(--gold);border-radius:6px;padding:14px 20px;text-decoration:none;text-align:center;transition:all .2s;" onmouseover="this.style.background='rgba(212,168,37,0.12)'" onmouseout="this.style.background='rgba(212,168,37,0.06)'">
   <div style="font-family:'Orbitron',sans-serif;font-size:12px;font-weight:700;letter-spacing:3px;color:var(--gold);margin-bottom:4px;">NEW HERE? START WITH THE GUIDE</div>
   <div style="font-size:10px;color:var(--dim);">Learn how to read lines, place demo bets, and use projected props</div>
 </a>
@@ -92,7 +107,7 @@
 </div>
 
 <!-- Settings Panel -->
-<div id="settings-panel" style="max-width:640px;width:100%;margin-top:28px;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+<div id="settings-panel" style="max-width:900px;width:100%;margin-top:28px;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
   <div onclick="document.getElementById('settings-body').style.display=document.getElementById('settings-body').style.display==='none'?'block':'none';this.querySelector('.arrow').textContent=document.getElementById('settings-body').style.display==='none'?'▶':'▼'" style="padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);user-select:none;">
     <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--gold);">DISPLAY SETTINGS</span>
     <span class="arrow" style="color:var(--dim);">▼</span>

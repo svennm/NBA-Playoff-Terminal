@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CHAMPIONS LEAGUE TERMINAL</title>
+<title>PREMIER LEAGUE TERMINAL</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
   :root{--bg:#030508;--panel:#0a0e14;--border:#1a2a3a;--border-glow:#0f4f6f;--cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--red:#ff3d3d;--magenta:#ff00ff;--text:#c8d6e5;--dim:#4a5568;--blue:#3498db;--purple:#9b59b6;--ucl:#0a1e5c;}
@@ -115,8 +115,10 @@
     <a href="/playoffs.html" >Playoffs</a>
     <span style="color:#4a5568;font-size:8px;">|</span>
     <span style="color:#1a73e8;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;">UCL</span>
-    <a href="/soccer.html" class="active">Scores</a>
-    <a href="/matchup.html?sport=soccer" _S>Matchup</a>
+    <a href="/soccer.html" >Scores</a>
+    <span style="color:#4a5568;font-size:8px;">|</span>
+    <span style="color:#3d195b;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;">PREM</span>
+    <a href="/prem.html" class="active">Scores</a>
     <span style="color:#4a5568;font-size:8px;">|</span>
     <a href="/slips.html" >Slips</a>
     <a href="/analysis.html" >Analysis</a>
@@ -138,7 +140,7 @@
 
   <!-- League Table -->
   <div class="panel">
-    <div class="panel-header">League Phase</div>
+    <div class="panel-header">Premier League Table</div>
     <div class="panel-body" id="standings" style="max-height:600px;">
       <div class="loading"><div class="spinner"></div></div>
     </div>
@@ -166,27 +168,21 @@
   <!-- News -->
   <div class="panel two-col">
     <div class="panel-header">
-      UCL News
+      EPL News
       <span class="count" id="news-count">0</span>
     </div>
     <div class="panel-body" id="news">
       <div class="loading"><div class="spinner"></div></div>
     </div>
   </div>
-
-  <!-- Polymarket -->
-  <div class="panel" id="poly-panel" style="display:none;">
-    <div class="panel-header" style="color:var(--purple);">Polymarket Futures</div>
-    <div class="panel-body" id="poly-body"></div>
-  </div>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
-const LEAGUE = 'uefa.champions';
+const LEAGUE = 'eng.1';
 
 async function init() {
-  await Promise.all([loadMatches(), loadStandings(), loadTeams(), loadNews(), loadPolymarket()]);
+  await Promise.all([loadMatches(), loadStandings(), loadTeams(), loadNews()]);
   setInterval(() => { loadMatches(); loadStandings(); }, 60000);
 }
 
@@ -279,7 +275,7 @@ async function loadStandings() {
           <tbody>
             ${g.entries.map((t, i) => {
               const r = parseInt(t.rank) || i + 1;
-              const cls = r <= 8 ? 'rank-qual' : r <= 24 ? 'rank-playoff' : 'rank-elim';
+              const cls = r <= 4 ? 'rank-qual' : r <= 6 ? 'rank-playoff' : r >= 18 ? 'rank-elim' : '';
               return `
                 <tr onclick="loadTeam('${t.abbr}')" style="cursor:pointer;">
                   <td class="${cls}">${r}</td>
@@ -376,9 +372,9 @@ async function loadTeam(abbr) {
       if (r.status !== 'fulfilled' || !r.value || r.value.error) return;
       const d = r.value;
       const allSplits = d.allSplits || [];
-      const clSplit = allSplits.find(s => s.name?.includes('Champions'));
+      const plSplit = allSplits.find(s => s.name?.includes('Premier League'));
       const lgSplit = allSplits.find(s => s.name && !s.name.includes('Champions') && !s.name.includes('Friendly') && !s.name.includes('Copa') && !s.name.includes('International'));
-      const s = clSplit?.stats || lgSplit?.stats || d.clStats || d.leagueStats;
+      const s = plSplit?.stats || lgSplit?.stats || d.leagueStats;
       if (s) {
         playerStats[toFetch[i].id] = {
           G: s.totalGoals || s._G || '0',
@@ -409,26 +405,6 @@ async function loadNews() {
         ${n.description ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">${n.description}</div>` : ''}
         <div class="news-meta">${n.published ? new Date(n.published).toLocaleString() : ''}</div>
       </div>`).join('');
-  } catch {}
-}
-
-async function loadPolymarket() {
-  try {
-    const res = await fetch('/api/polymarket/ucl');
-    const events = await res.json();
-    if (!events.length) return;
-    $('poly-panel').style.display = '';
-    $('poly-body').innerHTML = events.map(e => `
-      <div style="margin-bottom:8px;font-weight:600;font-size:11px;">${e.title}</div>
-      ${e.markets.map(m => {
-        const color = m.prob > 15 ? 'var(--green)' : m.prob > 5 ? 'var(--cyan)' : 'var(--dim)';
-        return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px;">
-          <span style="color:${color};font-weight:700;min-width:40px;">${m.prob}%</span>
-          <div style="height:4px;width:${Math.max(m.prob*2,3)}px;background:${color};border-radius:2px;"></div>
-          <span>${m.question.replace(/Will |win the.*\?/g,'').trim()}</span>
-          <span style="margin-left:auto;color:var(--amber);font-size:9px;">${m.odds > 0 ? '+' : ''}${m.odds}</span>
-        </div>`;
-      }).join('')}`).join('');
   } catch {}
 }
 

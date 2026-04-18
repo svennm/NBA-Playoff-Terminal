@@ -145,7 +145,7 @@
     <div>
       <a href="/" style="text-decoration:none;"><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div></a>
     </div>
-    <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
+    <button class="hamburger" onclick="document.querySelector('.hxm-nav,.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
   </div>
   <div class="nav-links">
     <a href="/" style="color:var(--dim);text-decoration:none;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;">Home</a>
@@ -760,6 +760,7 @@ function renderSeeds(conf) {
 init();
 </script>
 <script src="/slip-widget.js"></script>
+<script src="/nav.js"></script>
 <script src="/theme.js"></script>
 </body>
 </html>

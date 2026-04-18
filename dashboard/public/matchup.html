@@ -905,7 +905,7 @@
     <div>
       <a href="/" style="text-decoration:none;"><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div></a>
     </div>
-    <button class="hamburger" onclick="document.querySelector('.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
+    <button class="hamburger" onclick="document.querySelector('.hxm-nav,.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
   </div>
   <div class="nav-links">
     <a href="/" style="color:var(--dim);text-decoration:none;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;">Home</a>
@@ -927,7 +927,8 @@
 
 <div style="display:flex;justify-content:center;padding:8px;gap:0;background:var(--panel);border-bottom:1px solid var(--border);">
   <button onclick="switchSport('nba')" id="sport-btn-nba" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:4px 0 0 4px;background:rgba(255,179,0,0.1);color:var(--amber);">NBA</button>
-  <button onclick="switchSport('soccer')" id="sport-btn-soccer" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">UCL</button>
+  <button onclick="switchSport('soccer')" id="sport-btn-soccer" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0;background:var(--panel);color:var(--dim);">UCL</button>
+  <button onclick="switchSport('prem')" id="sport-btn-prem" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">PREM</button>
 </div>
 
 <div class="selector-bar">
@@ -1077,10 +1078,12 @@
 <script>
 const $ = id => document.getElementById(id);
 
-// Sport mode — detected from URL param ?sport=soccer
+// Sport mode — detected from URL param ?sport=soccer or ?sport=prem
 const urlParams = new URLSearchParams(window.location.search);
 let currentSport = urlParams.get('sport') || 'nba';
-const SOCCER_LEAGUE = 'uefa.champions';
+const LEAGUE_MAP = { soccer: 'uefa.champions', prem: 'eng.1' };
+let SOCCER_LEAGUE = LEAGUE_MAP[currentSport] || 'uefa.champions';
+const isSoccer = () => isSoccer() || currentSport === 'prem';
 
 // State
 const state = {
@@ -1091,12 +1094,12 @@ const state = {
 
 // Init
 async function init() {
-  const endpoint = currentSport === 'soccer' ? `/api/soccer/${SOCCER_LEAGUE}/teams` : '/api/teams';
+  const endpoint = isSoccer() ? `/api/soccer/${SOCCER_LEAGUE}/teams` : '/api/teams';
   const res = await fetch(endpoint);
   state.teams = await res.json();
   state.teams.sort((a, b) => a.name.localeCompare(b.name));
 
-  const label = currentSport === 'soccer' ? 'UCL Team' : 'Team';
+  const label = isSoccer() ? 'UCL Team' : 'Team';
   const optionsHtml = state.teams.map(t =>
     `<option value="${t.id}">${t.name} ${t.record ? '(' + t.record + ')' : ''}</option>`
   ).join('');
@@ -1117,7 +1120,7 @@ async function loadTeam(side) {
   try {
     let data, gamesData;
 
-    if (currentSport === 'soccer') {
+    if (isSoccer()) {
       // Soccer team detail + roster
       const teamRes = await fetch(`/api/soccer/${SOCCER_LEAGUE}/teams/${teamId}`);
       data = await teamRes.json();
@@ -1155,7 +1158,7 @@ async function loadTeam(side) {
     $(`roster-${side}-title`).textContent = data.detail?.name || `Team ${side.toUpperCase()}`;
     $(`roster-${side}-count`).textContent = state[side].roster.length + ' players';
 
-    if (currentSport === 'soccer') {
+    if (isSoccer()) {
       // Soccer roster — load player overviews for stats
       await loadSoccerRosterStats(side);
       renderSoccerRoster(side);
@@ -1169,7 +1172,7 @@ async function loadTeam(side) {
 
     // If both teams loaded, show comparison
     if (state.a.detail && state.b.detail) {
-      if (currentSport !== 'soccer') {
+      if (!isSoccer()) {
         $('team-slider-bar').style.display = 'flex';
         currentTeamWindow = 'full';
       }
@@ -1530,7 +1533,7 @@ function renderTeamComparison() {
   $('comp-panel').style.display = '';
 
   // Soccer comparison — use roster aggregate stats
-  if (currentSport === 'soccer') {
+  if (isSoccer()) {
     renderSoccerComparison();
     return;
   }
@@ -1688,7 +1691,7 @@ function showPlayerPanel() {
 
   const makeOpts = (roster, players) => {
     return roster.map(p => {
-      if (currentSport === 'soccer') {
+      if (isSoccer()) {
         const s = players[p.id]?.stats;
         const info = s ? ` (${s.G}G ${s.A}A)` : '';
         return `<option value="${p.id}">${p.name}${info}</option>`;
@@ -1726,7 +1729,7 @@ async function loadPlayerCompare() {
   }
 
   // Ensure we have stats — fetch if missing
-  if (currentSport === 'soccer') {
+  if (isSoccer()) {
     if (idA && !state.a.players[idA]) {
       try { const r = await fetch(`/api/soccer/${SOCCER_LEAGUE}/players/${idA}`); const d = await r.json(); state.a.players[idA] = parseSoccerPlayerForCompare(d); } catch {}
     }
@@ -1749,7 +1752,7 @@ async function loadPlayerCompare() {
   const rosterA = state.a.roster.find(p => p.id === idA);
   const rosterB = state.b.roster.find(p => p.id === idB);
 
-  if (currentSport === 'soccer') {
+  if (isSoccer()) {
     renderSoccerPlayerCompare(body, pa, pb, rosterA, rosterB);
   } else {
     renderNbaPlayerCompare(body, pa, pb, rosterA, rosterB);
@@ -2685,7 +2688,7 @@ function closeDeepDive() {
 const _origSelectPlayer = selectPlayer;
 selectPlayer = function(side, playerId) {
   _origSelectPlayer(side, playerId);
-  if (currentSport === 'soccer') {
+  if (isSoccer()) {
     openSoccerDeepDive(side, playerId);
   } else {
     openDeepDive(side, playerId);
@@ -2695,10 +2698,13 @@ selectPlayer = function(side, playerId) {
 // Boot — check URL params for pre-selected teams (from bracket page)
 function switchSport(sport) {
   currentSport = sport;
+  SOCCER_LEAGUE = LEAGUE_MAP[sport] || 'uefa.champions';
   $('sport-btn-nba').style.background = sport === 'nba' ? 'rgba(255,179,0,0.1)' : 'var(--panel)';
   $('sport-btn-nba').style.color = sport === 'nba' ? 'var(--amber)' : 'var(--dim)';
   $('sport-btn-soccer').style.background = sport === 'soccer' ? 'rgba(26,115,232,0.1)' : 'var(--panel)';
   $('sport-btn-soccer').style.color = sport === 'soccer' ? '#1a73e8' : 'var(--dim)';
+  $('sport-btn-prem').style.background = sport === 'prem' ? 'rgba(55,0,60,0.2)' : 'var(--panel)';
+  $('sport-btn-prem').style.color = sport === 'prem' ? '#37003c' : 'var(--dim)';
   // Reset state
   state.a = { detail: null, stats: null, roster: [], injuries: [], players: {}, gameData: null };
   state.b = { detail: null, stats: null, roster: [], injuries: [], players: {}, gameData: null };
@@ -2716,10 +2722,11 @@ function switchSport(sport) {
 async function boot() {
   // Set sport from URL param
   if (currentSport === 'soccer') {
-    $('sport-btn-nba').style.background = 'var(--panel)';
-    $('sport-btn-nba').style.color = 'var(--dim)';
-    $('sport-btn-soccer').style.background = 'rgba(26,115,232,0.1)';
-    $('sport-btn-soccer').style.color = '#1a73e8';
+    $('sport-btn-nba').style.background = 'var(--panel)'; $('sport-btn-nba').style.color = 'var(--dim)';
+    $('sport-btn-soccer').style.background = 'rgba(26,115,232,0.1)'; $('sport-btn-soccer').style.color = '#1a73e8';
+  } else if (currentSport === 'prem') {
+    $('sport-btn-nba').style.background = 'var(--panel)'; $('sport-btn-nba').style.color = 'var(--dim)';
+    $('sport-btn-prem').style.background = 'rgba(55,0,60,0.2)'; $('sport-btn-prem').style.color = '#37003c';
   }
 
   await Promise.all([init(), loadSweepData()]);
@@ -2748,6 +2755,7 @@ async function boot() {
 boot();
 </script>
 <script src="/slip-widget.js"></script>
+<script src="/nav.js"></script>
 <script src="/theme.js"></script>
 </body>
 </html>
