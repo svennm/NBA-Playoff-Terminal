@@ -1476,14 +1476,15 @@ function renderLinesModal(data) {
     <table class="lines-table">
       <thead><tr>
         <th>Player</th><th>Team</th><th>Stat</th><th>Line</th>
-        <th>Mean</th><th>L5</th><th>Trend</th>
+        <th>Mean</th><th>Szn</th><th>Trend</th>
         <th>Over %</th><th>Over Odds</th><th>Under Odds</th>
-        <th>Hit Rate</th><th>Fit</th>
+        <th>Hit Rate</th><th>Games</th>
       </tr></thead>
       <tbody>
         ${filtered.map(r => {
-          const trendCls = r.trend > 0.5 ? 'trend-up' : r.trend < -0.5 ? 'trend-down' : '';
-          const trendIcon = r.trend > 0.5 ? '▲' : r.trend < -0.5 ? '▼' : '—';
+          const trend = r.trend != null ? r.trend : (r.seasonMean != null ? +(r.mean - r.seasonMean).toFixed(1) : null);
+          const trendCls = trend > 0.5 ? 'trend-up' : trend < -0.5 ? 'trend-down' : '';
+          const trendIcon = trend > 0.5 ? '▲' : trend < -0.5 ? '▼' : '—';
           const fitColor = r.poissonFit === 'Excellent' ? 'var(--green)' : r.poissonFit === 'Good' ? 'var(--cyan)' : r.poissonFit === 'Fair' ? 'var(--amber)' : 'var(--red)';
           const overColor = r.modelOverProb > 55 ? 'var(--green)' : r.modelOverProb < 45 ? 'var(--red)' : '';
           return `<tr>
@@ -1492,13 +1493,13 @@ function renderLinesModal(data) {
             <td><span style="background:rgba(155,89,182,0.1);padding:1px 5px;border-radius:2px;font-size:9px;color:var(--purple);">${r.stat}</span></td>
             <td style="font-weight:700;font-family:'Orbitron',sans-serif;font-size:12px;">${r.line}</td>
             <td>${r.mean}</td>
-            <td>${r.meanL5}</td>
-            <td class="${trendCls}">${trendIcon} ${r.trend > 0 ? '+' : ''}${r.trend}</td>
+            <td style="color:var(--dim);">${r.seasonMean || '—'}</td>
+            <td class="${trendCls}">${trend != null ? `${trendIcon} ${trend > 0 ? '+' : ''}${trend}` : '—'}</td>
             <td style="font-weight:600;${overColor ? 'color:'+overColor : ''}">${r.modelOverProb}%</td>
             <td style="color:${r.modelOverOdds > 0 ? 'var(--green)' : 'var(--amber)'};">${fmtOdds(r.modelOverOdds)}</td>
             <td style="color:${r.modelUnderOdds > 0 ? 'var(--green)' : 'var(--amber)'};">${fmtOdds(r.modelUnderOdds)}</td>
-            <td>${r.actualOverPct}%</td>
-            <td style="color:${fitColor};font-size:9px;">${r.poissonFit}</td>
+            <td>${r.actualOverPct != null ? r.actualOverPct + '%' : '—'}</td>
+            <td style="color:var(--dim);">${r.games || '—'}</td>
           </tr>`;
         }).join('')}
       </tbody>
