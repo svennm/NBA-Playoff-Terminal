@@ -306,12 +306,14 @@ function teamRowHtml(team, seed, score = null) {
       <div class="team-name">TBD</div>
     </div>`;
 
+  const name = team.abbr || team.team || '?';
+  const record = team.wins !== undefined && team.losses !== undefined ? `${team.wins}-${team.losses}` : '';
   return `
     <div class="team-row">
-      <span class="seed ${seedClass(seed)}">${seed}</span>
-      <img class="team-logo-sm" src="${team.logo}" alt="" onerror="this.style.display='none'">
-      <span class="team-name">${team.abbr || team.team}</span>
-      <span class="team-record">${team.wins}-${team.losses}</span>
+      <span class="seed ${seedClass(seed)}">${seed || '?'}</span>
+      ${team.logo ? `<img class="team-logo-sm" src="${team.logo}" alt="" onerror="this.style.display='none'">` : ''}
+      <span class="team-name">${name}</span>
+      ${record ? `<span class="team-record">${record}</span>` : ''}
       ${score !== null ? `<span class="team-score">${score}</span>` : ''}
     </div>`;
 }
@@ -324,8 +326,8 @@ function matchupHtml(topTeam, topSeed, botTeam, botSeed, label = '', odds = null
       <span>${odds.book || ''}</span>
     </div>` : '';
 
-  const clickable = topTeam && botTeam;
-  const href = clickable ? `/matchup.html?a=${topTeam.abbr || topTeam.team}&b=${botTeam.abbr || botTeam.team}` : '#';
+  const clickable = topTeam && botTeam && (topTeam.abbr || topTeam.team) && (botTeam.abbr || botTeam.team);
+  const href = clickable ? `/matchup.html?a=${topTeam.abbr || topTeam.team || ''}&b=${botTeam.abbr || botTeam.team || ''}` : '#';
   const cursor = clickable ? 'cursor:pointer;' : '';
 
   return `
@@ -389,102 +391,63 @@ function renderPlayIn() {
 
   for (const conf of ['east', 'west']) {
     const el = $(`playin-${conf}`);
-    const s7 = getTeamByRank(conf, 7);
-    const s8 = getTeamByRank(conf, 8);
-    const s9 = getTeamByRank(conf, 9);
-    const s10 = getTeamByRank(conf, 10);
+    const seedMap = bracketData.seedMap || {};
 
     // Find actual play-in games for this conference
     const confPlayIn = playInGames.filter(g => {
-      const aConf = bracketData.seedMap?.[g.away?.abbr]?.conf;
-      const hConf = bracketData.seedMap?.[g.home?.abbr]?.conf;
+      const aConf = seedMap[g.away?.abbr]?.conf;
+      const hConf = seedMap[g.home?.abbr]?.conf;
       return aConf === conf || hConf === conf;
     });
 
-    // Build live/final score display
-    const gameStatus = (g) => {
+    if (!confPlayIn.length) {
+      el.innerHTML = `<div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE PLAY-IN</div>
+        <div style="color:var(--dim);font-size:10px;padding:10px;">No play-in games</div>`;
+      continue;
+    }
+
+    // Render each actual play-in game
+    const renderPlayInGame = (g) => {
       if (!g) return '';
       const isLive = g.status === 'In Progress' || g.status === 'Halftime' || g.status === 'End of Period';
       const isFinal = g.status === 'Final';
-      const isScheduled = !isLive && !isFinal;
-      if (isScheduled) {
+      const aSeed = seedMap[g.away?.abbr]?.seed || '?';
+      const hSeed = seedMap[g.home?.abbr]?.seed || '?';
+      const awayWon = isFinal && parseInt(g.away?.score || 0) > parseInt(g.home?.score || 0);
+      const homeWon = isFinal && parseInt(g.home?.score || 0) > parseInt(g.away?.score || 0);
+      const winner = isFinal ? (awayWon ? g.away : g.home) : null;
+
+      let statusHtml;
+      if (isLive) {
+        statusHtml = `<span style="color:var(--green);animation:pulse 1.5s infinite;">LIVE Q${g.period || '?'} ${g.clock || ''}</span>`;
+      } else if (isFinal) {
+        statusHtml = `<span style="color:var(--dim);">FINAL</span>`;
+      } else {
         const d = new Date(g.date);
-        return `<div style="text-align:center;font-size:10px;margin-top:4px;padding:4px;background:rgba(0,0,0,0.3);border-radius:3px;color:var(--amber);">
-          ${d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
-        </div>`;
+        statusHtml = `<span style="color:var(--amber);">${d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>`;
       }
-      const statusText = isLive
-        ? `<span style="color:var(--green);animation:pulse 1.5s infinite;">LIVE Q${g.period} ${g.clock}</span>`
-        : `<span style="color:var(--dim);">FINAL</span>`;
-      const awayWon = isFinal && parseInt(g.away.score) > parseInt(g.home.score);
-      const homeWon = isFinal && parseInt(g.home.score) > parseInt(g.away.score);
-      return `<div style="text-align:center;font-size:10px;margin-top:4px;padding:4px;background:rgba(0,0,0,0.3);border-radius:3px;">
-        ${statusText} — <span style="${awayWon?'color:var(--green);font-weight:700':homeWon?'opacity:0.5':''}">${g.away.abbr} ${g.away.score}</span> - <span style="${homeWon?'color:var(--green);font-weight:700':awayWon?'opacity:0.5':''}">${g.home.score} ${g.home.abbr}</span>
-      </div>`;
+
+      return `
+        <div class="playin-round">
+          <div class="playin-round-title">#${aSeed} ${g.away?.abbr || '?'} @ #${hSeed} ${g.home?.abbr || '?'}</div>
+          ${matchupHtml(
+            g.away?.abbr ? { abbr: g.away.abbr, logo: g.away.logo || '' } : null, aSeed,
+            g.home?.abbr ? { abbr: g.home.abbr, logo: g.home.logo || '' } : null, hSeed,
+            `(${aSeed}) vs (${hSeed})`, null
+          )}
+          <div style="text-align:center;font-size:10px;margin-top:4px;padding:4px;background:rgba(0,0,0,0.3);border-radius:3px;">
+            ${statusHtml}
+            ${(isLive || isFinal) ? ` — <span style="${awayWon?'color:var(--green);font-weight:700':homeWon?'opacity:0.5':''}">${g.away?.abbr || '?'} ${g.away?.score || 0}</span> - <span style="${homeWon?'color:var(--green);font-weight:700':awayWon?'opacity:0.5':''}">${g.home?.score || 0} ${g.home?.abbr || '?'}</span>` : ''}
+          </div>
+          ${winner ? `<div style="text-align:center;font-size:9px;color:var(--green);margin-top:2px;">${winner.abbr} → Playoffs</div>` : ''}
+        </div>`;
     };
-
-    // Determine winners/losers of play-in games for the 8th seed game
-    const getResult = (g) => {
-      if (!g || g.status !== 'Final') return null;
-      const awayW = parseInt(g.away.score) > parseInt(g.home.score);
-      return { winner: awayW ? g.away : g.home, loser: awayW ? g.home : g.away };
-    };
-
-    const game78 = confPlayIn.find(g => {
-      const seeds = [g.away?.seed, g.home?.seed];
-      return seeds.includes(7) && seeds.includes(8);
-    });
-    const game910 = confPlayIn.find(g => {
-      const seeds = [g.away?.seed, g.home?.seed];
-      return seeds.includes(9) && seeds.includes(10);
-    });
-
-    const result78 = getResult(game78);
-    const result910 = getResult(game910);
-
-    // 8th seed game: loser of 7/8 vs winner of 9/10
-    let seed8GameTeamA = result78 ? result78.loser : null;
-    let seed8GameTeamB = result910 ? result910.winner : null;
-
-    // Check if there's an actual 8th seed game in the play-in data
-    const game8th = confPlayIn.find(g => {
-      if (!seed8GameTeamA && !seed8GameTeamB) return false;
-      const abbrs = [g.away?.abbr, g.home?.abbr];
-      return (seed8GameTeamA && abbrs.includes(seed8GameTeamA.abbr)) ||
-             (seed8GameTeamB && abbrs.includes(seed8GameTeamB.abbr));
-    });
-    // Don't reuse 7/8 or 9/10 game as 8th seed game
-    const actual8th = game8th && game8th !== game78 && game8th !== game910 ? game8th : null;
-
-    const teamObj = (t) => t ? { abbr: t.abbr, logo: t.logo || '' } : null;
 
     el.innerHTML = `
       <div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE PLAY-IN</div>
       <div class="playin-grid">
-        <div class="playin-round">
-          <div class="playin-round-title">7 vs 8 — Winner gets 7th seed</div>
-          ${matchupHtml(s7, 7, s8, 8, '7/8 Game', findOdds(s7, s8))}
-          ${gameStatus(game78)}
-          ${result78 ? `<div style="text-align:center;font-size:9px;color:var(--green);margin-top:2px;">${result78.winner.abbr} → 7th seed</div>` : ''}
-        </div>
-        <div class="playin-round">
-          <div class="playin-round-title">9 vs 10 — Loser eliminated</div>
-          ${matchupHtml(s9, 9, s10, 10, '9/10 Game', findOdds(s9, s10))}
-          ${gameStatus(game910)}
-          ${result910 ? `<div style="text-align:center;font-size:9px;"><span style="color:var(--green);">${result910.winner.abbr} advances</span> | <span style="color:var(--red);">${result910.loser.abbr} eliminated</span></div>` : ''}
-        </div>
-        <div class="playin-round">
-          <div class="playin-round-title">8th Seed Game — Winner gets 8th seed</div>
-          ${matchupHtml(teamObj(seed8GameTeamA), seed8GameTeamA ? '?' : '?', teamObj(seed8GameTeamB), seed8GameTeamB ? '?' : '?', seed8GameTeamA || seed8GameTeamB ? `${seed8GameTeamA?.abbr || 'TBD'} vs ${seed8GameTeamB?.abbr || 'TBD'}` : 'Loser 7/8 vs Winner 9/10', findOdds(teamObj(seed8GameTeamA), teamObj(seed8GameTeamB)))}
-          ${actual8th ? gameStatus(actual8th) : seed8GameTeamA || seed8GameTeamB ? '<div style="text-align:center;font-size:9px;color:var(--amber);margin-top:2px;">Game TBD</div>' : ''}
-        </div>
+        ${confPlayIn.map(renderPlayInGame).join('')}
       </div>`;
-
-    // Store play-in results for bracket first round
-    if (result78) playInResults[conf].seed7 = result78.winner;
-    // 8th seed = winner of the 8th seed game (or TBD if not played)
-    const result8th = actual8th ? getResult(actual8th) : null;
-    if (result8th) playInResults[conf].seed8 = result8th.winner;
   }
 }
 
