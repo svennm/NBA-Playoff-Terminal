@@ -739,17 +739,45 @@ function showPlayerStats() {
   let lines = player.lines || [];
   if (statFilter !== 'all') lines = lines.filter(l => l.stat === statFilter);
 
-  // Group by stat — primary line (best odds) shown, alternates in dropdown
+  // Group by stat — separate book vs model lines
   const byStat = {};
   for (const l of lines) {
-    if (!byStat[l.stat]) byStat[l.stat] = [];
-    byStat[l.stat].push(l);
+    if (!byStat[l.stat]) byStat[l.stat] = { book: [], model: [] };
+    if (l.source === 'book') byStat[l.stat].book.push(l);
+    else byStat[l.stat].model.push(l);
   }
-  // Sort each stat's lines by line value
   for (const k of Object.keys(byStat)) {
-    byStat[k].sort((a, b) => a.line - b.line);
+    byStat[k].book.sort((a, b) => a.line - b.line);
+    byStat[k].model.sort((a, b) => a.line - b.line);
   }
   const statGroups = Object.entries(byStat);
+
+  const renderLine = (l, legPrefix, isBinary) => {
+    const oOdds = l.overOdds || -115;
+    const uOdds = l.underOdds || -115;
+    const oImpl = americanToImplied(oOdds).toFixed(1);
+    const uImpl = americanToImplied(uOdds).toFixed(1);
+    const isBook = l.source === 'book';
+    const srcTag = isBook
+      ? `<span style="color:var(--green);font-size:7px;background:rgba(0,255,136,0.1);padding:1px 4px;border-radius:2px;">${l.book || 'Book'}</span>`
+      : `<span style="color:var(--amber);font-size:7px;background:rgba(255,179,0,0.1);padding:1px 4px;border-radius:2px;">Poisson${l.games ? ' ('+l.games+'g)' : ''}</span>`;
+    const overLabel = isBinary ? 'Yes' : `O ${l.line}`;
+    const underLabel = isBinary ? 'No' : `U ${l.line}`;
+    return `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:3px;">
+        <div class="prop-btn" onclick="toggleLeg(this,{type:'prop',game:'${gameName}',gameId:'${game.id||''}',player:'${player.name.replace(/'/g,"\\'")}',stat:'${l.stat}',line:${l.line},pick:'${isBinary?'Yes':'Over '+l.line}',odds:${oOdds}})" data-leg-id="${legPrefix}-o" style="padding:6px;">
+          <span class="stat" style="font-size:9px;">${overLabel}</span>
+          <span class="line" style="font-size:15px;">${fmtOdds(oOdds)}</span>
+          <span style="font-size:7px;color:var(--purple);">${oImpl}%</span>
+          ${srcTag}
+        </div>
+        <div class="prop-btn" onclick="toggleLeg(this,{type:'prop',game:'${gameName}',gameId:'${game.id||''}',player:'${player.name.replace(/'/g,"\\'")}',stat:'${l.stat}',line:${l.line},pick:'${isBinary?'No':'Under '+l.line}',odds:${uOdds}})" data-leg-id="${legPrefix}-u" style="padding:6px;">
+          <span class="stat" style="font-size:9px;">${underLabel}</span>
+          <span class="line" style="font-size:15px;">${fmtOdds(uOdds)}</span>
+          <span style="font-size:7px;color:var(--purple);">${uImpl}%</span>
+        </div>
+      </div>`;
+  };
 
   detail.innerHTML = `
     <div style="background:var(--panel);border:1px solid var(--border-glow);border-radius:6px;overflow:hidden;">
@@ -761,38 +789,34 @@ function showPlayerStats() {
             <div style="font-size:9px;color:var(--dim);">${player.team || ''} ${player.position || ''} | ${gameName}</div>
           </div>
         </div>
-        <div style="font-size:10px;color:var(--dim);">${statGroups.length} stats</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="font-size:7px;padding:2px 6px;border-radius:2px;background:rgba(0,255,136,0.1);color:var(--green);">BOOK</span>
+          <span style="font-size:7px;padding:2px 6px;border-radius:2px;background:rgba(255,179,0,0.1);color:var(--amber);">POISSON</span>
+        </div>
       </div>
       <div style="padding:10px 12px;">
-        ${statGroups.map(([stat, statLines], si) => {
-          const primary = statLines[0];
-          const hasAlts = statLines.length > 1;
-          const isBinary = primary.line === 0.5 && (stat.includes('Double') || stat.includes('Triple') || stat.includes('Goal or') || stat.includes('To Be') || stat.includes('Clean'));
+        ${statGroups.map(([stat, { book, model }], si) => {
+          const allLines = [...book, ...model];
+          if (!allLines.length) return '';
+          const primary = book[0] || model[0];
+          const isBinary = primary.line === 0.5 && (stat.includes('Double') || stat.includes('Triple') || stat.includes('Goal') || stat.includes('Clean'));
+          const hasBook = book.length > 0;
+          const hasModel = model.length > 0;
+          const hasBoth = hasBook && hasModel;
 
-          const renderLine = (l, li) => {
-            const oOdds = l.overOdds || -115;
-            const uOdds = l.underOdds || -115;
-            const oImpl = americanToImplied(oOdds).toFixed(1);
-            const uImpl = americanToImplied(uOdds).toFixed(1);
-            const isBook = l.book && l.book !== 'Model' && l.book !== 'Poisson';
-            const bookTag = isBook ? `<span style="color:var(--green);font-size:8px;background:rgba(0,255,136,0.1);padding:1px 4px;border-radius:2px;">${l.book}</span>` : `<span style="color:var(--amber);font-size:8px;background:rgba(255,179,0,0.1);padding:1px 4px;border-radius:2px;">${l.book || 'Model'}</span>`;
-            const overLabel = isBinary ? 'Yes' : `Over ${l.line}`;
-            const underLabel = isBinary ? 'No' : `Under ${l.line}`;
-            return `
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
-                <div class="prop-btn" onclick="toggleLeg(this,{type:'prop',game:'${gameName}',gameId:'${game.id||''}',player:'${player.name.replace(/'/g,"\\'")}',stat:'${stat}',line:${l.line},pick:'${overLabel}',odds:${oOdds}})" data-leg-id="ps-${idx}-${stat}-${l.line}-o" style="padding:8px;">
-                  <span class="stat" style="font-size:10px;">${overLabel}</span>
-                  <span class="line" style="font-size:16px;">${fmtOdds(oOdds)}</span>
-                  <span style="font-size:8px;color:var(--purple);">${oImpl}%</span>
-                  ${bookTag}
-                </div>
-                <div class="prop-btn" onclick="toggleLeg(this,{type:'prop',game:'${gameName}',gameId:'${game.id||''}',player:'${player.name.replace(/'/g,"\\'")}',stat:'${stat}',line:${l.line},pick:'${underLabel}',odds:${uOdds}})" data-leg-id="ps-${idx}-${stat}-${l.line}-u" style="padding:8px;">
-                  <span class="stat" style="font-size:10px;">${underLabel}</span>
-                  <span class="line" style="font-size:16px;">${fmtOdds(uOdds)}</span>
-                  <span style="font-size:8px;color:var(--purple);">${uImpl}%</span>
-                </div>
-              </div>`;
-          };
+          // Edge calculation: compare book implied prob vs model prob
+          let edgeHtml = '';
+          if (hasBoth) {
+            const bLine = book[0];
+            const mLine = model.find(m => Math.abs(m.line - bLine.line) < 1) || model[0];
+            if (mLine) {
+              const bookImpl = americanToImplied(bLine.overOdds || -115);
+              const modelImpl = mLine.overProb || americanToImplied(mLine.overOdds || -115);
+              const edge = (modelImpl - bookImpl).toFixed(1);
+              const edgeColor = edge > 2 ? 'var(--green)' : edge < -2 ? 'var(--red)' : 'var(--dim)';
+              edgeHtml = `<span style="font-size:9px;color:${edgeColor};font-weight:600;">${edge > 0 ? '+' : ''}${edge}% edge</span>`;
+            }
+          }
 
           return `
             <div style="background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:6px;">
@@ -800,14 +824,18 @@ function showPlayerStats() {
                 <div style="display:flex;align-items:center;gap:6px;">
                   <span style="font-weight:700;font-size:13px;color:var(--cyan);">${stat}</span>
                   ${primary.avg !== undefined ? `<span style="font-size:10px;color:var(--dim);">Avg: ${primary.avg}</span>` : ''}
+                  ${edgeHtml}
                 </div>
-                ${hasAlts ? `<span onclick="document.getElementById('alt-${si}').style.display=document.getElementById('alt-${si}').style.display==='none'?'':'none'" style="cursor:pointer;font-size:9px;color:var(--cyan);border:1px solid var(--border);padding:2px 6px;border-radius:3px;">${statLines.length} lines &#9660;</span>` : ''}
               </div>
-              ${renderLine(primary, 0)}
-              ${hasAlts ? `<div id="alt-${si}" style="display:none;border-top:1px solid var(--border);padding-top:6px;margin-top:4px;">
-                <div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Alternate Lines</div>
-                ${statLines.slice(1).map((l, i) => renderLine(l, i + 1)).join('')}
-              </div>` : ''}
+              ${hasBook ? `
+                <div style="font-size:7px;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Sportsbook Lines</div>
+                ${book.map((l, i) => renderLine(l, `ps-${idx}-${stat}-bk-${l.line}`, isBinary)).join('')}
+              ` : ''}
+              ${hasBoth ? '<div style="border-top:1px dashed var(--border);margin:6px 0;"></div>' : ''}
+              ${hasModel ? `
+                <div style="font-size:7px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Poisson Fair Lines</div>
+                ${model.map((l, i) => renderLine(l, `ps-${idx}-${stat}-po-${l.line}`, isBinary)).join('')}
+              ` : ''}
             </div>`;
         }).join('')}
       </div>
