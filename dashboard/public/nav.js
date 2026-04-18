@@ -29,8 +29,8 @@
   };
 
   function createNav() {
-    // Find existing nav-links or header-right container
-    const existing = document.querySelector('.nav-links') || document.querySelector('.header-right');
+    // Find existing nav-links container (NOT header-right — terminal uses that for status elements)
+    const existing = document.querySelector('.nav-links');
     if (!existing) return;
 
     // Determine current page for active highlighting
