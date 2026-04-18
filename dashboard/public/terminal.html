@@ -658,6 +658,30 @@
   .trend-up{color:var(--green);}
   .trend-down{color:var(--red);}
 
+  /* Live stats button on game cards */
+  .live-stats-btn{background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:var(--green);padding:3px 8px;font-size:8px;font-family:'Orbitron',sans-serif;letter-spacing:1px;border-radius:3px;cursor:pointer;transition:all .15s;margin-top:4px;}
+  .live-stats-btn:hover{background:rgba(0,255,136,0.2);border-color:var(--green);}
+
+  /* Box score modal */
+  .box-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(3,5,8,0.92);z-index:200;display:none;align-items:flex-start;justify-content:center;padding:30px 12px;overflow-y:auto;}
+  .box-overlay.open{display:flex;}
+  .box-modal{background:var(--panel);border:1px solid var(--border-glow);border-radius:8px;max-width:1000px;width:100%;max-height:90vh;overflow-y:auto;}
+  .box-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--panel);z-index:1;}
+  .box-header h2{font-family:'Orbitron',sans-serif;font-size:13px;color:var(--green);letter-spacing:2px;}
+  .box-close{background:none;border:1px solid var(--border);color:var(--dim);font-size:18px;padding:2px 8px;border-radius:3px;cursor:pointer;}
+  .box-close:hover{color:var(--red);border-color:var(--red);}
+  .box-body{padding:12px 16px;}
+  .box-team-name{font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:2px;color:var(--cyan);margin:12px 0 6px;display:flex;align-items:center;gap:8px;}
+  .box-team-name img{width:24px;height:24px;}
+  .box-table{width:100%;border-collapse:collapse;font-size:10px;}
+  .box-table th{text-align:right;padding:3px 5px;color:var(--dim);font-size:8px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel);}
+  .box-table th:first-child{text-align:left;}
+  .box-table td{padding:3px 5px;border-bottom:1px solid rgba(255,255,255,0.02);text-align:right;}
+  .box-table td:first-child{text-align:left;font-weight:500;}
+  .box-table tr:hover td{background:rgba(0,255,136,0.03);}
+  .box-table tr.starter td{font-weight:600;}
+  .box-table tr.bench-sep td{border-top:2px solid var(--border);}
+
   /* Responsive */
   @media (max-width: 1200px) {
     .grid { grid-template-columns: 1fr 1fr; }
@@ -810,6 +834,22 @@
   </div>
 </div>
 
+<!-- Live Box Score Modal -->
+<div class="box-overlay" id="box-overlay" onclick="if(event.target===this)closeBoxScore()">
+  <div class="box-modal">
+    <div class="box-header">
+      <h2 id="box-title">Live Box Score</h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span id="box-status" style="font-size:10px;color:var(--green);"></span>
+        <button class="box-close" onclick="closeBoxScore()">&#10005;</button>
+      </div>
+    </div>
+    <div class="box-body" id="box-body">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
 <!-- Projected Lines Modal -->
 <div class="lines-overlay" id="lines-overlay" onclick="if(event.target===this)closeLinesModal()">
   <div class="lines-modal">
@@ -933,6 +973,13 @@ function renderGames(games) {
 
     const broadcastHtml = g.broadcast ? `<div class="game-broadcast">${g.broadcast}</div>` : '';
 
+    // Show box score button for live and final games
+    const boxBtn = (isLive || isFinal) && g.id
+      ? `<div style="display:flex;gap:6px;margin-top:4px;">
+          <button class="live-stats-btn" onclick="event.stopPropagation();openBoxScore('${g.id}','${g.away.abbr} @ ${g.home.abbr}')">${isLive ? 'LIVE BOX SCORE' : 'BOX SCORE'}</button>
+          <a href="/matchup.html?a=${g.away.abbr}&b=${g.home.abbr}" onclick="event.stopPropagation()" style="background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);color:var(--cyan);padding:3px 8px;font-size:8px;font-family:'Orbitron',sans-serif;letter-spacing:1px;border-radius:3px;text-decoration:none;">MATCHUP</a>
+        </div>` : '';
+
     return `
       <div class="game-card ${cls}" onclick="window.location.href='/matchup.html?a=${g.away.abbr}&b=${g.home.abbr}'" style="cursor:pointer;" title="Click for matchup breakdown">
         <div class="game-status ${statusCls}">${statusText}</div>
@@ -959,6 +1006,7 @@ function renderGames(games) {
         ${oddsHtml}
         ${leadersHtml}
         ${broadcastHtml}
+        ${boxBtn}
       </div>`;
   };
 
@@ -1214,6 +1262,107 @@ function renderGauges(data) {
         <span class="gauge-value" style="color:${g.color}">${g.value}</span>
       </div>`;
   }).join('');
+}
+
+// Box Score
+let boxRefreshTimer = null;
+
+function openBoxScore(eventId, title) {
+  $('box-overlay').classList.add('open');
+  $('box-title').textContent = title;
+  $('box-body').innerHTML = '<div class="loading"><div class="spinner"></div><br>Loading box score...</div>';
+  document.body.style.overflow = 'hidden';
+  loadBoxScore(eventId);
+  // Auto-refresh live games every 30s
+  clearInterval(boxRefreshTimer);
+  boxRefreshTimer = setInterval(() => loadBoxScore(eventId), 30000);
+}
+
+function closeBoxScore() {
+  $('box-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+  clearInterval(boxRefreshTimer);
+}
+
+async function loadBoxScore(eventId) {
+  try {
+    const res = await fetch(`/api/game/${eventId}/boxscore`);
+    const data = await res.json();
+    if (data.error) { $('box-body').innerHTML = `<div style="color:var(--red);">${data.error}</div>`; return; }
+
+    const s = data.status;
+    const isLive = s.description === 'In Progress' || s.description === 'Halftime' || s.description === 'End of Period';
+    $('box-status').innerHTML = isLive
+      ? `<span style="animation:pulse 1.5s infinite;">LIVE Q${s.period} ${s.clock}</span>`
+      : s.completed ? 'FINAL' : s.description;
+    $('box-status').style.color = isLive ? 'var(--green)' : s.completed ? 'var(--dim)' : 'var(--amber)';
+
+    // Stop refresh if game is over
+    if (s.completed) clearInterval(boxRefreshTimer);
+
+    let html = '';
+    for (const team of data.teams) {
+      const starters = team.players.filter(p => p.starter);
+      const bench = team.players.filter(p => !p.starter);
+      const labels = team.labels || [];
+      // Highlight key columns
+      const keyCols = new Set(['PTS','REB','AST','STL','BLK','3PT','FG','TO','+/-']);
+
+      html += `
+        <div class="box-team-name">
+          <img src="${team.logo}" alt="" onerror="this.style.display='none'">
+          ${team.name} (${team.abbr})
+        </div>
+        <div style="overflow-x:auto;">
+        <table class="box-table">
+          <thead><tr>
+            <th style="min-width:120px;">Player</th>
+            ${labels.map(l => `<th style="${keyCols.has(l)?'color:var(--cyan);':''}">${l}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${starters.map(p => playerRow(p, labels, true)).join('')}
+            ${bench.length ? `<tr class="bench-sep"><td colspan="${labels.length+1}" style="text-align:left;font-size:8px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;padding:6px 5px;">Bench</td></tr>` : ''}
+            ${bench.map(p => playerRow(p, labels, false)).join('')}
+          </tbody>
+        </table>
+        </div>`;
+    }
+
+    // Odds context
+    if (data.odds) {
+      html += `<div style="margin-top:10px;padding:8px;background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;font-size:10px;color:var(--dim);">
+        <span style="color:var(--cyan);">SPREAD</span> ${data.odds.spread} | <span style="color:var(--cyan);">O/U</span> ${data.odds.overUnder} | ${data.odds.provider}
+      </div>`;
+    }
+
+    $('box-body').innerHTML = html;
+  } catch (e) {
+    $('box-body').innerHTML = `<div style="color:var(--red);">Error: ${e.message}</div>`;
+  }
+}
+
+function playerRow(p, labels, isStarter) {
+  const s = p.stats;
+  const pts = parseInt(s.PTS || 0);
+  const ptsStyle = pts >= 20 ? 'color:var(--green);font-weight:700;' : pts >= 10 ? 'color:var(--cyan);' : '';
+  const reb = parseInt(s.REB || 0);
+  const ast = parseInt(s.AST || 0);
+  const dd = (pts >= 10 ? 1 : 0) + (reb >= 10 ? 1 : 0) + (ast >= 10 ? 1 : 0) + (parseInt(s.STL||0) >= 10 ? 1 : 0) + (parseInt(s.BLK||0) >= 10 ? 1 : 0);
+  const ddBadge = dd >= 3 ? '<span style="color:var(--gold);font-size:7px;margin-left:2px;">TD</span>' : dd >= 2 ? '<span style="color:var(--amber);font-size:7px;margin-left:2px;">DD</span>' : '';
+
+  return `<tr class="${isStarter ? 'starter' : ''}">
+    <td style="white-space:nowrap;">${p.shortName || p.name}${ddBadge} <span style="color:var(--dim);font-size:8px;">${p.position}</span></td>
+    ${labels.map(l => {
+      const v = s[l] || '0';
+      let style = '';
+      if (l === 'PTS') style = ptsStyle;
+      else if (l === '+/-') {
+        const pm = parseInt(v);
+        style = pm > 0 ? 'color:var(--green);' : pm < 0 ? 'color:var(--red);' : '';
+      }
+      return `<td style="${style}">${v}</td>`;
+    }).join('')}
+  </tr>`;
 }
 
 // Future games

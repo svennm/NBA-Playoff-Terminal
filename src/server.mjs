@@ -856,6 +856,80 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
   }
 });
 
+// API: Live game box score
+app.get('/api/game/:eventId/boxscore', async (req, res) => {
+  const ck = `boxscore-${req.params.eventId}`;
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${req.params.eventId}`;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 10000);
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: controller.signal });
+    const data = await r.json();
+
+    if (!data.boxscore) return res.status(404).json({ error: 'No boxscore data' });
+
+    // Parse header for game status
+    const comp = data.header?.competitions?.[0];
+    const status = {
+      description: comp?.status?.type?.description || 'Unknown',
+      clock: comp?.status?.displayClock || '',
+      period: comp?.status?.period || 0,
+      completed: comp?.status?.type?.completed || false
+    };
+
+    // Parse team box scores
+    const teams = (data.boxscore.players || []).map(pg => {
+      const labels = pg.statistics?.[0]?.labels || [];
+      const athletes = (pg.statistics?.[0]?.athletes || []).map(a => {
+        const stats = {};
+        labels.forEach((l, i) => { stats[l] = a.stats?.[i] || '0'; });
+        return {
+          id: a.athlete?.id || '',
+          name: a.athlete?.displayName || '',
+          shortName: a.athlete?.shortName || '',
+          jersey: a.athlete?.jersey || '',
+          position: a.athlete?.position?.abbreviation || '',
+          headshot: a.athlete?.headshot?.href || '',
+          starter: a.starter || false,
+          stats
+        };
+      });
+      // Team totals
+      const teamStats = {};
+      const totals = data.boxscore.teams?.find(t => t.team?.abbreviation === pg.team?.abbreviation);
+      if (totals?.statistics) {
+        for (const s of totals.statistics) { teamStats[s.label || s.name] = s.displayValue || s.value; }
+      }
+
+      return {
+        abbr: pg.team?.abbreviation || '',
+        name: pg.team?.displayName || '',
+        logo: pg.team?.logo || '',
+        labels,
+        players: athletes,
+        totals: teamStats
+      };
+    });
+
+    // Game odds
+    const odds = data.odds?.[0] ? {
+      spread: data.odds[0].details || '',
+      overUnder: data.odds[0].overUnder || 0,
+      provider: data.odds[0].provider?.name || ''
+    } : null;
+
+    const result = { eventId: req.params.eventId, status, teams, odds };
+    // Short cache for live games, longer for finished
+    cache.set(ck, result, status.completed ? 5 * 60_000 : 30_000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Playoff bracket — real matchups from ESPN scoreboard
 app.get('/api/playoff-bracket', async (req, res) => {
   const ck = 'playoff-bracket-live';
