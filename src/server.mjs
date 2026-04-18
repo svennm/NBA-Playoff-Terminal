@@ -856,6 +856,95 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
   }
 });
 
+// API: Playoff bracket — real matchups from ESPN scoreboard
+app.get('/api/playoff-bracket', async (req, res) => {
+  const ck = 'playoff-bracket-live';
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const today = new Date();
+    const end = new Date(today); end.setDate(end.getDate() + 60);
+    const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+
+    // Get playoff games + play-in games + standings for seeds
+    const [playoffRes, playinRes, standingsData] = await Promise.all([
+      fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?seasontype=3&dates=${fmt(today)}-${fmt(end)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
+      fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?seasontype=5', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.json()),
+      espn.getStandings()
+    ]);
+
+    // Build seed map from standings
+    const seedMap = {};
+    for (const conf of ['east', 'west']) {
+      const teams = standingsData[conf] || [];
+      teams.sort((a, b) => Number(b.pct) - Number(a.pct));
+      teams.forEach((t, i) => { seedMap[t.abbr] = { seed: parseInt(t.seed) || i + 1, conf }; });
+    }
+
+    // Parse play-in games
+    const playIn = (playinRes.events || []).map(ev => {
+      const c = ev.competitions?.[0];
+      const away = c?.competitors?.find(t => t.homeAway === 'away');
+      const home = c?.competitors?.find(t => t.homeAway === 'home');
+      return {
+        id: ev.id, date: ev.date,
+        status: c?.status?.type?.description || 'Scheduled',
+        clock: c?.status?.displayClock || '',
+        period: c?.status?.period || 0,
+        away: { abbr: away?.team?.abbreviation, name: away?.team?.displayName, logo: away?.team?.logo, score: away?.score || '0', seed: seedMap[away?.team?.abbreviation]?.seed },
+        home: { abbr: home?.team?.abbreviation, name: home?.team?.displayName, logo: home?.team?.logo, score: home?.score || '0', seed: seedMap[home?.team?.abbreviation]?.seed }
+      };
+    });
+
+    // Parse playoff series from scheduled games
+    const seriesMap = {};
+    for (const ev of playoffRes.events || []) {
+      const c = ev.competitions?.[0];
+      const away = c?.competitors?.find(t => t.homeAway === 'away');
+      const home = c?.competitors?.find(t => t.homeAway === 'home');
+      const awayAbbr = away?.team?.abbreviation;
+      const homeAbbr = home?.team?.abbreviation;
+      if (!awayAbbr || !homeAbbr || awayAbbr.includes('/')) continue;
+
+      const key = [awayAbbr, homeAbbr].sort().join('-');
+      if (!seriesMap[key]) {
+        seriesMap[key] = {
+          away: { abbr: awayAbbr, name: away?.team?.displayName, logo: away?.team?.logo, seed: seedMap[awayAbbr]?.seed },
+          home: { abbr: homeAbbr, name: home?.team?.displayName, logo: home?.team?.logo, seed: seedMap[homeAbbr]?.seed },
+          conf: seedMap[awayAbbr]?.conf || seedMap[homeAbbr]?.conf || 'unknown',
+          round: c?.series?.summary || ev.competitions?.[0]?.notes?.[0]?.headline || '',
+          games: []
+        };
+      }
+      seriesMap[key].games.push({
+        id: ev.id, date: ev.date,
+        status: c?.status?.type?.description || 'Scheduled',
+        awayScore: away?.score || '0', homeScore: home?.score || '0',
+        clock: c?.status?.displayClock || '', period: c?.status?.period || 0
+      });
+    }
+
+    // Determine series scores
+    const series = Object.values(seriesMap).map(s => {
+      let awayWins = 0, homeWins = 0;
+      for (const g of s.games) {
+        if (g.status === 'Final') {
+          if (parseInt(g.awayScore) > parseInt(g.homeScore)) awayWins++;
+          else homeWins++;
+        }
+      }
+      return { ...s, awayWins, homeWins, totalGames: s.games.length };
+    });
+
+    const result = { playIn, series, seedMap, timestamp: new Date().toISOString() };
+    cache.set(ck, result, 60_000); // 1 min cache for live updates
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Soccer edge analysis for a game
 app.get('/api/soccer/:league/analysis/:gameIndex', async (req, res) => {
   const ck = `soccer-analysis-${req.params.league}-${req.params.gameIndex}`;
@@ -863,31 +952,26 @@ app.get('/api/soccer/:league/analysis/:gameIndex', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    // Try scoreboard first, fall back to schedule for future games
-    const scores = await soccer.getScoreboard(req.params.league);
-    let game = scores[parseInt(req.params.gameIndex)];
-
-    if (!game) {
-      const today = new Date();
-      const end = new Date(today); end.setDate(end.getDate() + 14);
-      const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
-      const schedUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${req.params.league}/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
-      const schedRes = await fetch(schedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-      const schedData = await schedRes.json();
-      const schedGames = (schedData.events || []).map(ev => {
-        const comp = ev.competitions?.[0];
-        const ts = comp?.competitors || [];
-        const home = ts.find(t => t.homeAway === 'home');
-        const away = ts.find(t => t.homeAway === 'away');
-        return {
-          home: { name: home?.team?.displayName || '', abbr: home?.team?.abbreviation || '', logo: home?.team?.logo || '' },
-          away: { name: away?.team?.displayName || '', abbr: away?.team?.abbreviation || '', logo: away?.team?.logo || '' },
-          date: ev.date,
-          odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0 } : null
-        };
-      });
-      game = schedGames[parseInt(req.params.gameIndex)];
-    }
+    // Always use 14-day schedule — consistent with slips/analysis page indexing
+    const today = new Date();
+    const end = new Date(today); end.setDate(end.getDate() + 14);
+    const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const schedUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${req.params.league}/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
+    const schedRes = await fetch(schedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const schedData = await schedRes.json();
+    const schedGames = (schedData.events || []).map(ev => {
+      const comp = ev.competitions?.[0];
+      const ts = comp?.competitors || [];
+      const home = ts.find(t => t.homeAway === 'home');
+      const away = ts.find(t => t.homeAway === 'away');
+      return {
+        home: { name: home?.team?.displayName || '', abbr: home?.team?.abbreviation || '', logo: home?.team?.logo || '' },
+        away: { name: away?.team?.displayName || '', abbr: away?.team?.abbreviation || '', logo: away?.team?.logo || '' },
+        date: ev.date,
+        odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0 } : null
+      };
+    });
+    const game = schedGames[parseInt(req.params.gameIndex)];
 
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
@@ -1539,35 +1623,29 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    // Try scoreboard first (today's games), then fall back to schedule (future games)
-    const scores = await soccer.getScoreboard(req.params.league);
-    let game = scores[parseInt(req.params.gameIndex)];
+    // Always use 14-day schedule — slips + analysis pages index into this array
+    const today = new Date();
+    const end = new Date(today); end.setDate(end.getDate() + 14);
+    const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+    const schedUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${req.params.league}/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
+    const schedRes = await fetch(schedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const schedData = await schedRes.json();
+    const schedGames = (schedData.events || []).map(ev => {
+      const comp = ev.competitions?.[0];
+      const teams = comp?.competitors || [];
+      const home = teams.find(t => t.homeAway === 'home');
+      const away = teams.find(t => t.homeAway === 'away');
+      return {
+        id: ev.id, name: ev.name, date: ev.date,
+        status: comp?.status?.type?.description || 'Unknown',
+        home: { name: home?.team?.displayName || '', abbr: home?.team?.abbreviation || '', logo: home?.team?.logo || '' },
+        away: { name: away?.team?.displayName || '', abbr: away?.team?.abbreviation || '', logo: away?.team?.logo || '' },
+        odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0, provider: comp.odds[0].provider?.name || '' } : null
+      };
+    });
+    const game = schedGames[parseInt(req.params.gameIndex)];
 
-    if (!game) {
-      // Fall back to schedule — slips page uses schedule indexes
-      const today = new Date();
-      const end = new Date(today); end.setDate(end.getDate() + 14);
-      const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
-      const schedUrl = `https://site.api.espn.com/apis/site/v2/sports/soccer/${req.params.league}/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
-      const schedRes = await fetch(schedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-      const schedData = await schedRes.json();
-      const schedGames = (schedData.events || []).map(ev => {
-        const comp = ev.competitions?.[0];
-        const teams = comp?.competitors || [];
-        const home = teams.find(t => t.homeAway === 'home');
-        const away = teams.find(t => t.homeAway === 'away');
-        return {
-          id: ev.id, name: ev.name, date: ev.date,
-          status: comp?.status?.type?.description || 'Unknown',
-          home: { name: home?.team?.displayName || '', abbr: home?.team?.abbreviation || '', logo: home?.team?.logo || '' },
-          away: { name: away?.team?.displayName || '', abbr: away?.team?.abbreviation || '', logo: away?.team?.logo || '' },
-          odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0, provider: comp.odds[0].provider?.name || '' } : null
-        };
-      });
-      game = schedGames[parseInt(req.params.gameIndex)];
-    }
-
-    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (!game) return res.status(404).json({ error: 'Game not found at index ' + req.params.gameIndex });
 
     const teams = await soccer.getTeams(req.params.league);
     const homeTeam = teams.find(t => t.abbr === game.home.abbr);

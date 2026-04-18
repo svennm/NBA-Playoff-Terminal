@@ -228,30 +228,24 @@ let standings = { east: [], west: [] };
 let games = [];
 let oddsData = [];
 let polyData = [];
+let bracketData = {};
 
 async function init() {
-  const [sweepRes, standingsRes, scheduleRes] = await Promise.all([
+  const [sweepRes, standingsRes, scheduleRes, bracketRes] = await Promise.all([
     fetch('/api/sweep').then(r => r.json()),
     fetch('/api/standings').then(r => r.json()),
-    fetch('/api/schedule').then(r => r.json()).catch(() => [])
+    fetch('/api/schedule').then(r => r.json()).catch(() => []),
+    fetch('/api/playoff-bracket').then(r => r.json()).catch(() => ({}))
   ]);
 
   standings = standingsRes;
-  // Merge: today's games from sweep + upcoming from schedule
+  bracketData = bracketRes;
+
   const todayGames = sweepRes.games || [];
   const upcoming = scheduleRes || [];
-  // Deduplicate by game name
   const seen = new Set(todayGames.map(g => g.shortName || g.name));
   games = [...todayGames, ...upcoming.filter(g => !seen.has(g.name))];
 
-  // Try to get real odds
-  try {
-    const oddsRes = await fetch('/api/real-odds');
-    const od = await oddsRes.json();
-    oddsData = od.data || [];
-  } catch {}
-
-  // Get Polymarket championship odds
   try {
     const polyRes = await fetch('/api/polymarket/champion');
     polyData = await polyRes.json();
@@ -268,13 +262,14 @@ async function init() {
 // Auto-refresh every 60 seconds for live scores
 setInterval(async () => {
   try {
-    const [sweepRes, standingsRes] = await Promise.all([
+    const [sweepRes, standingsRes, bracketRes] = await Promise.all([
       fetch('/api/sweep').then(r => r.json()),
-      fetch('/api/standings').then(r => r.json())
+      fetch('/api/standings').then(r => r.json()),
+      fetch('/api/playoff-bracket').then(r => r.json()).catch(() => ({}))
     ]);
     standings = standingsRes;
+    bracketData = bracketRes;
     const todayGames = sweepRes.games || [];
-    // Update today's games in the list
     for (const tg of todayGames) {
       const idx = games.findIndex(g => (g.shortName || g.name) === (tg.shortName || tg.name));
       if (idx >= 0) games[idx] = tg;
@@ -388,6 +383,8 @@ function findOdds(teamA, teamB) {
 }
 
 function renderPlayIn() {
+  const playInGames = bracketData.playIn || [];
+
   for (const conf of ['east', 'west']) {
     const el = $(`playin-${conf}`);
     const s7 = getTeamByRank(conf, 7);
@@ -395,16 +392,37 @@ function renderPlayIn() {
     const s9 = getTeamByRank(conf, 9);
     const s10 = getTeamByRank(conf, 10);
 
+    // Find actual play-in games for this conference
+    const confPlayIn = playInGames.filter(g => {
+      const aConf = bracketData.seedMap?.[g.away?.abbr]?.conf;
+      const hConf = bracketData.seedMap?.[g.home?.abbr]?.conf;
+      return aConf === conf || hConf === conf;
+    });
+
+    // Build live score display for play-in games
+    const liveGame = (g) => {
+      if (!g) return '';
+      const isLive = g.status === 'In Progress';
+      const isFinal = g.status === 'Final' || g.status === 'End of Period';
+      if (!isLive && !isFinal) return '';
+      const statusText = isLive ? `<span style="color:var(--green);animation:pulse 1.5s infinite;">LIVE Q${g.period} ${g.clock}</span>` : `<span style="color:var(--dim);">FINAL</span>`;
+      return `<div style="text-align:center;font-size:10px;margin-top:4px;padding:4px;background:rgba(0,0,0,0.3);border-radius:3px;">
+        ${statusText} — ${g.away.abbr} <strong>${g.away.score}</strong> - <strong>${g.home.score}</strong> ${g.home.abbr}
+      </div>`;
+    };
+
     el.innerHTML = `
       <div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE PLAY-IN</div>
       <div class="playin-grid">
         <div class="playin-round">
           <div class="playin-round-title">7 vs 8 — Winner gets 7th seed</div>
           ${matchupHtml(s7, 7, s8, 8, '7/8 Game', findOdds(s7, s8))}
+          ${liveGame(confPlayIn.find(g => [g.away?.seed, g.home?.seed].includes(7) && [g.away?.seed, g.home?.seed].includes(8)))}
         </div>
         <div class="playin-round">
           <div class="playin-round-title">9 vs 10 — Loser eliminated</div>
           ${matchupHtml(s9, 9, s10, 10, '9/10 Game', findOdds(s9, s10))}
+          ${liveGame(confPlayIn.find(g => [g.away?.seed, g.home?.seed].includes(9) && [g.away?.seed, g.home?.seed].includes(10)))}
         </div>
         <div class="playin-round">
           <div class="playin-round-title">8th Seed Game</div>
@@ -415,8 +433,12 @@ function renderPlayIn() {
 }
 
 function renderBrackets() {
+  const allSeries = bracketData.series || [];
+
   for (const conf of ['east', 'west']) {
     const el = $(`bracket-${conf}`);
+    const confSeries = allSeries.filter(s => s.conf === conf);
+
     const s1 = getTeamByRank(conf, 1);
     const s2 = getTeamByRank(conf, 2);
     const s3 = getTeamByRank(conf, 3);
@@ -424,16 +446,57 @@ function renderBrackets() {
     const s5 = getTeamByRank(conf, 5);
     const s6 = getTeamByRank(conf, 6);
 
+    // Find actual matchups from bracket data — match by team abbreviation
+    const findSeries = (teamA, teamB) => {
+      if (!teamA || !teamB) return null;
+      return confSeries.find(s =>
+        (s.away.abbr === teamA.abbr && s.home.abbr === teamB.abbr) ||
+        (s.away.abbr === teamB.abbr && s.home.abbr === teamA.abbr)
+      );
+    };
+
+    // Find the play-in winner teams (7/8 seed) from bracket data
+    const s7team = confSeries.find(s => s.away.seed === 7 || s.home.seed === 7);
+    const s8team = confSeries.find(s => s.away.seed === 8 || s.home.seed === 8);
+    const seed7 = s7team ? (s7team.away.seed === 7 ? { abbr: s7team.away.abbr, logo: s7team.away.logo } : { abbr: s7team.home.abbr, logo: s7team.home.logo }) : null;
+    const seed8 = s8team ? (s8team.away.seed === 8 ? { abbr: s8team.away.abbr, logo: s8team.away.logo } : { abbr: s8team.home.abbr, logo: s8team.home.logo }) : null;
+
+    // Use real matchup data or fall back to seedings
+    const seriesInfo = (s) => {
+      if (!s) return '';
+      const live = s.games.find(g => g.status === 'In Progress');
+      const nextGame = s.games.find(g => g.status === 'Scheduled');
+      let statusHtml = '';
+      if (live) {
+        statusHtml = `<div style="color:var(--green);font-size:9px;animation:pulse 1.5s infinite;">LIVE ${live.awayScore}-${live.homeScore}</div>`;
+      } else if (s.awayWins + s.homeWins > 0) {
+        statusHtml = `<div style="font-size:9px;color:var(--amber);">${s.away.abbr} ${s.awayWins} - ${s.homeWins} ${s.home.abbr}</div>`;
+      } else if (nextGame) {
+        const d = new Date(nextGame.date);
+        statusHtml = `<div style="font-size:9px;color:var(--dim);">Game 1: ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>`;
+      }
+      return statusHtml;
+    };
+
+    const r1_1v8 = findSeries(s1, seed8 ? getTeamByRank(conf, 8) : null) || findSeries(s1, getTeamByRank(conf, 8));
+    const r1_4v5 = findSeries(s4, s5);
+    const r1_3v6 = findSeries(s3, s6);
+    const r1_2v7 = findSeries(s2, seed7 ? getTeamByRank(conf, 7) : null) || findSeries(s2, getTeamByRank(conf, 7));
+
     el.innerHTML = `
       <div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE BRACKET</div>
       <div class="bracket-grid">
         <!-- First Round -->
         <div class="round-col">
           <div class="round-label">First Round</div>
-          ${matchupHtml(s1, 1, null, 8, '(1) vs (8)', findOdds(s1, null))}
+          ${matchupHtml(s1, 1, seed8 || getTeamByRank(conf, 8), 8, '(1) vs (8)', findOdds(s1, null))}
+          ${seriesInfo(r1_1v8)}
           ${matchupHtml(s4, 4, s5, 5, '(4) vs (5)', findOdds(s4, s5))}
+          ${seriesInfo(r1_4v5)}
           ${matchupHtml(s3, 3, s6, 6, '(3) vs (6)', findOdds(s3, s6))}
-          ${matchupHtml(s2, 2, null, 7, '(2) vs (7)', findOdds(s2, null))}
+          ${seriesInfo(r1_3v6)}
+          ${matchupHtml(s2, 2, seed7 || getTeamByRank(conf, 7), 7, '(2) vs (7)', findOdds(s2, null))}
+          ${seriesInfo(r1_2v7)}
         </div>
 
         <!-- Connector -->
