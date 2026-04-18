@@ -171,6 +171,11 @@
     </div>
     <div class="login-error" id="login-error"></div>
     <div style="margin-top:12px;font-size:9px;color:var(--dim);" id="auth-hint">New here? Pick a username and password to sign up.</div>
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
+      <button onclick="guestMode()" style="background:none;border:1px solid var(--border);color:var(--dim);padding:8px 20px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;border-radius:4px;cursor:pointer;transition:all .2s;" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--dim)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">BROWSE AS GUEST</button>
+      <div style="font-size:8px;color:var(--dim);margin-top:4px;">View games + lines without an account. Can't place bets.</div>
+    </div>
+    <div style="margin-top:8px;font-size:8px;color:var(--dim);">Sessions auto-save. You stay logged in between visits.</div>
   </div>
 </div>
 
@@ -391,33 +396,71 @@ function authHeaders() {
 async function checkLogin() {
   const saved = localStorage.getItem('nba_token');
   const savedUser = localStorage.getItem('nba_user_cache');
-  if (!saved) return false;
+
+  // No saved session at all
+  if (!saved && !savedUser) return false;
   authToken = saved;
 
-  try {
-    const res = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${authToken}` } });
-    if (!res.ok) throw new Error('Invalid token');
-    const data = await res.json();
-    currentUser = data.user;
-    // Cache user data locally so session survives server restarts
-    localStorage.setItem('nba_user_cache', JSON.stringify(currentUser));
-    showLoggedIn();
-    return true;
-  } catch {
-    // Server unreachable or token invalid — try cached user data
-    if (savedUser) {
-      try {
-        currentUser = JSON.parse(savedUser);
+  // Try server verification with timeout
+  if (saved) {
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${authToken}` }, signal: controller.signal });
+      if (res.ok) {
+        const data = await res.json();
+        currentUser = data.user;
+        localStorage.setItem('nba_user_cache', JSON.stringify(currentUser));
         showLoggedIn();
         return true;
-      } catch {}
+      }
+      // 401 = token invalid (not server error)
+      if (res.status === 401) {
+        // Token expired/invalid but we still have cached user — try re-login silently later
+        if (savedUser) {
+          currentUser = JSON.parse(savedUser);
+          showLoggedIn();
+          console.log('[AUTH] Token invalid but using cached session. Re-login needed for bets.');
+          return true;
+        }
+        localStorage.removeItem('nba_token');
+        authToken = null;
+        return false;
+      }
+    } catch (e) {
+      // Server unreachable (cold start, network error) — use cache
+      console.log('[AUTH] Server unreachable:', e.message, '— using cached session');
     }
-    // Only clear if we have no cached data at all
-    localStorage.removeItem('nba_token');
-    localStorage.removeItem('nba_user_cache');
-    authToken = null;
-    return false;
   }
+
+  // Use cached user data when server is down
+  if (savedUser) {
+    try {
+      currentUser = JSON.parse(savedUser);
+      showLoggedIn();
+      // Retry server verification in background after 10s
+      if (saved) {
+        setTimeout(async () => {
+          try {
+            const res = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${authToken}` } });
+            if (res.ok) {
+              const data = await res.json();
+              currentUser = data.user;
+              localStorage.setItem('nba_user_cache', JSON.stringify(currentUser));
+              $('user-bankroll').textContent = currentUser.bankroll;
+            }
+          } catch {}
+        }, 10000);
+      }
+      return true;
+    } catch {}
+  }
+
+  // Nothing worked
+  localStorage.removeItem('nba_token');
+  localStorage.removeItem('nba_user_cache');
+  authToken = null;
+  return false;
 }
 
 async function doAuth(mode) {
@@ -446,6 +489,13 @@ async function doAuth(mode) {
   localStorage.setItem('nba_token', authToken);
   localStorage.setItem('nba_user_cache', JSON.stringify(currentUser));
   showLoggedIn();
+  // If coming from guest mode, refresh everything
+  if (isGuest) {
+    isGuest = false;
+    loadFeed();
+    loadLeaderboard();
+    loadHistory();
+  }
 }
 
 function logout() {
@@ -459,7 +509,21 @@ function logout() {
   $('password-input').value = '';
 }
 
+let isGuest = false;
+
+function guestMode() {
+  isGuest = true;
+  $('login-overlay').style.display = 'none';
+  $('user-badge').style.display = 'flex';
+  $('display-name').textContent = 'Guest';
+  $('user-bankroll').textContent = '—';
+  loadGames();
+  loadFeed();
+  loadLeaderboard();
+}
+
 function showLoggedIn() {
+  isGuest = false;
   $('login-overlay').style.display = 'none';
   $('user-badge').style.display = 'flex';
   $('display-name').textContent = currentUser.displayName;
@@ -1155,7 +1219,12 @@ function setWager(amt) {
 }
 
 async function submitSlip() {
-  if (!currentUser || !currentLegs.length) return;
+  if (isGuest || !currentUser) {
+    $('login-overlay').style.display = 'flex';
+    $('login-error').textContent = 'Log in or sign up to place bets';
+    return;
+  }
+  if (!currentLegs.length) return;
   $('submit-btn').disabled = true;
   $('submit-btn').textContent = 'SUBMITTING...';
 
