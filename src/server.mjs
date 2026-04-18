@@ -2403,16 +2403,43 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
   if (propsCached) return res.json(propsCached);
 
   try {
+    // Try sweep first (today's games), fall back to 7-day schedule
     const sweepCache = getCache();
-    const game = sweepCache?.games?.[parseInt(req.params.gameIndex)];
-    if (!game) return res.status(404).json({ error: 'Game not found' });
+    let game = sweepCache?.games?.[parseInt(req.params.gameIndex)];
+
+    if (!game) {
+      // Fall back to schedule — slips page indexes into the 7-day schedule
+      const today = new Date();
+      const end = new Date(today); end.setDate(end.getDate() + 7);
+      const fmt = d => d.toISOString().slice(0, 10).replace(/-/g, '');
+      const schedUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${fmt(today)}-${fmt(end)}`;
+      const sr = await fetch(schedUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      const sd = await sr.json();
+      const schedGames = (sd.events || []).map(ev => {
+        const comp = ev.competitions?.[0];
+        const ts = comp?.competitors || [];
+        const home = ts.find(t => t.homeAway === 'home');
+        const away = ts.find(t => t.homeAway === 'away');
+        return {
+          id: ev.id, date: ev.date, status: comp?.status?.type?.description || 'Scheduled',
+          home: { name: home?.team?.displayName || 'TBD', abbr: home?.team?.abbreviation || 'TBD', logo: home?.team?.logo || '' },
+          away: { name: away?.team?.displayName || 'TBD', abbr: away?.team?.abbreviation || 'TBD', logo: away?.team?.logo || '' },
+          odds: comp?.odds?.[0] ? { spread: comp.odds[0].details || '', overUnder: comp.odds[0].overUnder || 0, provider: comp.odds[0].provider?.name || '' } : null
+        };
+      });
+      game = schedGames[parseInt(req.params.gameIndex)];
+    }
+
+    if (!game) return res.status(404).json({ error: 'Game not found at index ' + req.params.gameIndex });
+    if (game.home.abbr === 'TBD' || game.away.abbr === 'TBD') return res.status(400).json({ error: 'TBD matchup' });
 
     let realProps = null;
     let realGameOdds = null;
 
-    // Try real odds first
-    if (odds.isConfigured()) {
-      // Get events to find the matching event ID
+    // Only try Odds API for today's games (conserve quota)
+    const gameDate = new Date(game.date);
+    const isToday = gameDate.toDateString() === new Date().toDateString();
+    if (isToday && odds.isConfigured()) {
       const events = await odds.getEvents();
       const matchEvent = events.data?.find(e => {
         const h = e.home_team?.toLowerCase();
@@ -2438,7 +2465,6 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
       }
     }
 
-    // Get team IDs for ESPN fallback
     const teams = sweepCache?.teams || await espn.getTeams();
     const homeTeam = teams.find(t => t.abbr === game.home.abbr);
     const awayTeam = teams.find(t => t.abbr === game.away.abbr);
@@ -2533,57 +2559,105 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
       }
       response.playerProps = Object.values(realByName);
     } else {
-      // Fallback to ESPN model
-      const fetchProps = async (teamId, teamAbbr) => {
+      // Poisson model from actual gamelogs (not flat -115)
+      const fetchPoissonProps = async (teamId, teamAbbr) => {
         if (!teamId) return [];
         const roster = await espn.getPlayerStats(teamId);
-        const overviews = await Promise.allSettled(
-          roster.slice(0, 10).map(p => espn.getPlayerOverview(p.id))
-        );
+        const top = roster.slice(0, 10);
+        const gamelogs = await Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id)));
+        const overviews = await Promise.allSettled(top.map(p => espn.getPlayerOverview(p.id)));
         const result = [];
-        roster.slice(0, 10).forEach((player, i) => {
+
+        const poisCdf = (k, lam) => {
+          let sum = 0;
+          for (let i = 0; i <= Math.floor(k); i++) {
+            let term = Math.exp(-lam);
+            for (let j = 1; j <= i; j++) term *= lam / j;
+            sum += term;
+          }
+          return Math.min(sum, 1);
+        };
+        const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1-p)) : Math.round(100 * (1-p) / p);
+
+        for (let i = 0; i < top.length; i++) {
+          const player = top[i];
+          const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
           const ov = overviews[i]?.status === 'fulfilled' ? overviews[i].value : null;
           const s = ov?.season;
-          if (!s?.avgPoints || parseFloat(s.avgPoints) < 2) return;
-          const pts = parseFloat(s.avgPoints);
-          const reb = parseFloat(s.avgRebounds);
-          const ast = parseFloat(s.avgAssists);
-          const stl = parseFloat(s.avgSteals);
-          const blk = parseFloat(s.avgBlocks);
           const lines = [];
-          if (pts >= 5) lines.push({ stat: 'PTS', line: Math.floor(pts ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: pts });
-          if (reb >= 2) lines.push({ stat: 'REB', line: Math.floor(reb ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: reb });
-          if (ast >= 1.5) lines.push({ stat: 'AST', line: Math.floor(ast ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: ast });
-          if (stl >= 0.5) lines.push({ stat: 'STL', line: Math.floor(stl ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: stl });
-          if (blk >= 0.5) lines.push({ stat: 'BLK', line: Math.floor(blk ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: blk });
-          if (pts >= 10) lines.push({ stat: 'PRA', line: Math.round((pts + reb + ast) * 2) / 2, overOdds: -115, underOdds: -115, book: 'Model', avg: +(pts+reb+ast).toFixed(1) });
-          // Turnovers
-          const to = parseFloat(s.avgTurnovers || '0');
-          if (to >= 1) lines.push({ stat: 'TO', line: Math.floor(to ) + 0.5, overOdds: -115, underOdds: -115, book: 'Model', avg: to });
-          // Double-Double: estimate from averages — if 2 stats near 10+
-          const dd_cats = [pts, reb, ast].filter(v => v >= 8).length;
-          if (dd_cats >= 2) {
-            // Rough DD probability: if avg is near 10 in 2 cats, estimate ~40-70%
-            const ddProb = dd_cats >= 3 ? 0.6 : (Math.min(pts,10)/10 * Math.min(reb,10)/10 * 0.8);
-            const ddOdds = ddProb >= 0.5 ? Math.round(-100 * ddProb / (1 - ddProb)) : Math.round(100 * (1 - ddProb) / ddProb);
-            lines.push({ stat: 'Double-Double', line: 0.5, overOdds: ddOdds, underOdds: -ddOdds, book: 'Model', avg: +(ddProb * 100).toFixed(0) + '%' });
+
+          const statDefs = [
+            { key: 'PTS', label: 'PTS', min: 5 },
+            { key: 'REB', label: 'REB', min: 2 },
+            { key: 'AST', label: 'AST', min: 1.5 },
+            { key: '3PM', label: '3PM', min: 0.5 },
+            { key: 'STL', label: 'STL', min: 0.5 },
+            { key: 'BLK', label: 'BLK', min: 0.5 },
+            { key: 'TO', label: 'TO', min: 1 },
+          ];
+
+          // Use gamelogs for Poisson if available
+          if (gl?.games?.length >= 5) {
+            for (const sd of statDefs) {
+              const vals = gl.games.map(g => parseFloat(g.stats[`_${sd.key}`] || '0')).filter(v => !isNaN(v));
+              if (vals.length < 5) continue;
+              const mean = vals.reduce((a,b) => a+b, 0) / vals.length;
+              if (mean < sd.min) continue;
+              const line = Math.floor(mean) + 0.5;
+              const overProb = 1 - poisCdf(line, mean);
+              lines.push({
+                stat: sd.label, line, avg: +mean.toFixed(1), games: vals.length,
+                overOdds: toAm(overProb), underOdds: toAm(1 - overProb),
+                overProb: +(overProb * 100).toFixed(1),
+                book: 'Poisson'
+              });
+            }
+            // PRA combo
+            const ptsVals = gl.games.map(g => parseFloat(g.stats._PTS || '0'));
+            const rebVals = gl.games.map(g => parseFloat(g.stats._REB || '0'));
+            const astVals = gl.games.map(g => parseFloat(g.stats._AST || '0'));
+            if (ptsVals.length >= 5) {
+              const praVals = ptsVals.map((p, j) => p + (rebVals[j]||0) + (astVals[j]||0));
+              const praMean = praVals.reduce((a,b) => a+b, 0) / praVals.length;
+              if (praMean >= 10) {
+                const praLine = Math.round(praMean * 2) / 2;
+                const praOver = 1 - poisCdf(praLine, praMean);
+                lines.push({ stat: 'PRA', line: praLine, avg: +praMean.toFixed(1), games: praVals.length, overOdds: toAm(praOver), underOdds: toAm(1-praOver), overProb: +(praOver*100).toFixed(1), book: 'Poisson' });
+              }
+            }
+          } else if (s) {
+            // Fallback to season averages if no gamelog
+            const pts = parseFloat(s.avgPoints||0), reb = parseFloat(s.avgRebounds||0), ast = parseFloat(s.avgAssists||0);
+            if (pts >= 5) lines.push({ stat: 'PTS', line: Math.floor(pts)+0.5, avg: pts, overOdds: -115, underOdds: -115, book: 'Model' });
+            if (reb >= 2) lines.push({ stat: 'REB', line: Math.floor(reb)+0.5, avg: reb, overOdds: -115, underOdds: -115, book: 'Model' });
+            if (ast >= 1.5) lines.push({ stat: 'AST', line: Math.floor(ast)+0.5, avg: ast, overOdds: -115, underOdds: -115, book: 'Model' });
           }
-          // Triple-Double: only for elite playmakers
-          if (pts >= 15 && reb >= 7 && ast >= 7) {
-            const tdProb = Math.min(pts,10)/10 * Math.min(reb,10)/10 * Math.min(ast,10)/10 * 0.3;
-            const tdOdds = Math.round(100 * (1 - tdProb) / tdProb);
-            lines.push({ stat: 'Triple-Double', line: 0.5, overOdds: tdOdds, underOdds: Math.round(-100 * (1-tdProb) / tdProb), book: 'Model', avg: +(tdProb * 100).toFixed(1) + '%' });
+
+          // DD/TD from averages
+          if (s) {
+            const pts = parseFloat(s.avgPoints||0), reb = parseFloat(s.avgRebounds||0), ast = parseFloat(s.avgAssists||0);
+            const ddCats = [pts,reb,ast].filter(v => v >= 8).length;
+            if (ddCats >= 2) {
+              const ddProb = ddCats >= 3 ? 0.6 : (Math.min(pts,10)/10 * Math.min(reb,10)/10 * 0.8);
+              lines.push({ stat: 'Double-Double', line: 0.5, avg: +(ddProb*100).toFixed(0)+'%', overOdds: toAm(ddProb), underOdds: toAm(1-ddProb), book: 'Model' });
+            }
+            if (pts >= 15 && reb >= 7 && ast >= 7) {
+              const tdProb = Math.min(pts,10)/10 * Math.min(reb,10)/10 * Math.min(ast,10)/10 * 0.3;
+              lines.push({ stat: 'Triple-Double', line: 0.5, avg: +(tdProb*100).toFixed(1)+'%', overOdds: toAm(tdProb), underOdds: toAm(1-tdProb), book: 'Model' });
+            }
           }
-          if (lines.length) result.push({ name: player.name, team: teamAbbr, source: 'model', headshot: player.headshot, position: player.position, lines });
-        });
+
+          if (lines.length) result.push({ name: player.name, team: teamAbbr, source: 'poisson', headshot: player.headshot, position: player.position, lines });
+        }
         return result;
       };
 
       const [homeProps, awayProps] = await Promise.all([
-        fetchProps(homeTeam?.id, game.home.abbr),
-        fetchProps(awayTeam?.id, game.away.abbr)
+        fetchPoissonProps(homeTeam?.id, game.home.abbr),
+        fetchPoissonProps(awayTeam?.id, game.away.abbr)
       ]);
       response.playerProps = [...awayProps, ...homeProps];
+      response.source = 'poisson';
     }
 
     cache.set(propsCacheKey, response, TTL.PROPS_MERGED);
