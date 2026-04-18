@@ -372,6 +372,19 @@ export async function getPlayerGamelog(playerId, season = '2026') {
           if (names[i]) stats[names[i]] = val;
           if (labels[i]) stats[`_${labels[i]}`] = val;
         });
+        // Parse made-attempted stats into separate _3PM, _FGM, _FTM, _FGA, _FTA, _3PA
+        const parseMadeAtt = (val) => {
+          if (!val || typeof val !== 'string' || !val.includes('-')) return { made: 0, att: 0 };
+          const [m, a] = val.split('-');
+          return { made: parseFloat(m) || 0, att: parseFloat(a) || 0 };
+        };
+        const fg = parseMadeAtt(stats._FG);
+        stats._FGM = fg.made; stats._FGA = fg.att;
+        const tp = parseMadeAtt(stats['_3PT']);
+        stats._3PM = tp.made; stats['_3PA'] = tp.att;
+        const ft = parseMadeAtt(stats._FT);
+        stats._FTM = ft.made; stats._FTA = ft.att;
+
         games.push({
           eventId: ev.eventId,
           stats
@@ -422,6 +435,11 @@ export async function getPlayerPlayoffStats(playerId) {
             if (labels[i]) stats[`_${labels[i]}`] = val;
             if (names[i]) stats[names[i]] = val;
           });
+          // Parse made-attempted into separate fields
+          const pma = (v) => { if (!v || !v.includes?.('-')) return {m:0,a:0}; const [m,a]=v.split('-'); return {m:parseFloat(m)||0,a:parseFloat(a)||0}; };
+          const fg=pma(stats._FG); stats._FGM=fg.m; stats._FGA=fg.a;
+          const tp=pma(stats['_3PT']); stats._3PM=tp.m; stats['_3PA']=tp.a;
+          const ft=pma(stats._FT); stats._FTM=ft.m; stats._FTA=ft.a;
           allGames.push({ season: years[yi], round, eventId: ev.eventId, stats, type: 'playoff' });
         }
       }
@@ -446,6 +464,10 @@ export async function getPlayerPlayoffStats(playerId) {
             if (labels[i]) stats[`_${labels[i]}`] = val;
             if (names[i]) stats[names[i]] = val;
           });
+          const pma2 = (v) => { if (!v || !v.includes?.('-')) return {m:0,a:0}; const [m,a]=v.split('-'); return {m:parseFloat(m)||0,a:parseFloat(a)||0}; };
+          const fg2=pma2(stats._FG); stats._FGM=fg2.m; stats._FGA=fg2.a;
+          const tp2=pma2(stats['_3PT']); stats._3PM=tp2.m; stats['_3PA']=tp2.a;
+          const ft2=pma2(stats._FT); stats._FTM=ft2.m; stats._FTA=ft2.a;
           allGames.push({ season: 2026, round: 'Play-In', eventId: ev.eventId, stats, type: 'play-in' });
         }
       }

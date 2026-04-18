@@ -212,7 +212,7 @@ app.get('/api/schedule/lines/:gameIndex', async (req, res) => {
         const gl = gamelogs[i].status === 'fulfilled' ? gamelogs[i].value : null;
         const po = playoffData?.[i]?.status === 'fulfilled' ? playoffData[i].value : null;
 
-        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'FGM', 'FTM', 'STL', 'BLK'];
         for (const key of statKeys) {
           let values;
           let seasonMean = null;
@@ -661,7 +661,7 @@ app.get('/api/analysis/game/:gameIndex', async (req, res) => {
       ) : null;
 
       const results = [];
-      const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+      const statKeys = ['PTS', 'REB', 'AST', '3PM', 'FGM', 'FTM', 'STL', 'BLK'];
 
       for (let i = 0; i < top.length; i++) {
         const player = top[i];
@@ -801,7 +801,7 @@ app.get('/api/playoffs/team/:teamId', async (req, res) => {
       const po = playoffStats[i]?.status === 'fulfilled' ? playoffStats[i].value : null;
       if (!gl?.games?.length) continue;
 
-      const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+      const statKeys = ['PTS', 'REB', 'AST', '3PM', 'FGM', 'FTM', 'STL', 'BLK'];
       const statLines = {};
 
       for (const key of statKeys) {
@@ -1162,7 +1162,7 @@ app.get('/api/book/auto-lines/:source/:gameIndex', async (req, res) => {
         const po = playoffData?.[pi]?.status === 'fulfilled' ? playoffData[pi].value : null;
         if (!gl?.games?.length || gl.games.length < 5) continue;
 
-        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'STL', 'BLK'];
+        const statKeys = ['PTS', 'REB', 'AST', '3PM', 'FGM', 'FTM', 'STL', 'BLK'];
         for (const key of statKeys) {
           const allVals = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
           if (allVals.length < 5) continue;
@@ -2398,7 +2398,8 @@ app.get('/api/props/:teamId', async (req, res) => {
 
 // Merged props: real lines + model fallback, with Poisson fair value (cached 3min)
 app.get('/api/props/game/:gameIndex', async (req, res) => {
-  const propsCacheKey = `props-game-${req.params.gameIndex}`;
+  const window = req.query.window || 'season';
+  const propsCacheKey = `props-game-${req.params.gameIndex}-${window}`;
   const propsCached = cache.get(propsCacheKey);
   if (propsCached) return res.json(propsCached);
 
@@ -2560,12 +2561,14 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
       response.playerProps = Object.values(realByName);
     } else {
       // Poisson model from actual gamelogs (not flat -115)
+      const isPlayoffWindow = window === 'playoffs' || window === 'playoffs2026' || window.startsWith('PL');
       const fetchPoissonProps = async (teamId, teamAbbr) => {
         if (!teamId) return [];
         const roster = await espn.getPlayerStats(teamId);
         const top = roster.slice(0, 10);
         const gamelogs = await Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id)));
         const overviews = await Promise.allSettled(top.map(p => espn.getPlayerOverview(p.id)));
+        const playoffData = isPlayoffWindow ? await Promise.allSettled(top.map(p => espn.getPlayerPlayoffStats(p.id))) : null;
         const result = [];
 
         const poisCdf = (k, lam) => {
@@ -2591,16 +2594,39 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
             { key: 'REB', label: 'REB', min: 2 },
             { key: 'AST', label: 'AST', min: 1.5 },
             { key: '3PM', label: '3PM', min: 0.5 },
+            { key: 'FGM', label: 'FGM', min: 2 },
+            { key: 'FTM', label: 'FTM', min: 1 },
             { key: 'STL', label: 'STL', min: 0.5 },
             { key: 'BLK', label: 'BLK', min: 0.5 },
             { key: 'TO', label: 'TO', min: 1 },
           ];
 
+          const po = playoffData?.[i]?.status === 'fulfilled' ? playoffData[i].value : null;
+
+          // Select values based on window
+          const getVals = (key) => {
+            if (window === 'playoffs') {
+              return (po?.games || []).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            } else if (window === 'playoffs2026') {
+              return (po?.games || []).filter(g => g.season === 2026).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+            } else if (window.startsWith('PL')) {
+              const n = parseInt(window.slice(2));
+              const all = (po?.games || []).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+              return all.slice(0, Math.min(n, all.length));
+            } else if (gl?.games?.length) {
+              const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+              if (window === 'season') return all;
+              const n = parseInt(window.replace('L', ''));
+              return n > 0 ? all.slice(0, Math.min(n, all.length)) : all;
+            }
+            return [];
+          };
+
           // Use gamelogs for Poisson if available
-          if (gl?.games?.length >= 5) {
+          if (gl?.games?.length >= 3 || (isPlayoffWindow && po?.games?.length >= 2)) {
             for (const sd of statDefs) {
-              const vals = gl.games.map(g => parseFloat(g.stats[`_${sd.key}`] || '0')).filter(v => !isNaN(v));
-              if (vals.length < 5) continue;
+              const vals = getVals(sd.key);
+              if (vals.length < 3) continue;
               const mean = vals.reduce((a,b) => a+b, 0) / vals.length;
               if (mean < sd.min) continue;
               const line = Math.floor(mean) + 0.5;

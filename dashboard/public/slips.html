@@ -217,6 +217,24 @@
         </select>
       </div>
 
+      <!-- Poisson Window Selector -->
+      <div id="window-selector" style="display:none;margin-bottom:8px;">
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:8px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;">Lines from:</span>
+          <select id="poisson-window" onchange="loadGameProps()" style="width:130px;font-size:10px;">
+            <option value="season">Season</option>
+            <option value="L5">Last 5</option>
+            <option value="L10" selected>Last 10</option>
+            <option value="L20">Last 20</option>
+            <option value="L50">Last 50</option>
+            <option value="playoffs">PO Career</option>
+            <option value="PL10">PO Last 10</option>
+            <option value="PL30">PO Last 30</option>
+          </select>
+          <span style="font-size:8px;color:var(--dim);">Changes which games generate the Poisson lines</span>
+        </div>
+      </div>
+
       <!-- Player/Stat Selector -->
       <div id="player-selector" style="display:none;margin-bottom:10px;">
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
@@ -517,12 +535,16 @@ async function loadGameProps() {
   const [sport, idxStr] = rawIdx.split('-');
   const idx = parseInt(idxStr);
 
+  // Show window selector for NBA
+  $('window-selector').style.display = sport === 'nba' ? '' : 'none';
+
   // Fetch props based on sport
+  const window = $('poisson-window')?.value || 'L10';
   let res;
   if (sport === 'ucl') {
     res = await fetch(`/api/soccer/uefa.champions/props/${idx}`);
   } else {
-    res = await fetch(`/api/props/game/${idx}`);
+    res = await fetch(`/api/props/game/${idx}?window=${window}`);
   }
   const data = await res.json();
 
