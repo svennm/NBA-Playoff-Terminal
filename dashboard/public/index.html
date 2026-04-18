@@ -90,5 +90,143 @@
   <a href="/analysis.html">Line Analysis</a>
   <a href="/principles.html">Principles</a>
 </div>
+
+<!-- Settings Panel -->
+<div id="settings-panel" style="max-width:640px;width:100%;margin-top:28px;background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+  <div onclick="document.getElementById('settings-body').style.display=document.getElementById('settings-body').style.display==='none'?'block':'none';this.querySelector('.arrow').textContent=document.getElementById('settings-body').style.display==='none'?'▶':'▼'" style="padding:12px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);user-select:none;">
+    <span style="font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;color:var(--gold);">DISPLAY SETTINGS</span>
+    <span class="arrow" style="color:var(--dim);">▼</span>
+  </div>
+  <div id="settings-body" style="padding:16px;">
+
+    <!-- Theme -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Color Theme</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;" id="theme-buttons"></div>
+    </div>
+
+    <!-- Font Size -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Font Size</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button onclick="setFontSize(-1)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);width:32px;height:32px;border-radius:4px;cursor:pointer;font-size:16px;">-</button>
+        <span id="font-size-display" style="font-family:'Orbitron',sans-serif;font-size:14px;min-width:40px;text-align:center;color:var(--cyan);"></span>
+        <button onclick="setFontSize(1)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);width:32px;height:32px;border-radius:4px;cursor:pointer;font-size:16px;">+</button>
+        <button onclick="setFontSize(0)" style="background:var(--bg);border:1px solid var(--border);color:var(--dim);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:10px;font-family:'Orbitron',sans-serif;letter-spacing:1px;margin-left:8px;">Reset</button>
+      </div>
+    </div>
+
+    <!-- Dim Text Brightness -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Dim Text Visibility</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input type="range" id="dim-slider" min="30" max="90" step="5" style="flex:1;accent-color:var(--gold);" oninput="setDimBrightness(this.value)">
+        <span id="dim-preview" style="font-size:11px;min-width:50px;text-align:center;"></span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:8px;color:var(--dim);margin-top:2px;">
+        <span>Subtle</span><span>Bright</span>
+      </div>
+    </div>
+
+    <!-- Odds Format -->
+    <div style="margin-bottom:16px;">
+      <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Odds Format</div>
+      <div style="display:flex;gap:0;">
+        <button id="odds-am-btn" onclick="setOddsFormat('american')" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;border:1px solid var(--border);cursor:pointer;border-radius:4px 0 0 4px;background:var(--panel);color:var(--dim);">American (-110)</button>
+        <button id="odds-dec-btn" onclick="setOddsFormat('decimal')" style="flex:1;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:1px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">Decimal (1.91)</button>
+      </div>
+    </div>
+
+    <!-- Scanline Effect -->
+    <div style="margin-bottom:8px;">
+      <div style="font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;">Effects</div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:11px;">
+        <input type="checkbox" id="scanline-toggle" onchange="toggleScanlines(this.checked)" style="accent-color:var(--gold);">
+        CRT Scanline overlay
+      </label>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Theme buttons
+const themeNames = { default:'Default', bright:'Bright', neon:'Neon', gold:'Gold', light:'Light' };
+const themeColors = { default:'#00e5ff', bright:'#00ffff', neon:'#39ff14', gold:'#f5d442', light:'#0088cc' };
+const currentTheme = localStorage.getItem('hxm_theme') || 'default';
+
+document.getElementById('theme-buttons').innerHTML = Object.entries(themeNames).map(([key, name]) => `
+  <button onclick="window._setTheme&&window._setTheme('${key}');updateThemeButtons('${key}')" data-t="${key}" style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:${key===currentTheme?'rgba(212,168,37,0.1)':'var(--bg)'};border:1px solid ${key===currentTheme?'var(--gold)':'var(--border)'};border-radius:4px;cursor:pointer;color:var(--text);font-size:10px;font-family:'JetBrains Mono',monospace;">
+    <span style="width:12px;height:12px;border-radius:50%;background:${themeColors[key]};"></span>
+    ${name}
+  </button>`).join('');
+
+function updateThemeButtons(active) {
+  document.querySelectorAll('#theme-buttons button').forEach(b => {
+    const isActive = b.dataset.t === active;
+    b.style.background = isActive ? 'rgba(212,168,37,0.1)' : 'var(--bg)';
+    b.style.borderColor = isActive ? 'var(--gold)' : 'var(--border)';
+  });
+}
+
+// Font size
+let fontSize = parseInt(localStorage.getItem('hxm_fontSize') || '12');
+document.getElementById('font-size-display').textContent = fontSize + 'px';
+
+function setFontSize(delta) {
+  if (delta === 0) fontSize = 12;
+  else fontSize = Math.max(9, Math.min(18, fontSize + delta));
+  localStorage.setItem('hxm_fontSize', fontSize);
+  document.getElementById('font-size-display').textContent = fontSize + 'px';
+  document.documentElement.style.setProperty('--user-font-size', fontSize + 'px');
+}
+
+// Dim text brightness
+const dimVal = parseInt(localStorage.getItem('hxm_dimBrightness') || '55');
+document.getElementById('dim-slider').value = dimVal;
+setDimBrightness(dimVal);
+
+function setDimBrightness(val) {
+  val = parseInt(val);
+  localStorage.setItem('hxm_dimBrightness', val);
+  // Convert to hex grey
+  const hex = Math.round(val * 2.55).toString(16).padStart(2, '0');
+  const dimColor = `#${hex}${hex}${hex}`;
+  document.documentElement.style.setProperty('--dim', dimColor);
+  document.getElementById('dim-preview').textContent = val + '%';
+  document.getElementById('dim-preview').style.color = dimColor;
+}
+
+// Odds format
+const oddsFormat = localStorage.getItem('oddsFormat') || 'american';
+updateOddsButtons(oddsFormat);
+
+function setOddsFormat(fmt) {
+  localStorage.setItem('oddsFormat', fmt);
+  updateOddsButtons(fmt);
+}
+function updateOddsButtons(fmt) {
+  document.getElementById('odds-am-btn').style.background = fmt === 'american' ? 'rgba(0,229,255,0.1)' : 'var(--panel)';
+  document.getElementById('odds-am-btn').style.color = fmt === 'american' ? 'var(--cyan)' : 'var(--dim)';
+  document.getElementById('odds-dec-btn').style.background = fmt === 'decimal' ? 'rgba(0,229,255,0.1)' : 'var(--panel)';
+  document.getElementById('odds-dec-btn').style.color = fmt === 'decimal' ? 'var(--cyan)' : 'var(--dim)';
+}
+
+// Scanlines toggle
+const scanlinesOn = localStorage.getItem('hxm_scanlines') !== 'off';
+document.getElementById('scanline-toggle').checked = scanlinesOn;
+if (!scanlinesOn) document.body.classList.add('no-scanlines');
+
+function toggleScanlines(on) {
+  localStorage.setItem('hxm_scanlines', on ? 'on' : 'off');
+  document.body.classList.toggle('no-scanlines', !on);
+}
+</script>
+
+<style>
+  .no-scanlines::after { display: none !important; }
+  #settings-panel button:hover { opacity: 0.8; }
+</style>
+<script src="/theme.js"></script>
 </body>
 </html>
