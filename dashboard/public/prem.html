@@ -194,7 +194,7 @@ async function loadMatches() {
       fetch(`/api/soccer/${LEAGUE}/schedule`).then(r => r.json()).catch(() => [])
     ]);
     const todayIds = new Set((scoreRes || []).map(g => g.id));
-    const futureGames = (schedRes || []).filter(g => !todayIds.has(g.id) && g.status !== 'Final');
+    const futureGames = (schedRes || []).filter(g => !todayIds.has(g.id) && g.status !== 'Final' && g.status !== 'Full Time');
     const games = [...(scoreRes || []), ...futureGames];
 
     $('match-count').textContent = games.length;
@@ -205,12 +205,12 @@ async function loadMatches() {
 
     // Group: live first, upcoming second, final last
     const live = games.filter(g => g.status === 'In Progress');
-    const upcoming = games.filter(g => g.status !== 'In Progress' && g.status !== 'Final');
-    const final = games.filter(g => g.status === 'Final');
+    const upcoming = games.filter(g => g.status !== 'In Progress' && g.status !== 'Final' && g.status !== 'Full Time');
+    const final = games.filter(g => g.status === 'Final' || g.status === 'Full Time');
 
     const renderCard = (g) => {
       const isLive = g.status === 'In Progress';
-      const isFinal = g.status === 'Final';
+      const isFinal = g.status === 'Final' || g.status === 'Full Time';
       const cls = isLive ? 'live' : isFinal ? 'final' : 'upcoming';
       let scoreHtml;
       if (isLive || isFinal) {
