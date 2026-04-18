@@ -211,6 +211,7 @@
           <button class="filter-btn active" id="sport-nba" onclick="setSport('nba',this)" style="background:rgba(255,179,0,0.1);border:1px solid var(--border);color:var(--amber);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">NBA</button>
           <button class="filter-btn" id="sport-ucl" onclick="setSport('ucl',this)" style="background:var(--panel);border:1px solid var(--border);color:var(--dim);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">UCL</button>
           <button class="filter-btn" id="sport-prem" onclick="setSport('prem',this)" style="background:var(--panel);border:1px solid var(--border);color:var(--dim);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">PREM</button>
+          <button class="filter-btn" id="sport-europa" onclick="setSport('europa',this)" style="background:var(--panel);border:1px solid var(--border);color:var(--dim);padding:4px 12px;font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;border-radius:3px;cursor:pointer;">UEL</button>
         </div>
         <label style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;">Select a Game</label>
         <select id="game-select" onchange="loadGameProps()" style="margin-top:4px;">
@@ -466,12 +467,12 @@ function showLoggedIn() {
 }
 
 // === Games ===
-const SLIPS_LEAGUES = { ucl: 'uefa.champions', prem: 'eng.1' };
+const SLIPS_LEAGUES = { ucl: 'uefa.champions', prem: 'eng.1', europa: 'uefa.europa' };
 
 function setSport(sport, btn) {
   currentSport = sport;
-  document.querySelectorAll('#sport-nba,#sport-ucl,#sport-prem').forEach(b => { b.style.background = 'var(--panel)'; b.style.color = 'var(--dim)'; b.classList.remove('active'); });
-  const colors = { nba: ['rgba(255,179,0,0.1)','var(--amber)'], ucl: ['rgba(26,115,232,0.1)','#1a73e8'], prem: ['rgba(55,0,60,0.2)','#37003c'] };
+  document.querySelectorAll('#sport-nba,#sport-ucl,#sport-prem,#sport-europa').forEach(b => { b.style.background = 'var(--panel)'; b.style.color = 'var(--dim)'; b.classList.remove('active'); });
+  const colors = { nba: ['rgba(255,179,0,0.1)','var(--amber)'], ucl: ['rgba(26,115,232,0.1)','#1a73e8'], prem: ['rgba(108,45,199,0.15)','#6C2DC7'], europa: ['rgba(245,124,0,0.15)','#f57c00'] };
   btn.style.background = colors[sport]?.[0] || 'var(--panel)';
   btn.style.color = colors[sport]?.[1] || 'var(--dim)';
   btn.classList.add('active');
@@ -548,8 +549,8 @@ async function loadGameProps() {
   // Fetch props based on sport
   const window = $('poisson-window')?.value || 'L10';
   let res;
-  if (sport === 'ucl' || sport === 'prem') {
-    const league = sport === 'prem' ? 'eng.1' : 'uefa.champions';
+  if (sport === 'ucl' || sport === 'prem' || sport === 'europa') {
+    const league = SLIPS_LEAGUES[sport] || 'uefa.champions';
     res = await fetch(`/api/soccer/${league}/props/${idx}`);
   } else {
     res = await fetch(`/api/props/game/${idx}?window=${window}`);

@@ -928,7 +928,8 @@
 <div style="display:flex;justify-content:center;padding:8px;gap:0;background:var(--panel);border-bottom:1px solid var(--border);">
   <button onclick="switchSport('nba')" id="sport-btn-nba" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:4px 0 0 4px;background:rgba(255,179,0,0.1);color:var(--amber);">NBA</button>
   <button onclick="switchSport('soccer')" id="sport-btn-soccer" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0;background:var(--panel);color:var(--dim);">UCL</button>
-  <button onclick="switchSport('prem')" id="sport-btn-prem" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">PREM</button>
+  <button onclick="switchSport('prem')" id="sport-btn-prem" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0;background:var(--panel);color:var(--dim);">PREM</button>
+  <button onclick="switchSport('europa')" id="sport-btn-europa" style="padding:6px 16px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--border);cursor:pointer;border-radius:0 4px 4px 0;background:var(--panel);color:var(--dim);">UEL</button>
 </div>
 
 <div class="selector-bar">
@@ -1081,9 +1082,9 @@ const $ = id => document.getElementById(id);
 // Sport mode — detected from URL param ?sport=soccer or ?sport=prem
 const urlParams = new URLSearchParams(window.location.search);
 let currentSport = urlParams.get('sport') || 'nba';
-const LEAGUE_MAP = { soccer: 'uefa.champions', prem: 'eng.1' };
+const LEAGUE_MAP = { soccer: 'uefa.champions', prem: 'eng.1', europa: 'uefa.europa' };
 let SOCCER_LEAGUE = LEAGUE_MAP[currentSport] || 'uefa.champions';
-const isSoccer = () => isSoccer() || currentSport === 'prem';
+const isSoccer = () => currentSport === 'soccer' || currentSport === 'prem' || currentSport === 'europa';
 
 // State
 const state = {
@@ -2703,8 +2704,10 @@ function switchSport(sport) {
   $('sport-btn-nba').style.color = sport === 'nba' ? 'var(--amber)' : 'var(--dim)';
   $('sport-btn-soccer').style.background = sport === 'soccer' ? 'rgba(26,115,232,0.1)' : 'var(--panel)';
   $('sport-btn-soccer').style.color = sport === 'soccer' ? '#1a73e8' : 'var(--dim)';
-  $('sport-btn-prem').style.background = sport === 'prem' ? 'rgba(55,0,60,0.2)' : 'var(--panel)';
-  $('sport-btn-prem').style.color = sport === 'prem' ? '#37003c' : 'var(--dim)';
+  $('sport-btn-prem').style.background = sport === 'prem' ? 'rgba(108,45,199,0.15)' : 'var(--panel)';
+  $('sport-btn-prem').style.color = sport === 'prem' ? '#6C2DC7' : 'var(--dim)';
+  $('sport-btn-europa').style.background = sport === 'europa' ? 'rgba(245,124,0,0.15)' : 'var(--panel)';
+  $('sport-btn-europa').style.color = sport === 'europa' ? '#f57c00' : 'var(--dim)';
   // Reset state
   state.a = { detail: null, stats: null, roster: [], injuries: [], players: {}, gameData: null };
   state.b = { detail: null, stats: null, roster: [], injuries: [], players: {}, gameData: null };

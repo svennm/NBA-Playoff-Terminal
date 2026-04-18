@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EUROPA LEAGUE TERMINAL</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;500;700;900&display=swap');
+  :root{--bg:#030508;--panel:#0a0e14;--border:#1a2a3a;--border-glow:#0f4f6f;--cyan:#00e5ff;--green:#00ff88;--amber:#ffb300;--red:#ff3d3d;--magenta:#ff00ff;--text:#c8d6e5;--dim:#4a5568;--blue:#3498db;--purple:#9b59b6;--ucl:#0a1e5c;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;min-height:100vh;}
+  body::after{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.015) 2px,rgba(0,229,255,0.015) 4px);pointer-events:none;z-index:9999;}
+  .header{background:linear-gradient(180deg,#0a1520,var(--bg));border-bottom:1px solid var(--border-glow);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px;}
+  .logo{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:3px;background:linear-gradient(135deg,#1a73e8,var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+  .logo-sub{font-size:9px;color:var(--dim);letter-spacing:4px;text-transform:uppercase;}
+  .nav-links{display:flex;gap:8px;flex-wrap:wrap;}
+  .nav-links a{color:var(--dim);text-decoration:none;font-size:11px;font-weight:600;font-family:'Orbitron',sans-serif;letter-spacing:1px;text-transform:uppercase;padding:4px 8px;border:1px solid var(--border);border-radius:3px;transition:all .2s;}
+  .nav-links a:hover,.nav-links a.active{color:var(--cyan);border-color:var(--border-glow);background:rgba(0,229,255,0.05);}
+  .nav-links .sport-divider{color:var(--dim);font-size:11px;font-weight:700;display:flex;align-items:center;}
+  .hamburger{display:none;background:none;border:1px solid var(--border);color:var(--dim);font-size:20px;padding:4px 8px;border-radius:3px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  .hamburger:hover{color:var(--cyan);border-color:var(--border-glow);}
+  @media(max-width:768px){
+    .hamburger{display:block;}
+    .nav-links{display:none;position:absolute;top:100%;right:0;left:0;background:var(--bg);border-bottom:2px solid var(--border-glow);padding:10px 16px;flex-direction:column;gap:6px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,0.6);}
+    .nav-links.open{display:flex;}
+    .nav-links a{width:100%;text-align:center;padding:8px 10px;}
+    .nav-links span{text-align:center;padding:4px 0;}
+    .header{position:sticky;top:0;z-index:100;flex-wrap:wrap;}
+  }
+
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:2px;max-width:1800px;margin:0 auto;}
+  .grid .full-width{grid-column:1/-1;}
+  .grid .two-col{grid-column:span 2;}
+
+  .panel{background:var(--panel);border:1px solid var(--border);overflow:hidden;}
+  .panel:hover{border-color:var(--border-glow);}
+  .panel-header{background:linear-gradient(90deg,rgba(0,229,255,0.08),transparent);border-bottom:1px solid var(--border);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);}
+  .panel-header .count{background:rgba(0,229,255,0.15);padding:2px 8px;border-radius:2px;font-family:'JetBrains Mono',monospace;font-size:10px;}
+  .panel-body{padding:10px 12px;max-height:500px;overflow-y:auto;}
+  .panel-body::-webkit-scrollbar{width:4px;}
+  .panel-body::-webkit-scrollbar-thumb{background:var(--border-glow);border-radius:2px;}
+
+  .game-section-label{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:8px 10px 4px;display:flex;align-items:center;gap:6px;}
+  .game-section-label .dot{width:6px;height:6px;border-radius:50%;}
+  .game-section-label.live-label{color:var(--green);}.game-section-label.live-label .dot{background:var(--green);animation:pulse 1.5s infinite;}
+  .game-section-label.upcoming-label{color:var(--amber);}.game-section-label.upcoming-label .dot{background:var(--amber);}
+  .game-section-label.final-label{color:var(--dim);}.game-section-label.final-label .dot{background:var(--dim);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+  .match-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:10px;margin-bottom:8px;transition:all .2s;cursor:pointer;}
+  .match-card:hover{border-color:var(--cyan);}
+  .match-card.live{border-left:3px solid var(--green);background:rgba(0,255,136,0.02);}
+  .match-card.final{border-left:3px solid var(--dim);opacity:0.7;}
+  .match-card.final:hover{opacity:1;}
+  .match-card.upcoming{border-left:3px solid var(--amber);background:rgba(255,179,0,0.02);}
+  .match-teams{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .match-team{display:flex;align-items:center;gap:6px;flex:1;}
+  .match-team.away{justify-content:flex-end;text-align:right;}
+  .match-team img{width:28px;height:28px;object-fit:contain;}
+  .match-team .name{font-weight:600;font-size:12px;}
+  .match-score{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:900;min-width:60px;text-align:center;}
+  .match-score .vs{font-size:10px;color:var(--dim);font-weight:400;}
+  .match-meta{display:flex;justify-content:space-between;margin-top:6px;font-size:9px;color:var(--dim);}
+  .match-agg{color:var(--amber);font-size:9px;text-align:center;margin-top:2px;}
+  .match-odds{display:flex;gap:4px;margin-top:6px;}
+  .match-odds span{background:rgba(0,229,255,0.06);padding:2px 6px;border-radius:2px;font-size:9px;color:var(--cyan);}
+
+  .standings-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .standings-table th{text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);}
+  .standings-table td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .standings-table tr:hover td{background:rgba(0,229,255,0.03);}
+  .rank-qual{color:var(--green);font-weight:700;}
+  .rank-playoff{color:var(--cyan);}
+  .rank-elim{color:var(--red);}
+
+  .team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;}
+  .team-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center;cursor:pointer;transition:all .15s;}
+  .team-card:hover{border-color:var(--cyan);background:rgba(0,229,255,0.03);}
+  .team-card img{width:36px;height:36px;object-fit:contain;margin-bottom:4px;}
+  .team-card .name{font-weight:600;font-size:10px;}
+
+  .news-item{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);}
+  .news-item:last-child{border-bottom:none;}
+  .news-headline{font-weight:500;font-size:11px;cursor:pointer;}
+  .news-headline:hover{color:var(--cyan);}
+  .news-meta{font-size:9px;color:var(--dim);margin-top:2px;}
+
+  .roster-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .roster-table th{text-align:left;padding:4px 6px;color:var(--dim);font-size:9px;text-transform:uppercase;border-bottom:1px solid var(--border);}
+  .roster-table td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,0.03);}
+
+  .loading{text-align:center;padding:30px;color:var(--dim);}
+  .spinner{display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+  @media(max-width:1200px){.grid{grid-template-columns:1fr 1fr;}}
+  @media(max-width:768px){.grid{grid-template-columns:1fr;}.grid .two-col,.grid .full-width{grid-column:1;}}
+</style>
+</head>
+<body>
+<div class="header">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div>
+      <a href="/" style="text-decoration:none;"><div style="font-family:'Orbitron',sans-serif;font-size:18px;font-weight:900;letter-spacing:4px;background:linear-gradient(135deg,#d4a825,#f5d442);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(212,168,37,0.3);">HxM</div><div style="font-size:9px;color:#6b5b1f;letter-spacing:3px;">HunterxMafia</div></a>
+    </div>
+    <button class="hamburger" onclick="document.querySelector('.hxm-nav,.nav-links').classList.toggle('open');this.textContent=this.textContent==='☰'?'✕':'☰'">☰</button>
+  </div>
+  <div class="nav-links">
+    <a href="/" style="color:var(--dim);text-decoration:none;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;">Home</a>
+    <span style="color:#6b5b1f;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;">NBA</span>
+    <a href="/terminal.html" >Scores</a>
+    <a href="/matchup.html" >Matchup</a>
+    <a href="/bracket.html" >Bracket</a>
+    <a href="/playoffs.html" >Playoffs</a>
+    <span style="color:#4a5568;font-size:8px;">|</span>
+    <span style="color:#1a73e8;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;">UCL</span>
+    <a href="/soccer.html" >Scores</a>
+    <span style="color:#4a5568;font-size:8px;">|</span>
+    <span style="color:#3d195b;font-size:9px;font-family:'Orbitron',sans-serif;letter-spacing:1px;">PREM</span>
+    <a href="/europa.html" class="active">Scores</a>
+    <span style="color:#4a5568;font-size:8px;">|</span>
+    <a href="/slips.html" >Slips</a>
+    <a href="/analysis.html" >Analysis</a>
+    <a href="/principles.html" >Principles</a>
+  </div>
+</div>
+
+<div class="grid">
+  <!-- Matches -->
+  <div class="panel two-col">
+    <div class="panel-header">
+      Matches
+      <span class="count" id="match-count">0</span>
+    </div>
+    <div class="panel-body" id="matches" style="max-height:600px;">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- League Table -->
+  <div class="panel">
+    <div class="panel-header">Europa League Table</div>
+    <div class="panel-body" id="standings" style="max-height:600px;">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- Team Detail -->
+  <div class="panel two-col" id="team-panel" style="display:none;">
+    <div class="panel-header">
+      <span id="team-title">Team</span>
+    </div>
+    <div class="panel-body" id="team-body"></div>
+  </div>
+
+  <!-- Teams -->
+  <div class="panel">
+    <div class="panel-header">
+      Teams
+      <span class="count" id="team-count">0</span>
+    </div>
+    <div class="panel-body" id="teams-grid" style="max-height:500px;">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- News -->
+  <div class="panel two-col">
+    <div class="panel-header">
+      UEL News
+      <span class="count" id="news-count">0</span>
+    </div>
+    <div class="panel-body" id="news">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const LEAGUE = 'uefa.europa';
+
+async function init() {
+  await Promise.all([loadMatches(), loadStandings(), loadTeams(), loadNews()]);
+  setInterval(() => { loadMatches(); loadStandings(); }, 60000);
+}
+
+async function loadMatches() {
+  try {
+    // Load both today's scoreboard and 14-day schedule, merge and deduplicate
+    const [scoreRes, schedRes] = await Promise.all([
+      fetch(`/api/soccer/${LEAGUE}/scoreboard`).then(r => r.json()).catch(() => []),
+      fetch(`/api/soccer/${LEAGUE}/schedule`).then(r => r.json()).catch(() => [])
+    ]);
+    const todayIds = new Set((scoreRes || []).map(g => g.id));
+    const futureGames = (schedRes || []).filter(g => !todayIds.has(g.id) && g.status !== 'Final');
+    const games = [...(scoreRes || []), ...futureGames];
+
+    $('match-count').textContent = games.length;
+    if (!games.length) {
+      $('matches').innerHTML = '<div style="color:var(--dim);text-align:center;padding:20px;">No matches scheduled. Check back on match days.</div>';
+      return;
+    }
+
+    // Group: live first, upcoming second, final last
+    const live = games.filter(g => g.status === 'In Progress');
+    const upcoming = games.filter(g => g.status !== 'In Progress' && g.status !== 'Final');
+    const final = games.filter(g => g.status === 'Final');
+
+    const renderCard = (g) => {
+      const isLive = g.status === 'In Progress';
+      const isFinal = g.status === 'Final';
+      const cls = isLive ? 'live' : isFinal ? 'final' : 'upcoming';
+      let scoreHtml;
+      if (isLive || isFinal) {
+        scoreHtml = `${g.away.score} <span style="font-size:10px;color:var(--dim);">-</span> ${g.home.score}`;
+      } else {
+        const t = new Date(g.date).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+        scoreHtml = `<span class="vs">${t}</span>`;
+      }
+      const oddsHtml = g.odds ? `<div class="match-odds"><span>${g.odds.spread}</span><span>O/U ${g.odds.overUnder}</span><span>${g.odds.provider}</span></div>` : '';
+      const statusLabel = isLive ? `<div style="text-align:center;font-size:9px;font-family:'Orbitron',sans-serif;color:var(--green);letter-spacing:1px;margin-bottom:4px;animation:pulse 1.5s infinite;">LIVE \u2022 ${g.clock}</div>` : '';
+      return `
+        <div class="match-card ${cls}" onclick="window.location.href='/matchup.html?a=${g.away.abbr}&b=${g.home.abbr}&sport=soccer'">
+          ${statusLabel}
+          <div class="match-teams">
+            <div class="match-team">
+              <img src="${g.away.logo}" alt="" onerror="this.style.display='none'">
+              <span class="name">${g.away.name}</span>
+            </div>
+            <div class="match-score">${scoreHtml}</div>
+            <div class="match-team away">
+              <span class="name">${g.home.name}</span>
+              <img src="${g.home.logo}" alt="" onerror="this.style.display='none'">
+            </div>
+          </div>
+          ${g.aggregate ? `<div class="match-agg">${g.aggregate}</div>` : ''}
+          <div class="match-meta">
+            <span>${g.venue}</span>
+            <span>${g.broadcast}</span>
+            <span style="color:${isLive?'var(--green)':isFinal?'var(--dim)':'var(--amber)'};">${isLive?'':isFinal?'FINAL':g.status}</span>
+          </div>
+          ${oddsHtml}
+        </div>`;
+    };
+
+    let html = '';
+    if (live.length) {
+      html += '<div class="game-section-label live-label"><span class="dot"></span>LIVE NOW</div>';
+      html += live.map(renderCard).join('');
+    }
+    if (upcoming.length) {
+      html += '<div class="game-section-label upcoming-label"><span class="dot"></span>UPCOMING</div>';
+      html += upcoming.map(renderCard).join('');
+    }
+    if (final.length) {
+      html += '<div class="game-section-label final-label"><span class="dot"></span>COMPLETED</div>';
+      html += final.map(renderCard).join('');
+    }
+    $('matches').innerHTML = html;
+  } catch { $('matches').innerHTML = '<div style="color:var(--red);">Failed to load</div>'; }
+}
+
+async function loadStandings() {
+  try {
+    const res = await fetch(`/api/soccer/${LEAGUE}/standings`);
+    const groups = await res.json();
+    if (!groups.length) { $('standings').innerHTML = '<div style="color:var(--dim);">No standings data</div>'; return; }
+    $('standings').innerHTML = groups.map(g => `
+      <div style="margin-bottom:12px;">
+        <div style="font-size:9px;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${g.name}</div>
+        <table class="standings-table">
+          <thead><tr><th>#</th><th>Team</th><th>GP</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>PTS</th></tr></thead>
+          <tbody>
+            ${g.entries.map((t, i) => {
+              const r = parseInt(t.rank) || i + 1;
+              const cls = r <= 8 ? 'rank-qual' : r <= 24 ? 'rank-playoff' : 'rank-elim';
+              return `
+                <tr onclick="loadTeam('${t.abbr}')" style="cursor:pointer;">
+                  <td class="${cls}">${r}</td>
+                  <td style="font-weight:500"><img src="${t.logo}" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;" onerror="this.style.display='none'">${t.abbr}</td>
+                  <td>${t.gp}</td><td>${t.wins}</td><td>${t.draws}</td><td>${t.losses}</td>
+                  <td style="color:${parseInt(t.gd)>0?'var(--green)':parseInt(t.gd)<0?'var(--red)':'var(--dim)'}">${parseInt(t.gd)>0?'+':''}${t.gd}</td>
+                  <td style="font-weight:700;color:var(--cyan);">${t.points}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`).join('');
+  } catch { $('standings').innerHTML = '<div style="color:var(--red);">Failed</div>'; }
+}
+
+async function loadTeams() {
+  try {
+    const res = await fetch(`/api/soccer/${LEAGUE}/teams`);
+    const teams = await res.json();
+    $('team-count').textContent = teams.length;
+    $('teams-grid').innerHTML = `<div class="team-grid">${teams.map(t => `
+      <div class="team-card" onclick="loadTeam('${t.abbr}')">
+        <img src="${t.logo}" alt="" onerror="this.style.display='none'">
+        <div class="name">${t.name}</div>
+      </div>`).join('')}</div>`;
+  } catch {}
+}
+
+async function loadTeam(abbr) {
+  const panel = $('team-panel');
+  panel.style.display = '';
+  $('team-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  try {
+    const teamsRes = await fetch(`/api/soccer/${LEAGUE}/teams`);
+    const teams = await teamsRes.json();
+    const team = teams.find(t => t.abbr === abbr);
+    if (!team) { $('team-body').innerHTML = 'Team not found'; return; }
+
+    const res = await fetch(`/api/soccer/${LEAGUE}/teams/${team.id}`);
+    const data = await res.json();
+    $('team-title').textContent = data.detail?.name || abbr;
+
+    const roster = data.roster || [];
+    const posOrder = { F: 0, M: 1, D: 2, G: 3 };
+    const sorted = [...roster].sort((a, b) => (posOrder[a.position] ?? 4) - (posOrder[b.position] ?? 4));
+
+    // Show roster immediately, then load stats
+    const renderRoster = (playerStats) => {
+      $('team-body').innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <img src="${data.detail?.logo}" style="width:48px;height:48px;object-fit:contain;">
+          <div>
+            <div style="font-size:16px;font-weight:700;">${data.detail?.name}</div>
+            <div style="color:var(--dim);font-size:10px;">${data.detail?.record || ''} | ${data.detail?.standingSummary || ''}</div>
+            ${data.detail?.nextEvent ? `<div style="color:var(--amber);font-size:10px;">Next: ${data.detail.nextEvent.name}</div>` : ''}
+          </div>
+        </div>
+        <table class="roster-table">
+          <thead><tr><th>Player</th><th>Pos</th><th>#</th><th>G</th><th>A</th><th>SH</th><th>SOT</th><th>YC</th><th>STRT</th></tr></thead>
+          <tbody>
+            ${sorted.map(p => {
+              const s = playerStats[p.id];
+              return `<tr style="cursor:pointer;" onclick="window.location.href='/matchup.html?a=${abbr}&sport=soccer'">
+                <td style="font-weight:500">${p.name}</td>
+                <td>${p.position}</td>
+                <td>${p.jersey}</td>
+                <td style="color:var(--green);font-weight:700;">${s ? s.G : '-'}</td>
+                <td style="color:var(--cyan);">${s ? s.A : '-'}</td>
+                <td>${s ? s.SH : '-'}</td>
+                <td>${s ? s.ST : '-'}</td>
+                <td style="color:var(--amber);">${s ? s.YC : '-'}</td>
+                <td style="color:var(--dim);">${s ? s.STRT : '-'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    };
+
+    // Render basic roster first
+    renderRoster({});
+    panel.scrollIntoView({ behavior: 'smooth' });
+
+    // Fetch player stats in background
+    const outfield = sorted.filter(p => p.position !== 'G').slice(0, 18);
+    const gks = sorted.filter(p => p.position === 'G').slice(0, 1);
+    const toFetch = [...outfield, ...gks];
+    const results = await Promise.allSettled(
+      toFetch.map(p => fetch(`/api/soccer/${LEAGUE}/players/${p.id}`).then(r => r.json()))
+    );
+
+    const playerStats = {};
+    results.forEach((r, i) => {
+      if (r.status !== 'fulfilled' || !r.value || r.value.error) return;
+      const d = r.value;
+      const allSplits = d.allSplits || [];
+      const plSplit = allSplits.find(s => s.name?.includes('Europa League'));
+      const lgSplit = allSplits.find(s => s.name && !s.name.includes('Champions') && !s.name.includes('Friendly') && !s.name.includes('Copa') && !s.name.includes('International'));
+      const s = plSplit?.stats || lgSplit?.stats || d.leagueStats;
+      if (s) {
+        playerStats[toFetch[i].id] = {
+          G: s.totalGoals || s._G || '0',
+          A: s.goalAssists || s._A || '0',
+          SH: s.totalShots || s._SH || '0',
+          ST: s.shotsOnTarget || s._ST || '0',
+          FC: s.foulsCommitted || s._FC || '0',
+          YC: s.yellowCards || s._YC || '0',
+          STRT: s.starts || s._STRT || '0'
+        };
+      }
+    });
+
+    // Re-render with stats
+    renderRoster(playerStats);
+  } catch (e) { $('team-body').innerHTML = `Error: ${e.message}`; }
+}
+
+async function loadNews() {
+  try {
+    const res = await fetch(`/api/soccer/${LEAGUE}/news`);
+    const news = await res.json();
+    $('news-count').textContent = news.length;
+    if (!news.length) { $('news').innerHTML = '<div style="color:var(--dim);">No news</div>'; return; }
+    $('news').innerHTML = news.map(n => `
+      <div class="news-item">
+        <div class="news-headline" onclick="window.open('${n.link}','_blank')">${n.headline}</div>
+        ${n.description ? `<div style="font-size:10px;color:var(--dim);margin-top:2px;">${n.description}</div>` : ''}
+        <div class="news-meta">${n.published ? new Date(n.published).toLocaleString() : ''}</div>
+      </div>`).join('');
+  } catch {}
+}
+
+init();
+</script>
+<script src="/slip-widget.js"></script>
+<script src="/nav.js"></script>
+<script src="/theme.js"></script>
+</body>
+</html>

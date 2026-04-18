@@ -12,9 +12,13 @@
       { href: '/soccer.html', text: 'Scores' },
       { href: '/matchup.html?sport=soccer', text: 'Matchup' },
     ]},
-    prem: { label: 'PREM', color: '#37003c', links: [
+    prem: { label: 'PREM', color: '#6C2DC7', links: [
       { href: '/prem.html', text: 'Scores' },
       { href: '/matchup.html?sport=prem', text: 'Matchup' },
+    ]},
+    europa: { label: 'UEL', color: '#f57c00', links: [
+      { href: '/europa.html', text: 'Scores' },
+      { href: '/matchup.html?sport=europa', text: 'Matchup' },
     ]},
     tools: { label: 'TOOLS', color: '#4a5568', links: [
       { href: '/slips.html', text: 'Slips' },

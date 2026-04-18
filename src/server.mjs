@@ -1733,7 +1733,13 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
     const key = process.env.ODDS_API_KEY;
     if (key) {
       try {
-        const sportKey = req.params.league === 'uefa.champions' ? 'soccer_uefa_champs_league' : 'soccer_uefa_europa_league';
+        const leagueToOdds = {
+          'uefa.champions': 'soccer_uefa_champs_league',
+          'uefa.europa': 'soccer_uefa_europa_league',
+          'eng.1': 'soccer_epl',
+          'esp.1': 'soccer_spain_la_liga'
+        };
+        const sportKey = leagueToOdds[req.params.league] || 'soccer_epl';
 
         // Game odds (h2h, spreads, totals)
         const gameOddsUrl = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${key}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
@@ -1826,42 +1832,41 @@ app.get('/api/soccer/:league/props/:gameIndex', async (req, res) => {
         ...homeModelProps.map(p => ({ ...p, team: game.home.abbr }))
       ];
 
-      // Merge: for each player, combine real book lines + model lines for missing stats
-      // Also tag positions from model data onto book-only players
-      const realByName = {};
-      for (const p of realPlayerProps) realByName[p.name.toLowerCase()] = p;
+      // Merge: keep BOTH real book lines and model lines for comparison
+      // Tag each line with source so frontend can distinguish
+      const mergedByName = {};
 
-      // Add model lines + position to real players
-      for (const mp of modelProps) {
-        const key = mp.name.toLowerCase();
-        if (realByName[key]) {
-          // Tag position if missing
-          if (!realByName[key].position && mp.position) realByName[key].position = mp.position;
-          if (!realByName[key].team && mp.team) realByName[key].team = mp.team;
-          if (!realByName[key].headshot && mp.headshot) realByName[key].headshot = mp.headshot;
-          const existingStats = new Set(realByName[key].lines.map(l => l.stat));
-          for (const line of mp.lines || []) {
-            if (!existingStats.has(line.stat)) {
-              realByName[key].lines.push({ ...line, book: line.book || 'Model' });
-            }
-          }
+      // Add real book lines (tagged)
+      for (const p of realPlayerProps) {
+        const key = p.name.toLowerCase();
+        if (!mergedByName[key]) mergedByName[key] = { name: p.name, source: 'mixed', lines: [], position: p.position, team: p.team, headshot: p.headshot };
+        for (const l of p.lines) {
+          mergedByName[key].lines.push({ ...l, source: 'book', book: l.book || 'Sportsbook' });
         }
       }
 
-      // Players only in model (no book lines at all)
-      const realNames = new Set(Object.keys(realByName));
-      playerProps = [
-        ...Object.values(realByName),
-        ...modelProps.filter(p => !realNames.has(p.name.toLowerCase()))
-      ];
+      // Add model lines (tagged) — even for stats that books cover
+      for (const mp of modelProps) {
+        const key = mp.name.toLowerCase();
+        if (!mergedByName[key]) mergedByName[key] = { name: mp.name, source: 'model', lines: [], position: mp.position, team: mp.team, headshot: mp.headshot };
+        const p = mergedByName[key];
+        if (!p.position && mp.position) p.position = mp.position;
+        if (!p.team && mp.team) p.team = mp.team;
+        if (!p.headshot && mp.headshot) p.headshot = mp.headshot;
+        for (const line of mp.lines || []) {
+          p.lines.push({ ...line, source: 'model', book: 'Poisson' });
+        }
+      }
+
+      playerProps = Object.values(mergedByName);
     } else {
       const [homeProps, awayProps] = await Promise.all([
         homeTeam ? soccer.getTeamProps(req.params.league, homeTeam.id) : [],
         awayTeam ? soccer.getTeamProps(req.params.league, awayTeam.id) : []
       ]);
       playerProps = [
-        ...awayProps.map(p => ({ ...p, team: game.away.abbr })),
-        ...homeProps.map(p => ({ ...p, team: game.home.abbr }))
+        ...awayProps.map(p => ({ ...p, team: game.away.abbr, source: 'model', lines: (p.lines || []).map(l => ({ ...l, source: 'model', book: l.book || 'Poisson' })) })),
+        ...homeProps.map(p => ({ ...p, team: game.home.abbr, source: 'model', lines: (p.lines || []).map(l => ({ ...l, source: 'model', book: l.book || 'Poisson' })) }))
       ];
     }
 
@@ -2549,14 +2554,18 @@ app.get('/api/props/game/:gameIndex', async (req, res) => {
       // Merge model lines into real props for stats books don't cover
       const realByName = {};
       for (const p of realPlayerProps) realByName[p.name.toLowerCase()] = p;
+      // Add model lines alongside book lines (tagged for comparison)
       for (const mp of allModel) {
         const key = mp.name.toLowerCase();
         if (realByName[key]) {
-          const existingStats = new Set(realByName[key].lines.map(l => l.stat));
           for (const line of mp.lines) {
-            if (!existingStats.has(line.stat)) realByName[key].lines.push(line);
+            realByName[key].lines.push({ ...line, source: 'model', book: 'Poisson' });
           }
         }
+      }
+      // Tag book lines
+      for (const p of Object.values(realByName)) {
+        p.lines = p.lines.map(l => l.source ? l : { ...l, source: 'book' });
       }
       response.playerProps = Object.values(realByName);
     } else {

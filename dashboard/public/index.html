@@ -13,12 +13,12 @@
   .sub{font-size:10px;color:var(--dim);letter-spacing:4px;text-transform:uppercase;text-align:center;margin-bottom:30px;}
 
   /* Sport cards with integrated nav */
-  .sports{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;max-width:900px;width:100%;}
+  .sports{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:960px;width:100%;}
   .sport-block{background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden;transition:all .2s;}
   .sport-block:hover{border-color:var(--gold);box-shadow:0 4px 20px rgba(212,168,37,0.1);}
   .sport-block.nba{border-top:3px solid var(--amber);}
   .sport-block.ucl{border-top:3px solid var(--gold);}
-  .sport-block.prem{border-top:3px solid #37003c;}
+  .sport-block.prem{border-top:3px solid #6C2DC7;}
 
   .sport-main{display:flex;align-items:center;gap:12px;padding:20px 16px;text-decoration:none;color:var(--text);cursor:pointer;transition:background .15s;}
   .sport-main:hover{background:rgba(212,168,37,0.03);}
@@ -84,13 +84,27 @@
     <a href="/prem.html" class="sport-main">
       <div class="icon">&#9917;</div>
       <div>
-        <div class="name" style="color:#37003c;">PREM</div>
+        <div class="name" style="color:#6C2DC7;">PREM</div>
         <div class="desc">Premier League // Table // Teams</div>
       </div>
     </a>
     <div class="sport-links">
       <a href="/prem.html">Scores</a>
       <a href="/matchup.html?sport=prem">Matchup</a>
+    </div>
+  </div>
+
+  <div class="sport-block" style="border-top:3px solid #f57c00;">
+    <a href="/europa.html" class="sport-main">
+      <div class="icon">&#9917;</div>
+      <div>
+        <div class="name" style="color:#f57c00;">UEL</div>
+        <div class="desc">Europa League // Standings // Teams</div>
+      </div>
+    </a>
+    <div class="sport-links">
+      <a href="/europa.html">Scores</a>
+      <a href="/matchup.html?sport=europa">Matchup</a>
     </div>
   </div>
 </div>
