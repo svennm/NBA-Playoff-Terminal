@@ -490,73 +490,72 @@ function renderPlayIn() {
 
 function renderBrackets() {
   const allSeries = bracketData.series || [];
+  const seedMap = bracketData.seedMap || {};
 
   for (const conf of ['east', 'west']) {
     const el = $(`bracket-${conf}`);
     const confSeries = allSeries.filter(s => s.conf === conf);
 
-    const s1 = getTeamByRank(conf, 1);
-    const s2 = getTeamByRank(conf, 2);
-    const s3 = getTeamByRank(conf, 3);
-    const s4 = getTeamByRank(conf, 4);
-    const s5 = getTeamByRank(conf, 5);
-    const s6 = getTeamByRank(conf, 6);
-
-    // Find actual matchups from bracket data — match by team abbreviation
-    const findSeries = (teamA, teamB) => {
-      if (!teamA || !teamB) return null;
-      return confSeries.find(s =>
-        (s.away.abbr === teamA.abbr && s.home.abbr === teamB.abbr) ||
-        (s.away.abbr === teamB.abbr && s.home.abbr === teamA.abbr)
-      );
-    };
-
-    // 7th/8th seed: from bracket series data, or from play-in results, or from standings
-    const s7team = confSeries.find(s => s.away.seed === 7 || s.home.seed === 7);
-    const s8team = confSeries.find(s => s.away.seed === 8 || s.home.seed === 8);
-    const seed7 = s7team ? (s7team.away.seed === 7 ? { abbr: s7team.away.abbr, logo: s7team.away.logo } : { abbr: s7team.home.abbr, logo: s7team.home.logo })
-      : playInResults[conf].seed7 ? { abbr: playInResults[conf].seed7.abbr, logo: playInResults[conf].seed7.logo || '' }
-      : getTeamByRank(conf, 7);
-    const seed8 = s8team ? (s8team.away.seed === 8 ? { abbr: s8team.away.abbr, logo: s8team.away.logo } : { abbr: s8team.home.abbr, logo: s8team.home.logo })
-      : playInResults[conf].seed8 ? { abbr: playInResults[conf].seed8.abbr, logo: playInResults[conf].seed8.logo || '' }
-      : null;
-
-    // Use real matchup data or fall back to seedings
+    // Build series info display
     const seriesInfo = (s) => {
       if (!s) return '';
       const live = s.games.find(g => g.status === 'In Progress');
       const nextGame = s.games.find(g => g.status === 'Scheduled');
-      let statusHtml = '';
       if (live) {
-        statusHtml = `<div style="color:var(--green);font-size:9px;animation:pulse 1.5s infinite;">LIVE ${live.awayScore}-${live.homeScore}</div>`;
+        return `<div style="color:var(--green);font-size:9px;animation:pulse 1.5s infinite;text-align:center;margin-top:2px;">LIVE ${live.awayScore}-${live.homeScore}</div>`;
       } else if (s.awayWins + s.homeWins > 0) {
-        statusHtml = `<div style="font-size:9px;color:var(--amber);">${s.away.abbr} ${s.awayWins} - ${s.homeWins} ${s.home.abbr}</div>`;
+        return `<div style="font-size:9px;color:var(--amber);text-align:center;margin-top:2px;">${s.away.abbr} ${s.awayWins} - ${s.homeWins} ${s.home.abbr}</div>`;
       } else if (nextGame) {
         const d = new Date(nextGame.date);
-        statusHtml = `<div style="font-size:9px;color:var(--dim);">Game 1: ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>`;
+        return `<div style="font-size:9px;color:var(--dim);text-align:center;margin-top:2px;">Game 1: ${d.toLocaleDateString('en-US',{weekday:'short', month:'short',day:'numeric'})}</div>`;
       }
-      return statusHtml;
+      return '';
     };
 
-    const r1_1v8 = findSeries(s1, seed8 ? getTeamByRank(conf, 8) : null) || findSeries(s1, getTeamByRank(conf, 8));
-    const r1_4v5 = findSeries(s4, s5);
-    const r1_3v6 = findSeries(s3, s6);
-    const r1_2v7 = findSeries(s2, seed7 ? getTeamByRank(conf, 7) : null) || findSeries(s2, getTeamByRank(conf, 7));
+    // Build matchup HTML from actual series data
+    const seriesMatchup = (s) => {
+      if (!s) return matchupHtml(null, '?', null, '?', 'TBD');
+      const hSeed = seedMap[s.home.abbr]?.seed || '?';
+      const aSeed = seedMap[s.away.abbr]?.seed || '?';
+      const homeTeam = { abbr: s.home.abbr, logo: s.home.logo || '' };
+      const awayTeam = { abbr: s.away.abbr, logo: s.away.logo || '' };
+      return matchupHtml(homeTeam, hSeed, awayTeam, aSeed, `(${hSeed}) vs (${aSeed})`, findOdds(homeTeam, awayTeam));
+    };
 
-    el.innerHTML = `
-      <div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE BRACKET</div>
-      <div class="bracket-grid">
-        <!-- First Round -->
-        <div class="round-col">
-          <div class="round-label">First Round</div>
-          ${matchupHtml(s1, 1, seed8 || getTeamByRank(conf, 8), 8, '(1) vs (8)', findOdds(s1, null))}
-          ${seriesInfo(r1_1v8)}
-          ${matchupHtml(s4, 4, s5, 5, '(4) vs (5)', findOdds(s4, s5))}
-          ${seriesInfo(r1_4v5)}
-          ${matchupHtml(s3, 3, s6, 6, '(3) vs (6)', findOdds(s3, s6))}
-          ${seriesInfo(r1_3v6)}
-          ${matchupHtml(s2, 2, seed7 || getTeamByRank(conf, 7), 7, '(2) vs (7)', findOdds(s2, null))}
-          ${seriesInfo(r1_2v7)}
+    // Build first round: use confirmed series if available, fall back to seedings
+    let firstRoundHtml;
+    if (confSeries.length >= 4) {
+      const findByHighSeed = (seed) => confSeries.find(s => {
+        const hSeed = seedMap[s.home.abbr]?.seed;
+        return hSeed === seed;
+      });
+      const r1 = findByHighSeed(1) || confSeries[0];
+      const r4 = findByHighSeed(4) || confSeries[1];
+      const r3 = findByHighSeed(3) || confSeries[2];
+      const r2 = findByHighSeed(2) || confSeries[3];
+      firstRoundHtml = `
+            ${seriesMatchup(r1)}${seriesInfo(r1)}
+            ${seriesMatchup(r4)}${seriesInfo(r4)}
+            ${seriesMatchup(r3)}${seriesInfo(r3)}
+            ${seriesMatchup(r2)}${seriesInfo(r2)}`;
+    } else {
+      // Fall back to seedings from standings
+      const s1 = getTeamByRank(conf, 1), s2 = getTeamByRank(conf, 2);
+      const s3 = getTeamByRank(conf, 3), s4 = getTeamByRank(conf, 4);
+      const s5 = getTeamByRank(conf, 5), s6 = getTeamByRank(conf, 6);
+      firstRoundHtml = `
+            ${matchupHtml(s1, 1, null, 8, '(1) vs (8)')}
+            ${matchupHtml(s4, 4, s5, 5, '(4) vs (5)')}
+            ${matchupHtml(s3, 3, s6, 6, '(3) vs (6)')}
+            ${matchupHtml(s2, 2, null, 7, '(2) vs (7)')}`;
+    }
+
+      el.innerHTML = `
+        <div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE BRACKET</div>
+        <div class="bracket-grid">
+          <div class="round-col">
+            <div class="round-label">First Round</div>
+            ${firstRoundHtml}
         </div>
 
         <!-- Connector -->
