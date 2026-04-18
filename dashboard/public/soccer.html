@@ -192,8 +192,15 @@ async function init() {
 
 async function loadMatches() {
   try {
-    const res = await fetch(`/api/soccer/${LEAGUE}/scoreboard`);
-    const games = await res.json();
+    // Load both today's scoreboard and 14-day schedule, merge and deduplicate
+    const [scoreRes, schedRes] = await Promise.all([
+      fetch(`/api/soccer/${LEAGUE}/scoreboard`).then(r => r.json()).catch(() => []),
+      fetch(`/api/soccer/${LEAGUE}/schedule`).then(r => r.json()).catch(() => [])
+    ]);
+    const todayIds = new Set((scoreRes || []).map(g => g.id));
+    const futureGames = (schedRes || []).filter(g => !todayIds.has(g.id) && g.status !== 'Final');
+    const games = [...(scoreRes || []), ...futureGames];
+
     $('match-count').textContent = games.length;
     if (!games.length) {
       $('matches').innerHTML = '<div style="color:var(--dim);text-align:center;padding:20px;">No matches scheduled. Check back on match days.</div>';
