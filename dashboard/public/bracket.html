@@ -229,6 +229,8 @@ let games = [];
 let oddsData = [];
 let polyData = [];
 let bracketData = {};
+// Derived from play-in results — used by renderBrackets for 7/8 seed
+let playInResults = { east: { seed7: null, seed8: null }, west: { seed7: null, seed8: null } };
 
 async function init() {
   const [sweepRes, standingsRes, scheduleRes, bracketRes] = await Promise.all([
@@ -399,17 +401,62 @@ function renderPlayIn() {
       return aConf === conf || hConf === conf;
     });
 
-    // Build live score display for play-in games
-    const liveGame = (g) => {
+    // Build live/final score display
+    const gameStatus = (g) => {
       if (!g) return '';
-      const isLive = g.status === 'In Progress';
-      const isFinal = g.status === 'Final' || g.status === 'End of Period';
-      if (!isLive && !isFinal) return '';
-      const statusText = isLive ? `<span style="color:var(--green);animation:pulse 1.5s infinite;">LIVE Q${g.period} ${g.clock}</span>` : `<span style="color:var(--dim);">FINAL</span>`;
+      const isLive = g.status === 'In Progress' || g.status === 'Halftime' || g.status === 'End of Period';
+      const isFinal = g.status === 'Final';
+      const isScheduled = !isLive && !isFinal;
+      if (isScheduled) {
+        const d = new Date(g.date);
+        return `<div style="text-align:center;font-size:10px;margin-top:4px;padding:4px;background:rgba(0,0,0,0.3);border-radius:3px;color:var(--amber);">
+          ${d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+        </div>`;
+      }
+      const statusText = isLive
+        ? `<span style="color:var(--green);animation:pulse 1.5s infinite;">LIVE Q${g.period} ${g.clock}</span>`
+        : `<span style="color:var(--dim);">FINAL</span>`;
+      const awayWon = isFinal && parseInt(g.away.score) > parseInt(g.home.score);
+      const homeWon = isFinal && parseInt(g.home.score) > parseInt(g.away.score);
       return `<div style="text-align:center;font-size:10px;margin-top:4px;padding:4px;background:rgba(0,0,0,0.3);border-radius:3px;">
-        ${statusText} — ${g.away.abbr} <strong>${g.away.score}</strong> - <strong>${g.home.score}</strong> ${g.home.abbr}
+        ${statusText} — <span style="${awayWon?'color:var(--green);font-weight:700':homeWon?'opacity:0.5':''}">${g.away.abbr} ${g.away.score}</span> - <span style="${homeWon?'color:var(--green);font-weight:700':awayWon?'opacity:0.5':''}">${g.home.score} ${g.home.abbr}</span>
       </div>`;
     };
+
+    // Determine winners/losers of play-in games for the 8th seed game
+    const getResult = (g) => {
+      if (!g || g.status !== 'Final') return null;
+      const awayW = parseInt(g.away.score) > parseInt(g.home.score);
+      return { winner: awayW ? g.away : g.home, loser: awayW ? g.home : g.away };
+    };
+
+    const game78 = confPlayIn.find(g => {
+      const seeds = [g.away?.seed, g.home?.seed];
+      return seeds.includes(7) && seeds.includes(8);
+    });
+    const game910 = confPlayIn.find(g => {
+      const seeds = [g.away?.seed, g.home?.seed];
+      return seeds.includes(9) && seeds.includes(10);
+    });
+
+    const result78 = getResult(game78);
+    const result910 = getResult(game910);
+
+    // 8th seed game: loser of 7/8 vs winner of 9/10
+    let seed8GameTeamA = result78 ? result78.loser : null;
+    let seed8GameTeamB = result910 ? result910.winner : null;
+
+    // Check if there's an actual 8th seed game in the play-in data
+    const game8th = confPlayIn.find(g => {
+      if (!seed8GameTeamA && !seed8GameTeamB) return false;
+      const abbrs = [g.away?.abbr, g.home?.abbr];
+      return (seed8GameTeamA && abbrs.includes(seed8GameTeamA.abbr)) ||
+             (seed8GameTeamB && abbrs.includes(seed8GameTeamB.abbr));
+    });
+    // Don't reuse 7/8 or 9/10 game as 8th seed game
+    const actual8th = game8th && game8th !== game78 && game8th !== game910 ? game8th : null;
+
+    const teamObj = (t) => t ? { abbr: t.abbr, logo: t.logo || '' } : null;
 
     el.innerHTML = `
       <div class="conf-label ${conf}">${conf === 'east' ? 'EASTERN' : 'WESTERN'} CONFERENCE PLAY-IN</div>
@@ -417,18 +464,27 @@ function renderPlayIn() {
         <div class="playin-round">
           <div class="playin-round-title">7 vs 8 — Winner gets 7th seed</div>
           ${matchupHtml(s7, 7, s8, 8, '7/8 Game', findOdds(s7, s8))}
-          ${liveGame(confPlayIn.find(g => [g.away?.seed, g.home?.seed].includes(7) && [g.away?.seed, g.home?.seed].includes(8)))}
+          ${gameStatus(game78)}
+          ${result78 ? `<div style="text-align:center;font-size:9px;color:var(--green);margin-top:2px;">${result78.winner.abbr} → 7th seed</div>` : ''}
         </div>
         <div class="playin-round">
           <div class="playin-round-title">9 vs 10 — Loser eliminated</div>
           ${matchupHtml(s9, 9, s10, 10, '9/10 Game', findOdds(s9, s10))}
-          ${liveGame(confPlayIn.find(g => [g.away?.seed, g.home?.seed].includes(9) && [g.away?.seed, g.home?.seed].includes(10)))}
+          ${gameStatus(game910)}
+          ${result910 ? `<div style="text-align:center;font-size:9px;"><span style="color:var(--green);">${result910.winner.abbr} advances</span> | <span style="color:var(--red);">${result910.loser.abbr} eliminated</span></div>` : ''}
         </div>
         <div class="playin-round">
-          <div class="playin-round-title">8th Seed Game</div>
-          ${matchupHtml(null, '?', null, '?', 'Loser 7/8 vs Winner 9/10')}
+          <div class="playin-round-title">8th Seed Game — Winner gets 8th seed</div>
+          ${matchupHtml(teamObj(seed8GameTeamA), seed8GameTeamA ? '?' : '?', teamObj(seed8GameTeamB), seed8GameTeamB ? '?' : '?', seed8GameTeamA || seed8GameTeamB ? `${seed8GameTeamA?.abbr || 'TBD'} vs ${seed8GameTeamB?.abbr || 'TBD'}` : 'Loser 7/8 vs Winner 9/10', findOdds(teamObj(seed8GameTeamA), teamObj(seed8GameTeamB)))}
+          ${actual8th ? gameStatus(actual8th) : seed8GameTeamA || seed8GameTeamB ? '<div style="text-align:center;font-size:9px;color:var(--amber);margin-top:2px;">Game TBD</div>' : ''}
         </div>
       </div>`;
+
+    // Store play-in results for bracket first round
+    if (result78) playInResults[conf].seed7 = result78.winner;
+    // 8th seed = winner of the 8th seed game (or TBD if not played)
+    const result8th = actual8th ? getResult(actual8th) : null;
+    if (result8th) playInResults[conf].seed8 = result8th.winner;
   }
 }
 
@@ -455,11 +511,15 @@ function renderBrackets() {
       );
     };
 
-    // Find the play-in winner teams (7/8 seed) from bracket data
+    // 7th/8th seed: from bracket series data, or from play-in results, or from standings
     const s7team = confSeries.find(s => s.away.seed === 7 || s.home.seed === 7);
     const s8team = confSeries.find(s => s.away.seed === 8 || s.home.seed === 8);
-    const seed7 = s7team ? (s7team.away.seed === 7 ? { abbr: s7team.away.abbr, logo: s7team.away.logo } : { abbr: s7team.home.abbr, logo: s7team.home.logo }) : null;
-    const seed8 = s8team ? (s8team.away.seed === 8 ? { abbr: s8team.away.abbr, logo: s8team.away.logo } : { abbr: s8team.home.abbr, logo: s8team.home.logo }) : null;
+    const seed7 = s7team ? (s7team.away.seed === 7 ? { abbr: s7team.away.abbr, logo: s7team.away.logo } : { abbr: s7team.home.abbr, logo: s7team.home.logo })
+      : playInResults[conf].seed7 ? { abbr: playInResults[conf].seed7.abbr, logo: playInResults[conf].seed7.logo || '' }
+      : getTeamByRank(conf, 7);
+    const seed8 = s8team ? (s8team.away.seed === 8 ? { abbr: s8team.away.abbr, logo: s8team.away.logo } : { abbr: s8team.home.abbr, logo: s8team.home.logo })
+      : playInResults[conf].seed8 ? { abbr: playInResults[conf].seed8.abbr, logo: playInResults[conf].seed8.logo || '' }
+      : null;
 
     // Use real matchup data or fall back to seedings
     const seriesInfo = (s) => {
