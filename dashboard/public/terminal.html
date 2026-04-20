@@ -1391,6 +1391,29 @@ function playerRow(p, labels, isStarter) {
   </tr>`;
 }
 
+// Bet a parlay from smart picks
+function betParlay(legs) {
+  // Clear existing slip widget legs
+  if (typeof clearSlip === 'function') clearSlip();
+
+  // Add each leg to the slip widget
+  for (const l of legs) {
+    const legData = {
+      type: 'prop',
+      game: l.game,
+      player: l.player,
+      stat: l.stat,
+      line: l.line,
+      pick: `${l.pick} ${l.line}`,
+      odds: l.odds
+    };
+    if (typeof addToSlip === 'function') addToSlip(legData);
+  }
+
+  // Navigate to slips page
+  window.location.href = '/slips.html';
+}
+
 // Smart Picks
 async function loadSmartPicks() {
   try {
@@ -1430,6 +1453,7 @@ async function loadSmartPicks() {
           <span>Avg Edge: +${p.avgEdge}%</span>
           <span style="color:${p.ev > 0 ? 'var(--green)' : 'var(--red)'};">EV: ${p.ev > 0 ? '+' : ''}${p.ev}%</span>
         </div>
+        <button onclick="betParlay(${JSON.stringify(p.legs).replace(/"/g,'&quot;')})" style="margin-top:8px;width:100%;padding:8px;font-family:'Orbitron',sans-serif;font-size:10px;letter-spacing:2px;border:1px solid var(--gold);background:rgba(212,168,37,0.1);color:var(--gold);border-radius:4px;cursor:pointer;transition:all .15s;" onmouseover="this.style.background='rgba(212,168,37,0.2)'" onmouseout="this.style.background='rgba(212,168,37,0.1)'">BET THIS PARLAY</button>
       </div>
     `).join('');
 
