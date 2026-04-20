@@ -3285,6 +3285,21 @@ async function autoResolve() {
 
 // Legacy auto-resolve code replaced by resolveEngine above
 
+// Admin: clean up invalid HxM slips (resolved before games played)
+app.post('/api/admin/clean-hxm', async (req, res) => {
+  try {
+    const allSlips = await store.getSlips({ limit: 500 });
+    const hxmSlips = allSlips.filter(s => s.userKey === 'hxm' || s.user === 'HxM');
+    const removed = await store.adminDeleteUserSlips('hxm');
+    await store.adminResetUser('hxm');
+    // Clear the daily post flag so fresh picks can be posted
+    cache.del('hxm-slips-posted-' + new Date().toISOString().slice(0, 10));
+    res.json({ removed, total: hxmSlips.length, message: `Deleted ${removed} HxM slips, reset bankroll to $1000, cleared daily flag` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Admin resolve endpoint — no auth required, resolves ALL slips
 app.post('/api/admin/resolve', async (req, res) => {
   try {

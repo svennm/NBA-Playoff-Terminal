@@ -335,7 +335,30 @@ export async function deleteSlip(id, userKey) {
   return { ok: true };
 }
 
+export async function adminDeleteUserSlips(userKey) {
+  const all = await backend.lrange('slips', 0, 500);
+  let removed = 0;
+  for (let i = 0; i < all.length; i++) {
+    if (all[i].userKey === userKey || all[i].user === userKey) {
+      all[i].status = 'deleted';
+      await backend.lset('slips', i, all[i]);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+export async function adminResetUser(userKey) {
+  const user = await backend.hget('users', userKey);
+  if (!user) return false;
+  user.bankroll = 1000;
+  user.record = { wins: 0, losses: 0, pushes: 0 };
+  await backend.hset('users', userKey, user);
+  return true;
+}
+
 export default {
   createUser, getUser, getUserFull, loginUser, verifyToken, getLeaderboard,
-  createSlip, getSlips, getSlip, gradeSlip, deleteSlip
+  createSlip, getSlips, getSlip, gradeSlip, deleteSlip,
+  adminDeleteUserSlips, adminResetUser
 };
