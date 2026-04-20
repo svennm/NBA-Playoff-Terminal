@@ -1354,6 +1354,7 @@ async function loadFeed() {
         <div class="slip-card-header">
           <div>
             <span class="slip-card-user">${s.user}</span>
+            ${s.user === 'HxM' || s.userKey === 'hxm' ? '<span style="font-size:7px;padding:1px 5px;border-radius:2px;background:rgba(212,168,37,0.15);color:var(--gold);font-family:Orbitron,sans-serif;letter-spacing:1px;margin-left:4px;">AI PICK</span>' : ''}
             <span class="slip-card-meta">${time}</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">

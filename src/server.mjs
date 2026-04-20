@@ -1362,7 +1362,48 @@ app.get('/api/smart-picks', async (req, res) => {
         : 'Playoff-adjusted Bayesian model (L10 recent + season/playoff blended prior) vs -115 standard. Set ODDS_API_KEY for real book line comparison.'
     };
 
-    cache.set(ck, result, 30 * 60_000); // 30 min cache
+    // Auto-submit picks as HxM system account slips (once per day)
+    const slipCk = 'hxm-slips-posted-' + new Date().toISOString().slice(0, 10);
+    if (!cache.get(slipCk) && picks.filter(Boolean).length > 0) {
+      try {
+        // Ensure HxM system account exists
+        let hxmUser = await store.getUser('hxm');
+        if (!hxmUser) {
+          await store.createUser('hxm', 'HxMSystem2026!');
+          hxmUser = await store.getUser('hxm');
+        }
+
+        // Submit each parlay as a slip
+        for (const parlay of picks.filter(Boolean)) {
+          const slipLegs = parlay.legs.map(l => ({
+            type: 'prop',
+            game: l.game,
+            player: l.player,
+            stat: l.stat,
+            line: l.line,
+            pick: `${l.pick} ${l.line}`,
+            odds: l.odds
+          }));
+
+          const slipResult = await store.createSlip({
+            user: 'hxm',
+            legs: slipLegs,
+            wager: 50, // $50 per parlay
+            gameDate: parlay.legs[0]?.gameDate || null
+          });
+
+          if (slipResult.slip) {
+            broadcast({ type: 'new_slip', slip: slipResult.slip });
+            console.log(`[HxM] Auto-posted: ${parlay.label} (${slipLegs.length} legs, ${parlay.parlayOdds})`);
+          }
+        }
+        cache.set(slipCk, true, 24 * 60 * 60_000); // flag: don't re-post today
+      } catch (e) {
+        console.error('[HxM] Failed to post slips:', e.message);
+      }
+    }
+
+    cache.set(ck, result, 30 * 60_000);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
