@@ -1102,8 +1102,17 @@ app.get('/api/smart-picks', async (req, res) => {
 
   try {
     const sweepData = getCache() || await runSweep();
-    const games = (sweepData?.games || []).filter(g => g.status === 'Scheduled' || g.status === 'In Progress');
-    if (!games.length) return res.json({ picks: [], reason: 'No upcoming games today' });
+    // Only analyze games that haven't started yet
+    const now = new Date();
+    const games = (sweepData?.games || []).filter(g => {
+      if (g.status === 'Final' || g.status === 'Full Time') return false;
+      // Skip games that already started
+      if (g.status === 'In Progress' || g.status === 'Halftime' || g.status === 'End of Period') return false;
+      // Skip games in the past
+      const gameTime = new Date(g.date);
+      return gameTime > new Date(now.getTime() - 30 * 60_000); // allow 30min buffer
+    });
+    if (!games.length) return res.json({ picks: [], reason: 'No upcoming games found. Check back when new games are scheduled.' });
 
     const teams = sweepData?.teams || await espn.getTeams();
     const allEdges = [];
@@ -1373,8 +1382,14 @@ app.get('/api/smart-picks', async (req, res) => {
           hxmUser = await store.getUser('hxm');
         }
 
-        // Submit each parlay as a slip
+        // Submit each parlay as a slip — only if all games are still upcoming
         for (const parlay of picks.filter(Boolean)) {
+          // Verify legs are for future games
+          const allFuture = parlay.legs.every(l => {
+            const gt = new Date(l.gameDate);
+            return gt > new Date(Date.now() - 30 * 60_000);
+          });
+          if (!allFuture) { console.log('[HxM] Skipping stale parlay:', parlay.label); continue; }
           const slipLegs = parlay.legs.map(l => ({
             type: 'prop',
             game: l.game,
