@@ -273,7 +273,7 @@ export async function createSlip({ user, legs, wager, gameDate }) {
 
 export async function getSlips({ status, user, limit = 50 } = {}) {
   const all = await backend.lrange('slips', 0, 200);
-  let filtered = all;
+  let filtered = all.filter(s => s.status !== 'deleted'); // always hide deleted
   if (status) filtered = filtered.filter(s => s.status === status);
   if (user) filtered = filtered.filter(s => s.userKey === user.toLowerCase());
   return filtered.slice(0, limit);
