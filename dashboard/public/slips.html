@@ -345,7 +345,8 @@ const $ = id => document.getElementById(id);
 
 let currentUser = null;
 let authToken = null;
-let currentLegs = [];
+let currentLegs = JSON.parse(localStorage.getItem('hxm_current_legs') || '[]');
+function persistLegs() { localStorage.setItem('hxm_current_legs', JSON.stringify(currentLegs)); }
 let allGames = [];
 let feedTab = 'all';
 let oddsFormat = localStorage.getItem('oddsFormat') || 'american';
@@ -1096,6 +1097,7 @@ function toggleLeg(btn, legData) {
     currentLegs.push({ ...legData, _id: legId });
     btn.classList.add('selected');
   }
+  persistLegs();
   renderSlipBuilder();
 }
 
@@ -1129,6 +1131,7 @@ function removeLeg(idx) {
   const btn = document.querySelector(`[data-leg-id="${leg._id}"]`);
   if (btn) btn.classList.remove('selected');
   currentLegs.splice(idx, 1);
+  persistLegs();
   renderSlipBuilder();
 }
 
@@ -1245,8 +1248,9 @@ async function submitSlip() {
   if (data.error) {
     alert(data.error);
   } else {
-    // Clear slip
+    // Clear slip after successful submit
     currentLegs = [];
+    persistLegs();
     document.querySelectorAll('.prop-btn.selected').forEach(b => b.classList.remove('selected'));
     renderSlipBuilder();
     loadFeed();
@@ -1540,14 +1544,21 @@ async function boot() {
   if (currentUser) loadHistory();
   setInterval(() => { loadFeed(); loadLeaderboard(); }, 30000);
 
-  // Import legs from cross-page slip widget
+  // Import legs from cross-page slip widget (merge, don't replace)
   const widgetLegs = typeof getSlipLegs === 'function' ? getSlipLegs() : [];
-  if (widgetLegs.length && !currentLegs.length) {
-    currentLegs = widgetLegs.map((l, i) => ({ ...l, _id: `imported-${i}` }));
-    renderSlipBuilder();
-    // Clear the widget since they're now in the real builder
+  if (widgetLegs.length) {
+    const existingIds = new Set(currentLegs.map(l => `${l.player}-${l.stat}-${l.pick}`));
+    for (const l of widgetLegs) {
+      const key = `${l.player}-${l.stat}-${l.pick}`;
+      if (!existingIds.has(key)) {
+        currentLegs.push({ ...l, _id: `imported-${Date.now()}-${Math.random().toString(36).slice(2,6)}` });
+      }
+    }
+    persistLegs();
     if (typeof clearSlip === 'function') clearSlip();
   }
+  // Render existing legs (restored from localStorage or imported)
+  if (currentLegs.length) renderSlipBuilder();
 }
 
 boot();
