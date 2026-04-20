@@ -658,6 +658,24 @@
   .trend-up{color:var(--green);}
   .trend-down{color:var(--red);}
 
+  /* Smart picks */
+  .parlay-card{background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;border-left:3px solid var(--gold);transition:border-color .2s;}
+  .parlay-card:hover{border-color:var(--gold);}
+  .parlay-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .parlay-label{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--gold);}
+  .parlay-odds{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;color:var(--green);}
+  .parlay-leg{display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(0,0,0,0.2);border-radius:4px;margin-bottom:4px;font-size:11px;}
+  .parlay-leg .leg-pick{font-weight:700;color:var(--cyan);min-width:100px;}
+  .parlay-leg .leg-edge{font-weight:600;min-width:50px;text-align:right;}
+  .parlay-leg .leg-player{flex:1;color:var(--text);}
+  .parlay-leg .leg-game{color:var(--dim);font-size:9px;}
+  .parlay-meta{display:flex;gap:12px;margin-top:6px;font-size:9px;color:var(--dim);}
+  .parlay-meta span{padding:2px 6px;background:rgba(0,0,0,0.2);border-radius:2px;}
+  .edge-badge{display:inline-block;padding:1px 5px;border-radius:2px;font-size:9px;font-weight:600;}
+  .edge-high{background:rgba(0,255,136,0.12);color:var(--green);}
+  .edge-med{background:rgba(0,229,255,0.1);color:var(--cyan);}
+  .edge-low{background:rgba(255,179,0,0.1);color:var(--amber);}
+
   /* Live stats button on game cards */
   .live-stats-btn{background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:var(--green);padding:3px 8px;font-size:8px;font-family:'Orbitron',sans-serif;letter-spacing:1px;border-radius:3px;cursor:pointer;transition:all .15s;margin-top:4px;}
   .live-stats-btn:hover{background:rgba(0,255,136,0.2);border-color:var(--green);}
@@ -806,6 +824,17 @@
     </div>
     <div class="panel-body" id="future-panel" style="max-height:500px;">
       <div style="color:var(--dim);font-size:10px;">Loading schedule...</div>
+    </div>
+  </div>
+
+  <!-- AI Smart Picks -->
+  <div class="panel two-col">
+    <div class="panel-header" style="color:var(--gold);background:linear-gradient(90deg,rgba(212,168,37,0.08),transparent);">
+      Daily Smart Picks — Model Edge Parlays
+      <span style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--dim);" id="picks-meta"></span>
+    </div>
+    <div class="panel-body" id="picks-panel" style="max-height:600px;">
+      <div style="color:var(--dim);font-size:10px;">Scanning games for mispricings...</div>
     </div>
   </div>
 
@@ -1362,6 +1391,84 @@ function playerRow(p, labels, isStarter) {
   </tr>`;
 }
 
+// Smart Picks
+async function loadSmartPicks() {
+  try {
+    const res = await fetch('/api/smart-picks');
+    const data = await res.json();
+
+    $('picks-meta').textContent = `${data.gamesAnalyzed || 0} games | ${data.edgesFound || 0} edges found`;
+
+    if (!data.picks?.length) {
+      $('picks-panel').innerHTML = `<div style="color:var(--dim);text-align:center;padding:16px;">${data.reason || 'No strong edges found today. Check back closer to game time.'}</div>`;
+      return;
+    }
+
+    let html = '';
+
+    // Render parlays
+    html += data.picks.map(p => `
+      <div class="parlay-card">
+        <div class="parlay-header">
+          <div class="parlay-label">${p.label}</div>
+          <div class="parlay-odds">${p.parlayOdds > 0 ? '+' : ''}${p.parlayOdds}</div>
+        </div>
+        ${p.legs.map(l => {
+          const edgeCls = l.edge >= 8 ? 'edge-high' : l.edge >= 5 ? 'edge-med' : 'edge-low';
+          const trendIcon = l.trending === 'hot' ? '<span style="color:var(--green);">&#9650;</span>' : l.trending === 'cold' ? '<span style="color:var(--red);">&#9660;</span>' : '';
+          return `<div class="parlay-leg">
+            <span class="leg-pick">${l.pick} ${l.line} ${l.stat}</span>
+            <span class="leg-player">${l.player} ${trendIcon} <span class="leg-game">${l.game}</span></span>
+            <span class="leg-edge"><span class="edge-badge ${edgeCls}">+${l.edge}%</span></span>
+          </div>`;
+        }).join('')}
+        <div class="parlay-meta">
+          <span>Prob: ${p.combinedProb}%</span>
+          <span>Decimal: ${p.decimalOdds}x</span>
+          <span>Avg Edge: +${p.avgEdge}%</span>
+          <span style="color:${p.ev > 0 ? 'var(--green)' : 'var(--red)'};">EV: ${p.ev > 0 ? '+' : ''}${p.ev}%</span>
+        </div>
+      </div>
+    `).join('');
+
+    // Top individual edges
+    if (data.topEdges?.length) {
+      html += `
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px;">
+          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Top Individual Edges</div>
+          <table style="width:100%;border-collapse:collapse;font-size:10px;">
+            <thead><tr style="color:var(--dim);font-size:8px;text-transform:uppercase;letter-spacing:1px;">
+              <th style="text-align:left;padding:3px 4px;">Player</th>
+              <th style="text-align:left;padding:3px 4px;">Pick</th>
+              <th style="padding:3px 4px;">Edge</th>
+              <th style="padding:3px 4px;">Prob</th>
+              <th style="padding:3px 4px;">Trend</th>
+              <th style="text-align:left;padding:3px 4px;">Game</th>
+            </tr></thead>
+            <tbody>
+              ${data.topEdges.slice(0, 10).map(e => `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.02);">
+                  <td style="padding:3px 4px;font-weight:500;">${e.player}</td>
+                  <td style="padding:3px 4px;"><span style="color:var(--cyan);">${e.pick} ${e.line}</span> <span style="color:var(--dim);">${e.stat}</span></td>
+                  <td style="padding:3px 4px;text-align:center;color:var(--green);font-weight:600;">+${e.edge}%</td>
+                  <td style="padding:3px 4px;text-align:center;">${e.prob}%</td>
+                  <td style="padding:3px 4px;text-align:center;">${e.trending === 'hot' ? '<span style="color:var(--green);">HOT</span>' : e.trending === 'cold' ? '<span style="color:var(--red);">COLD</span>' : '<span style="color:var(--dim);">—</span>'}</td>
+                  <td style="padding:3px 4px;color:var(--dim);">${e.game}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    html += `<div style="margin-top:8px;font-size:8px;color:var(--dim);padding:4px;background:rgba(0,0,0,0.2);border-radius:3px;">${data.methodology || ''}</div>`;
+
+    $('picks-panel').innerHTML = html;
+  } catch (e) {
+    $('picks-panel').innerHTML = `<div style="color:var(--red);padding:12px;">Failed to load picks: ${e.message}</div>`;
+  }
+}
+
 // Future games
 async function loadFutureGames() {
   try {
@@ -1519,6 +1626,7 @@ function filterLines(stat) {
 // Init
 fetchSweep().then(setOnline).catch(setOffline);
 loadFutureGames();
+loadSmartPicks();
 
 // Auto-refresh every 60s
 setInterval(() => fetchSweep().then(setOnline).catch(setOffline), 60000);

@@ -1092,6 +1092,176 @@ app.get('/api/soccer/:league/analysis/:gameIndex', async (req, res) => {
 
 // API: Auto-generate bookmaker lines with 3 models (NBA)
 // Uses L10, L20, and full season windows
+// === AI PARLAY PICKS ===
+// Scans all games, finds model vs book mispricings, builds optimal parlays
+
+app.get('/api/smart-picks', async (req, res) => {
+  const ck = 'smart-picks-' + new Date().toISOString().slice(0, 10);
+  const cached = cache.get(ck);
+  if (cached) return res.json(cached);
+
+  try {
+    const sweepData = getCache() || await runSweep();
+    const games = (sweepData?.games || []).filter(g => g.status === 'Scheduled' || g.status === 'In Progress');
+    if (!games.length) return res.json({ picks: [], reason: 'No upcoming games today' });
+
+    const teams = sweepData?.teams || await espn.getTeams();
+    const allEdges = [];
+
+    // Analyze each game — find edges using Poisson + Bayesian
+    for (let gi = 0; gi < Math.min(games.length, 8); gi++) {
+      const game = games[gi];
+      const homeTeam = teams.find(t => t.abbr === game.home.abbr);
+      const awayTeam = teams.find(t => t.abbr === game.away.abbr);
+
+      for (const [teamId, teamAbbr] of [[homeTeam?.id, game.home.abbr], [awayTeam?.id, game.away.abbr]]) {
+        if (!teamId) continue;
+        try {
+          const roster = await espn.getPlayerStats(teamId);
+          const top = roster.slice(0, 8);
+          const gamelogs = await Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id)));
+
+          for (let pi = 0; pi < top.length; pi++) {
+            const player = top[pi];
+            const gl = gamelogs[pi].status === 'fulfilled' ? gamelogs[pi].value : null;
+            if (!gl?.games?.length || gl.games.length < 10) continue;
+
+            const statKeys = ['PTS', 'REB', 'AST', '3PM'];
+            for (const key of statKeys) {
+              const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+              if (all.length < 10) continue;
+              const mean = all.reduce((a, b) => a + b, 0) / all.length;
+              if (mean < 1) continue;
+
+              // L10 for recent form
+              const l10 = all.slice(0, 10);
+              const l10Mean = l10.reduce((a, b) => a + b, 0) / l10.length;
+
+              // Bayesian posterior (L10 data, season prior)
+              const bay = bayesianUpdate(l10, mean, 5);
+              if (!bay) continue;
+
+              const line = bay.line;
+              // Compare vs -115 standard book (52.4% implied)
+              const bookImpl = 53.5;
+              const overEdge = bay.overProb - bookImpl;
+              const underEdge = (100 - bay.overProb) - bookImpl;
+
+              const bestEdge = Math.max(overEdge, underEdge);
+              const pick = overEdge > underEdge ? 'Over' : 'Under';
+              const pickProb = pick === 'Over' ? bay.overProb : (100 - bay.overProb);
+              const pickOdds = pick === 'Over' ? bay.overOdds : bay.underOdds;
+
+              if (bestEdge >= 3) { // minimum 3% edge
+                const variance = all.reduce((a, b) => a + (b - mean) ** 2, 0) / (all.length - 1);
+                const consistency = Math.sqrt(variance) / mean;
+
+                allEdges.push({
+                  player: player.name, team: teamAbbr,
+                  game: `${game.away.abbr} @ ${game.home.abbr}`,
+                  gameDate: game.date,
+                  stat: key, line, pick,
+                  mean: +mean.toFixed(1), l10Mean: +l10Mean.toFixed(1),
+                  bayesianMean: bay.mean,
+                  prob: +pickProb.toFixed(1),
+                  odds: pickOdds,
+                  edge: +bestEdge.toFixed(1),
+                  consistency: +consistency.toFixed(2),
+                  ci90: bay.ci90,
+                  games: all.length,
+                  trending: l10Mean > mean ? 'hot' : l10Mean < mean * 0.9 ? 'cold' : 'stable',
+                  confidence: bestEdge >= 8 ? 'high' : bestEdge >= 5 ? 'medium' : 'low'
+                });
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Sort by edge, filter for quality
+    allEdges.sort((a, b) => b.edge - a.edge);
+
+    // Build parlays — diversify by game and player
+    const buildParlay = (edges, legs = 4, label = '') => {
+      const used = new Set(); // track used players
+      const usedGames = new Set();
+      const selected = [];
+
+      for (const e of edges) {
+        if (selected.length >= legs) break;
+        if (used.has(e.player)) continue;
+        // Allow max 2 from same game for correlation
+        const gameCount = [...usedGames].filter(g => g === e.game).length;
+        if (gameCount >= 2) continue;
+
+        selected.push(e);
+        used.add(e.player);
+        usedGames.add(e.game);
+      }
+
+      if (selected.length < 2) return null;
+
+      // Calculate parlay odds
+      let decimalOdds = 1;
+      let combinedProb = 1;
+      for (const leg of selected) {
+        const dec = leg.odds > 0 ? (leg.odds / 100) + 1 : (100 / Math.abs(leg.odds)) + 1;
+        decimalOdds *= dec;
+        combinedProb *= leg.prob / 100;
+      }
+      const americanOdds = decimalOdds >= 2 ? Math.round((decimalOdds - 1) * 100) : Math.round(-100 / (decimalOdds - 1));
+      const avgEdge = selected.reduce((a, b) => a + b.edge, 0) / selected.length;
+
+      return {
+        label: label || `${selected.length}-Leg Value Parlay`,
+        legs: selected,
+        parlayOdds: americanOdds,
+        decimalOdds: +decimalOdds.toFixed(2),
+        combinedProb: +(combinedProb * 100).toFixed(2),
+        avgEdge: +avgEdge.toFixed(1),
+        ev: +((combinedProb * decimalOdds - 1) * 100).toFixed(1)
+      };
+    };
+
+    // 3 different parlays with different strategies
+    const picks = [];
+
+    // 1. Highest edge parlay (best value)
+    const highEdge = buildParlay(allEdges, 4, 'Best Edge Parlay');
+    if (highEdge) picks.push(highEdge);
+
+    // 2. Hot players parlay (trending up)
+    const hotPlayers = allEdges.filter(e => e.trending === 'hot');
+    const hotParlay = buildParlay(hotPlayers, 3, 'Hot Streak Parlay');
+    if (hotParlay) picks.push(hotParlay);
+
+    // 3. High consistency + edge (safe picks)
+    const consistent = allEdges.filter(e => e.consistency < 0.35 && e.edge >= 4);
+    const safeParlay = buildParlay(consistent, 3, 'Consistent Value Parlay');
+    if (safeParlay) picks.push(safeParlay);
+
+    // 4. High confidence only
+    const highConf = allEdges.filter(e => e.confidence === 'high');
+    const confParlay = buildParlay(highConf, 3, 'High Confidence Parlay');
+    if (confParlay) picks.push(confParlay);
+
+    const result = {
+      date: new Date().toISOString().slice(0, 10),
+      gamesAnalyzed: Math.min(games.length, 8),
+      edgesFound: allEdges.length,
+      topEdges: allEdges.slice(0, 15),
+      picks: picks.filter(Boolean),
+      methodology: 'Bayesian posterior (L10 data + season prior) vs -115 standard book. Edge = model prob minus book implied prob. Parlays diversified across games.'
+    };
+
+    cache.set(ck, result, 30 * 60_000); // 30 min cache
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // === MODEL UTILITIES ===
 
 // Poisson CDF (shared)
