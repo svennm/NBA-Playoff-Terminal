@@ -1416,9 +1416,11 @@ async function loadSmartPicks() {
         ${p.legs.map(l => {
           const edgeCls = l.edge >= 8 ? 'edge-high' : l.edge >= 5 ? 'edge-med' : 'edge-low';
           const trendIcon = l.trending === 'hot' ? '<span style="color:var(--green);">&#9650;</span>' : l.trending === 'cold' ? '<span style="color:var(--red);">&#9660;</span>' : '';
+          const poTag = l.playoffBoost ? `<span style="font-size:7px;color:${l.playoffBoost > 0 ? 'var(--green)' : 'var(--red)'};margin-left:4px;">PO${l.playoffBoost > 0 ? '+' : ''}${l.playoffBoost}</span>` : '';
+          const bookTag = l.hasRealOdds ? `<span style="font-size:7px;color:var(--green);background:rgba(0,255,136,0.1);padding:0 3px;border-radius:2px;margin-left:4px;">${l.bookSource}</span>` : '';
           return `<div class="parlay-leg">
             <span class="leg-pick">${l.pick} ${l.line} ${l.stat}</span>
-            <span class="leg-player">${l.player} ${trendIcon} <span class="leg-game">${l.game}</span></span>
+            <span class="leg-player">${l.player} ${trendIcon}${poTag}${bookTag} <span class="leg-game">${l.game}</span></span>
             <span class="leg-edge"><span class="edge-badge ${edgeCls}">+${l.edge}%</span></span>
           </div>`;
         }).join('')}
@@ -1444,6 +1446,8 @@ async function loadSmartPicks() {
               <th style="padding:3px 4px;">Prob</th>
               <th style="padding:3px 4px;">Trend</th>
               <th style="text-align:left;padding:3px 4px;">Game</th>
+              <th style="padding:3px 4px;">PO Adj</th>
+              <th style="padding:3px 4px;">Book</th>
             </tr></thead>
             <tbody>
               ${data.topEdges.slice(0, 10).map(e => `
@@ -1454,6 +1458,8 @@ async function loadSmartPicks() {
                   <td style="padding:3px 4px;text-align:center;">${e.prob}%</td>
                   <td style="padding:3px 4px;text-align:center;">${e.trending === 'hot' ? '<span style="color:var(--green);">HOT</span>' : e.trending === 'cold' ? '<span style="color:var(--red);">COLD</span>' : '<span style="color:var(--dim);">—</span>'}</td>
                   <td style="padding:3px 4px;color:var(--dim);">${e.game}</td>
+                  <td style="padding:3px 4px;font-size:8px;color:var(--dim);">${e.playoffBoost ? (e.playoffBoost > 0 ? '<span style="color:var(--green);">PO+' + e.playoffBoost + '</span>' : '<span style="color:var(--red);">PO' + e.playoffBoost + '</span>') : ''}</td>
+                  <td style="padding:3px 4px;font-size:8px;color:var(--dim);">${e.hasRealOdds ? '<span style="color:var(--green);">' + e.bookSource + '</span>' : ''}</td>
                 </tr>
               `).join('')}
             </tbody>

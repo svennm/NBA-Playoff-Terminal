@@ -1108,7 +1108,39 @@ app.get('/api/smart-picks', async (req, res) => {
     const teams = sweepData?.teams || await espn.getTeams();
     const allEdges = [];
 
-    // Analyze each game — find edges using Poisson + Bayesian
+    // Get real book odds for all games (if available)
+    let bookOddsMap = {}; // playerName -> { stat -> { line, overOdds, underOdds, book } }
+    if (odds.isConfigured()) {
+      try {
+        const events = await odds.getEvents();
+        for (const game of games.slice(0, 8)) {
+          const matchEvent = events.data?.find(e => {
+            const h = e.home_team?.toLowerCase(); const gh = game.home.name.toLowerCase();
+            return h?.includes(gh.split(' ').pop()) || gh.includes(h?.split(' ').pop());
+          });
+          if (matchEvent) {
+            const propsResult = await odds.getPlayerProps(matchEvent.id);
+            if (propsResult.data) {
+              for (const p of propsResult.data) {
+                const key = p.name.toLowerCase();
+                if (!bookOddsMap[key]) bookOddsMap[key] = {};
+                for (const l of p.lines) {
+                  bookOddsMap[key][l.stat] = {
+                    line: l.line,
+                    overOdds: l.bestOver?.odds || l.over?.odds || -110,
+                    underOdds: l.bestUnder?.odds || l.under?.odds || -110,
+                    book: l.bestOver?.book || l.over?.book || 'Best'
+                  };
+                }
+              }
+            }
+          }
+        }
+      } catch (e) { console.error('[SMART-PICKS] Odds API error:', e.message); }
+    }
+    const hasBookData = Object.keys(bookOddsMap).length > 0;
+
+    // Analyze each game — find edges using playoff-adjusted Bayesian vs real book lines
     for (let gi = 0; gi < Math.min(games.length, 8); gi++) {
       const game = games[gi];
       const homeTeam = teams.find(t => t.abbr === game.home.abbr);
@@ -1119,57 +1151,129 @@ app.get('/api/smart-picks', async (req, res) => {
         try {
           const roster = await espn.getPlayerStats(teamId);
           const top = roster.slice(0, 8);
-          const gamelogs = await Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id)));
+          const [gamelogs, playoffStats] = await Promise.all([
+            Promise.allSettled(top.map(p => espn.getPlayerGamelog(p.id))),
+            Promise.allSettled(top.map(p => espn.getPlayerPlayoffStats(p.id)))
+          ]);
 
           for (let pi = 0; pi < top.length; pi++) {
             const player = top[pi];
             const gl = gamelogs[pi].status === 'fulfilled' ? gamelogs[pi].value : null;
+            const po = playoffStats[pi].status === 'fulfilled' ? playoffStats[pi].value : null;
             if (!gl?.games?.length || gl.games.length < 10) continue;
 
             const statKeys = ['PTS', 'REB', 'AST', '3PM'];
             for (const key of statKeys) {
               const all = gl.games.map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
               if (all.length < 10) continue;
-              const mean = all.reduce((a, b) => a + b, 0) / all.length;
-              if (mean < 1) continue;
+              const seasonMean = all.reduce((a, b) => a + b, 0) / all.length;
+              if (seasonMean < 1) continue;
+
+              // Career playoff data
+              const poAll = (po?.games || []).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+              const poMean = poAll.length >= 5 ? poAll.reduce((a, b) => a + b, 0) / poAll.length : null;
+
+              // Current year playoff games
+              const po2026 = (po?.games || []).filter(g => g.season === 2026).map(g => parseFloat(g.stats[`_${key}`] || '0')).filter(v => !isNaN(v));
+              const po2026Mean = po2026.length >= 2 ? po2026.reduce((a, b) => a + b, 0) / po2026.length : null;
 
               // L10 for recent form
               const l10 = all.slice(0, 10);
               const l10Mean = l10.reduce((a, b) => a + b, 0) / l10.length;
 
-              // Bayesian posterior (L10 data, season prior)
-              const bay = bayesianUpdate(l10, mean, 5);
+              // Playoff-adjusted prior:
+              // If player has playoff history, blend season + playoff as prior
+              // Weight: 60% season, 40% playoff career (playoffs are different intensity)
+              // If they have current playoff games, those get extra weight
+              let priorMean = seasonMean;
+              let playoffBoost = 0;
+              if (poMean !== null) {
+                const poWeight = po2026Mean !== null ? 0.5 : 0.3; // more weight if current PO data exists
+                priorMean = seasonMean * (1 - poWeight) + poMean * poWeight;
+                playoffBoost = +(poMean - seasonMean).toFixed(1);
+              }
+              // If they have current year playoff games, blend those in too
+              if (po2026Mean !== null) {
+                priorMean = priorMean * 0.7 + po2026Mean * 0.3;
+              }
+
+              // Bayesian posterior (L10 data, playoff-adjusted prior)
+              const bay = bayesianUpdate(l10, priorMean, 5);
               if (!bay) continue;
 
-              const line = bay.line;
-              // Compare vs -115 standard book (52.4% implied)
-              const bookImpl = 53.5;
-              const overEdge = bay.overProb - bookImpl;
-              const underEdge = (100 - bay.overProb) - bookImpl;
+              // Check for real book line
+              const bookKey = player.name.toLowerCase();
+              const statOddsMap = { 'PTS': 'PTS', 'REB': 'REB', 'AST': 'AST', '3PM': '3PM' };
+              const bookLine = bookOddsMap[bookKey]?.[statOddsMap[key] || key];
+
+              // If we have book data but this player/stat has no line, skip
+              // (only analyze where books have published lines)
+              if (hasBookData && !bookLine) continue;
+
+              const line = bookLine ? bookLine.line : bay.line;
+
+              // If book line differs from model line, recalculate probs at book's line
+              let overProb = bay.overProb;
+              let underProb = 100 - bay.overProb;
+              if (bookLine && Math.abs(bookLine.line - bay.line) > 0) {
+                // Recalculate Poisson prob at the book's line using adjusted prior
+                overProb = +((1 - poissonCdfCalc(bookLine.line, bay.mean)) * 100).toFixed(1);
+                underProb = +(100 - overProb).toFixed(1);
+              }
+
+              // Compare vs real book odds (with vig removed) or standard -115
+              let bookOverImpl, bookUnderImpl, vigPct, bookSource;
+              if (bookLine) {
+                const vig = removeVig(bookLine.overOdds, bookLine.underOdds);
+                bookOverImpl = vig.trueOverProb;
+                bookUnderImpl = vig.trueUnderProb;
+                vigPct = vig.vig;
+                bookSource = bookLine.book;
+              } else {
+                bookOverImpl = 53.5;
+                bookUnderImpl = 53.5;
+                vigPct = 4.5;
+                bookSource = 'Standard -115';
+              }
+
+              const overEdge = overProb - bookOverImpl;
+              const underEdge = underProb - bookUnderImpl;
 
               const bestEdge = Math.max(overEdge, underEdge);
               const pick = overEdge > underEdge ? 'Over' : 'Under';
-              const pickProb = pick === 'Over' ? bay.overProb : (100 - bay.overProb);
-              const pickOdds = pick === 'Over' ? bay.overOdds : bay.underOdds;
+              const pickProb = pick === 'Over' ? overProb : underProb;
+              const pickOdds = bookLine
+                ? (pick === 'Over' ? bookLine.overOdds : bookLine.underOdds)
+                : (pick === 'Over' ? bay.overOdds : bay.underOdds);
 
-              if (bestEdge >= 3) { // minimum 3% edge
-                const variance = all.reduce((a, b) => a + (b - mean) ** 2, 0) / (all.length - 1);
-                const consistency = Math.sqrt(variance) / mean;
+              if (bestEdge >= 3) {
+                const variance = all.reduce((a, b) => a + (b - seasonMean) ** 2, 0) / (all.length - 1);
+                const consistency = Math.sqrt(variance) / seasonMean;
 
                 allEdges.push({
                   player: player.name, team: teamAbbr,
                   game: `${game.away.abbr} @ ${game.home.abbr}`,
                   gameDate: game.date,
                   stat: key, line, pick,
-                  mean: +mean.toFixed(1), l10Mean: +l10Mean.toFixed(1),
+                  seasonMean: +seasonMean.toFixed(1),
+                  playoffMean: poMean !== null ? +poMean.toFixed(1) : null,
+                  playoffGames: poAll.length,
+                  playoffBoost,
+                  po2026Mean: po2026Mean !== null ? +po2026Mean.toFixed(1) : null,
+                  l10Mean: +l10Mean.toFixed(1),
                   bayesianMean: bay.mean,
+                  adjustedPrior: +priorMean.toFixed(1),
                   prob: +pickProb.toFixed(1),
                   odds: pickOdds,
                   edge: +bestEdge.toFixed(1),
                   consistency: +consistency.toFixed(2),
                   ci90: bay.ci90,
                   games: all.length,
-                  trending: l10Mean > mean ? 'hot' : l10Mean < mean * 0.9 ? 'cold' : 'stable',
+                  bookSource: bookSource || null,
+                  bookImpl: pick === 'Over' ? +bookOverImpl.toFixed(1) : +bookUnderImpl.toFixed(1),
+                  vig: +vigPct,
+                  hasRealOdds: !!bookLine,
+                  trending: l10Mean > seasonMean ? 'hot' : l10Mean < seasonMean * 0.9 ? 'cold' : 'stable',
                   confidence: bestEdge >= 8 ? 'high' : bestEdge >= 5 ? 'medium' : 'low'
                 });
               }
@@ -1252,7 +1356,10 @@ app.get('/api/smart-picks', async (req, res) => {
       edgesFound: allEdges.length,
       topEdges: allEdges.slice(0, 15),
       picks: picks.filter(Boolean),
-      methodology: 'Bayesian posterior (L10 data + season prior) vs -115 standard book. Edge = model prob minus book implied prob. Parlays diversified across games.'
+      hasBookData,
+      methodology: hasBookData
+        ? 'Playoff-adjusted Bayesian model (L10 recent + season/playoff blended prior) vs real sportsbook lines (vig removed). Only players with published book lines analyzed. Edge = model prob minus true market-implied prob.'
+        : 'Playoff-adjusted Bayesian model (L10 recent + season/playoff blended prior) vs -115 standard. Set ODDS_API_KEY for real book line comparison.'
     };
 
     cache.set(ck, result, 30 * 60_000); // 30 min cache
