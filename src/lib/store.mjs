@@ -272,7 +272,7 @@ export async function createSlip({ user, legs, wager, gameDate }) {
 }
 
 export async function getSlips({ status, user, limit = 50 } = {}) {
-  const all = await backend.lrange('slips', 0, 200);
+  const all = await backend.lrange('slips', 0, 500);
   let filtered = all.filter(s => s.status !== 'deleted'); // always hide deleted
   if (status) filtered = filtered.filter(s => s.status === status);
   if (user) filtered = filtered.filter(s => s.userKey === user.toLowerCase());
@@ -280,12 +280,12 @@ export async function getSlips({ status, user, limit = 50 } = {}) {
 }
 
 export async function getSlip(id) {
-  const all = await backend.lrange('slips', 0, 200);
+  const all = await backend.lrange('slips', 0, 500);
   return all.find(s => s.id === id) || null;
 }
 
 export async function gradeSlip(id, results) {
-  const all = await backend.lrange('slips', 0, 200);
+  const all = await backend.lrange('slips', 0, 500);
   const idx = all.findIndex(s => s.id === id);
   if (idx === -1) return { error: 'Slip not found' };
   const slip = all[idx];
@@ -325,7 +325,7 @@ export async function gradeSlip(id, results) {
 }
 
 export async function deleteSlip(id, userKey) {
-  const all = await backend.lrange('slips', 0, 200);
+  const all = await backend.lrange('slips', 0, 500);
   const idx = all.findIndex(s => s.id === id && s.userKey === userKey);
   if (idx === -1) return { error: 'Not found or not yours' };
   if (all[idx].status !== 'active') return { error: 'Can only delete active slips' };

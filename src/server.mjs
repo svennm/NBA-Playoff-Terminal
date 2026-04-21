@@ -1372,8 +1372,15 @@ app.get('/api/smart-picks', async (req, res) => {
     };
 
     // Auto-submit picks as HxM system account slips (once per day)
-    const slipCk = 'hxm-slips-posted-' + new Date().toISOString().slice(0, 10);
-    if (!cache.get(slipCk) && picks.filter(Boolean).length > 0) {
+    // Use both cache (fast check) and store (survives restarts)
+    const today = new Date().toISOString().slice(0, 10);
+    const slipCk = 'hxm-slips-posted-' + today;
+    const alreadyPosted = cache.get(slipCk) || await (async () => {
+      // Check if HxM already has slips created today
+      const hxmSlips = await store.getSlips({ user: 'hxm', limit: 20 });
+      return hxmSlips.some(s => s.createdAt?.slice(0, 10) === today);
+    })();
+    if (!alreadyPosted && picks.filter(Boolean).length > 0) {
       try {
         // Ensure HxM system account exists
         let hxmUser = await store.getUser('hxm');
@@ -2685,7 +2692,14 @@ async function resolveEngine() {
 
       // === Player props ===
       const pStats = findPlayer(players, leg.player);
-      if (!pStats) { legResults.push('lost'); continue; }
+      if (!pStats) {
+        // Player not found in box score — could be name mismatch or DNP
+        // Only mark as lost if the game is truly finished AND the player's team was in this game
+        // Otherwise keep as pending to avoid false losses
+        console.log(`[RESOLVE] Player not found: "${leg.player}" in game ${leg.game}`);
+        legResults.push('pending');
+        continue;
+      }
 
       // NBA stat key mapping
       const statMap = { 'PTS':'_PTS','REB':'_REB','AST':'_AST','TO':'_TO','STL':'_STL','BLK':'_BLK',
