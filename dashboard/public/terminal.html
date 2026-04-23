@@ -1458,33 +1458,38 @@ async function loadSmartPicks() {
       </div>
     `).join('');
 
-    // Top individual edges
-    if (data.topEdges?.length) {
+    // Kelly-sized straight bets (optimal structure for edge extraction)
+    if (data.straightBets?.length) {
       html += `
         <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px;">
-          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Top Individual Edges</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div style="font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:1px;">Kelly-Sized Straight Bets</div>
+            <div style="font-size:8px;color:var(--dim);">Half-Kelly sizing • Best structure for edge</div>
+          </div>
           <table style="width:100%;border-collapse:collapse;font-size:10px;">
             <thead><tr style="color:var(--dim);font-size:8px;text-transform:uppercase;letter-spacing:1px;">
               <th style="text-align:left;padding:3px 4px;">Player</th>
               <th style="text-align:left;padding:3px 4px;">Pick</th>
               <th style="padding:3px 4px;">Edge</th>
               <th style="padding:3px 4px;">Prob</th>
-              <th style="padding:3px 4px;">Trend</th>
-              <th style="text-align:left;padding:3px 4px;">Game</th>
-              <th style="padding:3px 4px;">PO Adj</th>
-              <th style="padding:3px 4px;">Book</th>
+              <th style="padding:3px 4px;">Kelly</th>
+              <th style="padding:3px 4px;">Wager</th>
+              <th style="padding:3px 4px;">E[P]</th>
+              <th style="padding:3px 4px;">Def</th>
+              <th style="padding:3px 4px;">Src</th>
             </tr></thead>
             <tbody>
-              ${data.topEdges.slice(0, 10).map(e => `
+              ${data.straightBets.map(e => `
                 <tr style="border-bottom:1px solid rgba(255,255,255,0.02);">
-                  <td style="padding:3px 4px;font-weight:500;">${e.player}</td>
-                  <td style="padding:3px 4px;"><span style="color:var(--cyan);">${e.pick} ${e.line}</span> <span style="color:var(--dim);">${e.stat}</span></td>
+                  <td style="padding:3px 4px;font-weight:500;">${e.player} <span style="color:var(--dim);font-size:8px;">${e.team}</span></td>
+                  <td style="padding:3px 4px;"><span style="color:var(--cyan);">${e.pick} ${e.line}</span> <span style="color:var(--dim);">${e.stat}</span> <span style="font-size:7px;color:var(--dim);">${e.model === 'normal' ? 'N' : 'P'}</span></td>
                   <td style="padding:3px 4px;text-align:center;color:var(--green);font-weight:600;">+${e.edge}%</td>
                   <td style="padding:3px 4px;text-align:center;">${e.prob}%</td>
-                  <td style="padding:3px 4px;text-align:center;">${e.trending === 'hot' ? '<span style="color:var(--green);">HOT</span>' : e.trending === 'cold' ? '<span style="color:var(--red);">COLD</span>' : '<span style="color:var(--dim);">—</span>'}</td>
-                  <td style="padding:3px 4px;color:var(--dim);">${e.game}</td>
-                  <td style="padding:3px 4px;font-size:8px;color:var(--dim);">${e.playoffBoost ? (e.playoffBoost > 0 ? '<span style="color:var(--green);">PO+' + e.playoffBoost + '</span>' : '<span style="color:var(--red);">PO' + e.playoffBoost + '</span>') : ''}</td>
-                  <td style="padding:3px 4px;font-size:8px;color:var(--dim);">${e.hasRealOdds ? '<span style="color:var(--green);">' + e.bookSource + '</span>' : ''}</td>
+                  <td style="padding:3px 4px;text-align:center;color:var(--amber);">${e.halfKelly}%</td>
+                  <td style="padding:3px 4px;text-align:center;font-weight:600;color:var(--gold);">$${e.wager}</td>
+                  <td style="padding:3px 4px;text-align:center;color:${e.expectedProfit > 0 ? 'var(--green)' : 'var(--red)'};">$${e.expectedProfit}</td>
+                  <td style="padding:3px 4px;text-align:center;font-size:8px;color:${e.defAdjPct > 2 ? 'var(--green)' : e.defAdjPct < -2 ? 'var(--red)' : 'var(--dim)'};">${e.defAdjPct > 0 ? '+' : ''}${e.defAdjPct || 0}%</td>
+                  <td style="padding:3px 4px;font-size:8px;color:var(--dim);">${e.hasRealOdds ? '<span style="color:var(--green);">' + e.bookSource + '</span>' : 'sim'}</td>
                 </tr>
               `).join('')}
             </tbody>

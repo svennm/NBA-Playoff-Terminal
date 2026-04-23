@@ -1117,6 +1117,32 @@ app.get('/api/smart-picks', async (req, res) => {
     const teams = sweepData?.teams || await espn.getTeams();
     const allEdges = [];
 
+    // === OPPONENT DEFENSIVE ADJUSTMENTS ===
+    // Fetch league-wide defensive ratings to adjust player projections
+    let defenseMap = {}; // abbr → { oppPpg, defRating }
+    let leagueAvgOppg = 115;
+    try {
+      const standingsData = sweepData?.standings || await espn.getStandings();
+      const allTeamStats = [];
+      for (const conf of ['east', 'west']) {
+        for (const t of standingsData[conf] || []) {
+          const ppg = parseFloat(t.ppg) || 115;
+          const oppg = parseFloat(t.oppg) || 115;
+          defenseMap[t.abbr] = { oppPpg: oppg, ppg };
+          allTeamStats.push(oppg);
+        }
+      }
+      if (allTeamStats.length) leagueAvgOppg = allTeamStats.reduce((a, b) => a + b, 0) / allTeamStats.length;
+    } catch {}
+
+    // Defensive adjustment factor: opponent allows X% more/less than average
+    // If opponent allows 120 PPG and league avg is 115, factor = 120/115 = 1.043 (boost 4.3%)
+    const getDefAdj = (opponentAbbr) => {
+      const def = defenseMap[opponentAbbr];
+      if (!def) return 1.0;
+      return def.oppPpg / leagueAvgOppg;
+    };
+
     // Get real book odds for all games (if available)
     let bookOddsMap = {}; // playerName -> { stat -> { line, overOdds, underOdds, book } }
     if (odds.isConfigured()) {
@@ -1190,24 +1216,33 @@ app.get('/api/smart-picks', async (req, res) => {
               const l10 = all.slice(0, 10);
               const l10Mean = l10.reduce((a, b) => a + b, 0) / l10.length;
 
-              // Playoff-adjusted prior:
-              // If player has playoff history, blend season + playoff as prior
-              // Weight: 60% season, 40% playoff career (playoffs are different intensity)
-              // If they have current playoff games, those get extra weight
+              // === OPPONENT-ADJUSTED, PLAYOFF-ADJUSTED PRIOR ===
+              // 1. Start with season mean
               let priorMean = seasonMean;
               let playoffBoost = 0;
+
+              // 2. Blend in playoff history
               if (poMean !== null) {
-                const poWeight = po2026Mean !== null ? 0.5 : 0.3; // more weight if current PO data exists
+                const poWeight = po2026Mean !== null ? 0.5 : 0.3;
                 priorMean = seasonMean * (1 - poWeight) + poMean * poWeight;
                 playoffBoost = +(poMean - seasonMean).toFixed(1);
               }
-              // If they have current year playoff games, blend those in too
               if (po2026Mean !== null) {
                 priorMean = priorMean * 0.7 + po2026Mean * 0.3;
               }
 
-              // Bayesian posterior (L10 data, playoff-adjusted prior)
-              const bay = bayesianUpdate(l10, priorMean, 5);
+              // 3. Opponent defensive adjustment
+              // Determine opponent: if player is on home team, opponent is away (and vice versa)
+              const opponentAbbr = teamAbbr === game.home.abbr ? game.away.abbr : game.home.abbr;
+              const defAdj = getDefAdj(opponentAbbr);
+              // Only apply to scoring-related stats
+              if (['PTS', '3PM', 'FGM', 'FTM'].includes(key)) {
+                priorMean *= defAdj;
+              }
+
+              // Bayesian posterior (L10 data, playoff+opponent adjusted prior)
+              // Prior weight auto-scaled by player consistency
+              const bay = bayesianUpdate(l10, priorMean, null, key);
               if (!bay) continue;
 
               // Check for real book line
@@ -1282,6 +1317,10 @@ app.get('/api/smart-picks', async (req, res) => {
                   bookImpl: pick === 'Over' ? +bookOverImpl.toFixed(1) : +bookUnderImpl.toFixed(1),
                   vig: +vigPct,
                   hasRealOdds: !!bookLine,
+                  opponent: opponentAbbr,
+                  defAdj: +defAdj.toFixed(3),
+                  defAdjPct: +((defAdj - 1) * 100).toFixed(1),
+                  model: bay.model || 'poisson',
                   trending: l10Mean > seasonMean ? 'hot' : l10Mean < seasonMean * 0.9 ? 'cold' : 'stable',
                   confidence: bestEdge >= 8 ? 'high' : bestEdge >= 5 ? 'medium' : 'low'
                 });
@@ -1326,35 +1365,58 @@ app.get('/api/smart-picks', async (req, res) => {
       const americanOdds = decimalOdds >= 2 ? Math.round((decimalOdds - 1) * 100) : Math.round(-100 / (decimalOdds - 1));
       const avgEdge = selected.reduce((a, b) => a + b.edge, 0) / selected.length;
 
+      // Apply correlation penalty for same-player multi-stat legs
+      const corrAdj = correlationAdjust(selected);
+      const adjProb = combinedProb * corrAdj;
+
       return {
         label: label || `${selected.length}-Leg Value Parlay`,
         legs: selected,
         parlayOdds: americanOdds,
         decimalOdds: +decimalOdds.toFixed(2),
-        combinedProb: +(combinedProb * 100).toFixed(2),
+        combinedProb: +(adjProb * 100).toFixed(2),
+        rawProb: +(combinedProb * 100).toFixed(2),
+        correlationAdj: +(corrAdj * 100).toFixed(0),
         avgEdge: +avgEdge.toFixed(1),
-        ev: +((combinedProb * decimalOdds - 1) * 100).toFixed(1)
+        ev: +((adjProb * decimalOdds - 1) * 100).toFixed(1)
       };
     };
 
-    // 3 different parlays with different strategies
+    // === KELLY-SIZED STRAIGHT BETS (best structure for edge extraction) ===
+    const bankroll = 1000; // HxM bankroll
+    const straightBets = allEdges.slice(0, 8).map(e => {
+      // Kelly fraction: f* = (bp - q) / b where b = decimal odds - 1, p = prob, q = 1-p
+      const dec = e.odds > 0 ? (e.odds / 100) + 1 : (100 / Math.abs(e.odds)) + 1;
+      const b = dec - 1;
+      const p = e.prob / 100;
+      const q = 1 - p;
+      const kelly = (b * p - q) / b;
+      const halfKelly = Math.max(0, kelly / 2); // half Kelly for safety
+      const wager = Math.min(Math.round(bankroll * halfKelly), 200); // cap at $200
+      if (wager < 5) return null; // skip tiny bets
+      return {
+        ...e,
+        kellyFraction: +(kelly * 100).toFixed(1),
+        halfKelly: +(halfKelly * 100).toFixed(1),
+        wager,
+        expectedProfit: +(wager * (dec * p - 1)).toFixed(2)
+      };
+    }).filter(Boolean);
+
+    // Parlays (with correlation adjustment)
     const picks = [];
 
-    // 1. Highest edge parlay (best value)
     const highEdge = buildParlay(allEdges, 4, 'Best Edge Parlay');
     if (highEdge) picks.push(highEdge);
 
-    // 2. Hot players parlay (trending up)
     const hotPlayers = allEdges.filter(e => e.trending === 'hot');
     const hotParlay = buildParlay(hotPlayers, 3, 'Hot Streak Parlay');
     if (hotParlay) picks.push(hotParlay);
 
-    // 3. High consistency + edge (safe picks)
     const consistent = allEdges.filter(e => e.consistency < 0.35 && e.edge >= 4);
     const safeParlay = buildParlay(consistent, 3, 'Consistent Value Parlay');
     if (safeParlay) picks.push(safeParlay);
 
-    // 4. High confidence only
     const highConf = allEdges.filter(e => e.confidence === 'high');
     const confParlay = buildParlay(highConf, 3, 'High Confidence Parlay');
     if (confParlay) picks.push(confParlay);
@@ -1364,11 +1426,12 @@ app.get('/api/smart-picks', async (req, res) => {
       gamesAnalyzed: Math.min(games.length, 8),
       edgesFound: allEdges.length,
       topEdges: allEdges.slice(0, 15),
-      picks: picks.filter(Boolean),
+      straightBets, // Kelly-sized individual picks
+      picks: picks.filter(Boolean), // parlays
       hasBookData,
       methodology: hasBookData
-        ? 'Playoff-adjusted Bayesian model (L10 recent + season/playoff blended prior) vs real sportsbook lines (vig removed). Only players with published book lines analyzed. Edge = model prob minus true market-implied prob.'
-        : 'Playoff-adjusted Bayesian model (L10 recent + season/playoff blended prior) vs -115 standard. Set ODDS_API_KEY for real book line comparison.'
+        ? 'Bayesian posterior (L10 + playoff-adjusted prior) vs real book lines (vig removed). PTS uses Normal CDF (overdispersed), other stats use Poisson. Straight bets sized at half-Kelly. Parlay probs adjusted for stat correlation.'
+        : 'Bayesian posterior (L10 + playoff-adjusted prior) vs -115 standard. No real book data — picks are SIMULATION ONLY. Set ODDS_API_KEY for real edge detection.'
     };
 
     // Auto-submit picks as HxM system account slips (once per day)
@@ -1380,7 +1443,9 @@ app.get('/api/smart-picks', async (req, res) => {
       const hxmSlips = await store.getSlips({ user: 'hxm', limit: 20 });
       return hxmSlips.some(s => s.createdAt?.slice(0, 10) === today);
     })();
-    if (!alreadyPosted && picks.filter(Boolean).length > 0) {
+    // Only auto-post HxM slips when we have REAL book lines to compare against
+    // Posting against phantom -115 lines is not real edge
+    if (!alreadyPosted && hasBookData && picks.filter(Boolean).length > 0) {
       try {
         // Ensure HxM system account exists
         let hxmUser = await store.getUser('hxm');
@@ -1434,7 +1499,7 @@ app.get('/api/smart-picks', async (req, res) => {
 
 // === MODEL UTILITIES ===
 
-// Poisson CDF (shared)
+// Poisson CDF — for count stats (REB, AST, 3PM, STL, BLK, FGM, FTM)
 function poissonCdfCalc(k, lam) {
   let sum = 0;
   for (let i = 0; i <= Math.floor(k); i++) {
@@ -1445,35 +1510,62 @@ function poissonCdfCalc(k, lam) {
   return Math.min(sum, 1);
 }
 
+// Normal CDF approximation — for PTS (overdispersed, NOT Poisson-appropriate)
+// PTS comes in 1s, 2s, 3s — variance >> mean — Poisson underestimates tails
+function normalCdf(x, mean, sigma) {
+  if (sigma <= 0) return x >= mean ? 1 : 0;
+  const z = (x - mean) / sigma;
+  // Abramowitz & Stegun approximation
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327; // 1/sqrt(2*pi)
+  const p = d * Math.exp(-z * z / 2) * (t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429)))));
+  return z > 0 ? 1 - p : p;
+}
+
+// Stat-appropriate probability calculation
+// PTS → Normal CDF (handles overdispersion)
+// Everything else → Poisson CDF (proper count data)
+const NORMAL_STATS = new Set(['PTS', 'PRA', 'MIN']); // overdispersed stats
+function statOverProb(line, mean, stdDev, stat) {
+  if (NORMAL_STATS.has(stat) && stdDev > 0) {
+    return 1 - normalCdf(line, mean, stdDev);
+  }
+  return 1 - poissonCdfCalc(line, mean);
+}
+
 // Bayesian conjugate model for player props
-// Uses Normal-Normal conjugate prior: prior N(mu0, sigma0^2), data N(mean, sigma^2/n)
-// Posterior: N(mu_post, sigma_post^2)
-function bayesianUpdate(values, priorMean = null, priorWeight = 5) {
+// Uses Normal-Normal conjugate prior
+// Prior weight scales by player consistency — tighter for stable players
+function bayesianUpdate(values, priorMean = null, priorWeight = null, stat = 'PTS') {
   if (!values.length) return null;
   const n = values.length;
   const dataMean = values.reduce((a, b) => a + b, 0) / n;
   const dataVar = n > 1 ? values.reduce((a, b) => a + (b - dataMean) ** 2, 0) / (n - 1) : dataMean;
   const dataSigma = Math.sqrt(dataVar);
 
-  // Prior: use overall mean if not provided, with priorWeight pseudo-observations
   const mu0 = priorMean !== null ? priorMean : dataMean;
-  const sigma0 = dataSigma; // prior uncertainty = data uncertainty
 
-  // Posterior parameters (Normal-Normal conjugate)
-  const priorPrec = priorWeight / (sigma0 * sigma0 + 0.01);
+  // Scale prior weight by consistency: consistent players get stronger prior
+  // CV (coefficient of variation) = sigma/mean. Low CV = consistent = trust prior more
+  const cv = dataMean > 0 ? dataSigma / dataMean : 1;
+  const autoWeight = cv < 0.2 ? 8 : cv < 0.35 ? 5 : cv < 0.5 ? 3 : 2;
+  const pw = priorWeight !== null ? priorWeight : autoWeight;
+
+  // Prior sigma: scale by how much data we have for the prior
+  const sigma0 = dataSigma * (1 + 1 / Math.sqrt(Math.max(n, 5)));
+
+  const priorPrec = pw / (sigma0 * sigma0 + 0.01);
   const dataPrec = n / (dataVar + 0.01);
   const postPrec = priorPrec + dataPrec;
   const postMean = (priorPrec * mu0 + dataPrec * dataMean) / postPrec;
   const postVar = 1 / postPrec;
   const postSigma = Math.sqrt(postVar);
 
-  // 90% credible interval
   const ci90Low = postMean - 1.645 * postSigma;
   const ci90High = postMean + 1.645 * postSigma;
 
-  // Poisson line from posterior mean
   const line = Math.floor(postMean) + 0.5;
-  const overProb = 1 - poissonCdfCalc(line, postMean);
+  const overProb = statOverProb(line, postMean, dataSigma, stat);
   const toAm = (p) => p >= 0.5 ? Math.round(-100 * p / (1 - p)) : Math.round(100 * (1 - p) / p);
 
   return {
@@ -1482,8 +1574,33 @@ function bayesianUpdate(values, priorMean = null, priorWeight = 5) {
     line, games: n, priorMean: +mu0.toFixed(1),
     overProb: +(overProb * 100).toFixed(1),
     overOdds: toAm(overProb), underOdds: toAm(1 - overProb),
-    shrinkage: +((1 - dataPrec / postPrec) * 100).toFixed(1) // how much prior pulls the estimate
+    shrinkage: +((1 - dataPrec / postPrec) * 100).toFixed(1),
+    model: NORMAL_STATS.has(stat) ? 'normal' : 'poisson',
+    priorWeight: pw
   };
+}
+
+// Correlation penalty for same-player multi-stat parlays
+// PTS/AST/REB are correlated — independent prob multiplication overestimates
+function correlationAdjust(legs) {
+  if (legs.length <= 1) return 1.0;
+  // Check for same-player multi-stat legs
+  const playerStats = {};
+  for (const l of legs) {
+    if (!playerStats[l.player]) playerStats[l.player] = [];
+    playerStats[l.player].push(l.stat);
+  }
+  let penalty = 1.0;
+  for (const [player, stats] of Object.entries(playerStats)) {
+    if (stats.length <= 1) continue;
+    // Known correlations: PTS-AST (~0.3), PTS-REB (~0.15), AST-REB (~0.1)
+    const correlated = stats.filter(s => ['PTS', 'REB', 'AST', 'PRA'].includes(s));
+    if (correlated.length >= 2) {
+      // Reduce combined probability by ~10-15% per correlated pair
+      penalty *= Math.pow(0.88, correlated.length - 1);
+    }
+  }
+  return penalty;
 }
 
 // Market-implied: remove vig from book odds to get true probability
